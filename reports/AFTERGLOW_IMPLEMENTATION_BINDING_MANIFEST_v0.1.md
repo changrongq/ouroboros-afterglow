@@ -408,7 +408,7 @@ observer.py              1.0  82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3
 perturbation_j.py        1.0  28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
 reset.py                 1.0  9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
 evaluator.py             1.0  fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-fixtures.py              1.0  2fe46a151df25d3243266bb2ff6294fc503a42ddb7f759c010f42c6560bdecc4
+fixtures.py              1.0  a0fcc641a9b7635c07c196c8709301f15ff8af4ced6a31d8f49e6b6608e892ce
 
 # Execution-critical DRIVERS（凌翼边界：能改变 qualification 判定 ⇒ MUST BE BOUND）
 run_known_answer_suite.py    1.0  44f8a70fa4e786d1e0cf195279e543d5b7fdbd0ff989cfd22936c36a49b8958d

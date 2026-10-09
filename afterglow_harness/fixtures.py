@@ -225,8 +225,15 @@ def _reset_arm(arm: Arm, fault: bool) -> tuple[StateSnapshot, StateSnapshot, boo
     else:
         corrupt = bytes([handoff.q_raw[0] ^ 0x01]) + handoff.q_raw[1:]
         restored = StateSnapshot(literal=handoff.literal, q_raw=corrupt)
+    # NOTE (Zhiwei §7): clear-side and access-side are passed as LOGICAL
+    # declarations (True), NOT as OS-verified witnesses. Only the preserve-side
+    # is actually checked against real bytes here. The reset layer is logic-only;
+    # OS-level isolation is a documented, unimplemented gap.
     outcome = ctrl.verify(handoff, restored, clear_side_ok=True, access_side_ok=True)
-    return handoff, restored, outcome.reset_valid, outcome.reason
+    reason = outcome.reason
+    if outcome.reset_valid:
+        reason = "RESET_VALID_PRESERVE_ONLY (clear/access = LOGICAL declaration, not OS-verified)"
+    return handoff, restored, outcome.reset_valid, reason
 
 
 def _realize_member(
@@ -269,7 +276,7 @@ def _realize_member(
     arms_to_reset = {"A": A, "B": B, "C": C} if reset_all_arms else {"C": C}
 
     reset_ok = True
-    reset_reason = "RESET_VALID"
+    reset_reason = "RESET_VALID_PRESERVE_ONLY"
     restored_snap = None
     handoff_snap = None
     for name, arm in arms_to_reset.items():
@@ -517,12 +524,46 @@ def fixture_V4_1() -> FixtureResult:
     )
 
 
+class CombinedStorageWrapper:
+    """An isolated wrapper that exposes ONLY a combined storage+extra operation.
+
+    It deliberately does NOT expose a separable W_extra ON/OFF interface, so the
+    same-E / same-storage-path / W_extra ON-vs-OFF counterfactual is
+    architecturally impossible for C2. This makes the V4b claim STRUCTURAL
+    (a real object with no separable method) rather than an asserted flag.
+    """
+
+    def __init__(self, root: Path, name: str):
+        self.arm = Arm(root, name)
+
+    def combined_write(self, payload: bytes, storage_mode: str, extra_mode: str) -> None:
+        """The ONLY write entry point: storage and extra happen together."""
+        self.arm.store(payload, storage_mode)
+        if extra_mode != EXTRA_OFF:
+            self.arm.extra(payload, extra_mode)
+
+    # NOTE: intentionally NO `extra_off`/`extra_on` split method exists.
+
+
 def fixture_V4b() -> FixtureResult:
-    """Isolated wrapper exposing only combined storage op (W_extra not separable)."""
+    """Isolated wrapper exposing only a combined storage op (W_extra not separable)."""
     actual, led = _run_two_arm("NO_WRITE", STORE_FULL, "A1")
     led.fixture_id = "V4b"
-    c2res, c3res = evaluate_c2_architectural(extra_interface_separable=False)
-    led.notes.append("isolated wrapper exposes only combined storage op; W_extra ON/OFF not separable")
+
+    # Build the real isolated wrapper and DERIVE separability from its interface,
+    # rather than asserting a bare flag.
+    root = Path(tempfile.mkdtemp(prefix="afterglow_fx_"))
+    try:
+        wrapper = CombinedStorageWrapper(root, "v4b_wrapper")
+        has_split = hasattr(wrapper, "extra_on") or hasattr(wrapper, "set_extra_off")
+        separable = has_split  # False for this wrapper by construction
+        c2res, c3res = evaluate_c2_architectural(extra_interface_separable=separable)
+        led.notes.append(
+            "isolated wrapper exposes only combined_write(); no separable W_extra "
+            f"ON/OFF method (has_split={has_split}) -> C2/C3 ARCHITECTURALLY_NOT_IDENTIFIABLE")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
     actual["C2"] = c2res
     actual["C3"] = c3res
     actual["PRE_RESET_CHANGE_CLASS"] = C1
@@ -577,7 +618,7 @@ def _v5_run(j_mode: str, reset_fault: bool = False,
         led.post = {"c3": c3_post["result"], "c1_payload_ok": post_c1_ok}
         led.reset = {
             "reset_valid": reset_ok,
-            "reason": (first_bad.reset_reason if first_bad else "RESET_VALID"),
+            "reason": (first_bad.reset_reason if first_bad else "RESET_VALID_PRESERVE_ONLY"),
             "arms_reset_per_member": (["A", "B", "C"] if reset_all_arms else ["C"]),
             "per_member_reset_ok": {m.member_id: m.reset_ok for m in reals},
         }

@@ -37,7 +37,7 @@
     "reset": {},
     "l2": {},
     "notes": [
-      "isolated wrapper exposes only combined storage op; W_extra ON/OFF not separable"
+      "isolated wrapper exposes only combined_write(); no separable W_extra ON/OFF method (has_split=False) -> C2/C3 ARCHITECTURALLY_NOT_IDENTIFIABLE"
     ]
   }
 }

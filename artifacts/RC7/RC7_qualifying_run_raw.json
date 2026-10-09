@@ -3,7 +3,7 @@
   "phase": "PHASE_A_HARNESS_VALIDATION_EXECUTION",
   "scientific_claim_eligibility": "NONE",
   "preflight_captured_before_first_fixture": {
-    "MANIFEST_HASH": "45acd8b1c38142f43e3102b79d8467a0312e114e6a4771ea56dcad6be18cba89",
+    "MANIFEST_HASH": "c61d8aa78cd55054c4c17ed280dcc14376829e6517e03563532834f23931d9b0",
     "MANIFEST_BYTES": 23700,
     "detached_match": true,
     "component_binding_no_drift": true,
@@ -372,7 +372,7 @@
         "reset": {},
         "l2": {},
         "notes": [
-          "isolated wrapper exposes only combined storage op; W_extra ON/OFF not separable"
+          "isolated wrapper exposes only combined_write(); no separable W_extra ON/OFF method (has_split=False) -> C2/C3 ARCHITECTURALLY_NOT_IDENTIFIABLE"
         ]
       }
     },
@@ -408,7 +408,7 @@
             "T_restored": "1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
             "j_after_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
@@ -436,7 +436,7 @@
             "T_restored": "1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
             "j_after_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
@@ -464,7 +464,7 @@
             "T_restored": "-1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
             "j_after_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
@@ -492,7 +492,7 @@
             "T_restored": "-1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
             "j_after_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
@@ -523,7 +523,7 @@
         },
         "reset": {
           "reset_valid": true,
-          "reason": "RESET_VALID",
+          "reason": "RESET_VALID_PRESERVE_ONLY",
           "arms_reset_per_member": [
             "A",
             "B",
@@ -578,7 +578,7 @@
             "T_restored": "1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
             "j_after_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
@@ -606,7 +606,7 @@
             "T_restored": "1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
             "j_after_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
@@ -634,7 +634,7 @@
             "T_restored": "1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
             "j_after_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
@@ -662,7 +662,7 @@
             "T_restored": "1",
             "literal_restored_ok": true,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
             "j_after_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
@@ -693,7 +693,7 @@
         },
         "reset": {
           "reset_valid": true,
-          "reason": "RESET_VALID",
+          "reason": "RESET_VALID_PRESERVE_ONLY",
           "arms_reset_per_member": [
             "A",
             "B",
@@ -915,7 +915,7 @@
             "T_restored": "0",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -943,7 +943,7 @@
             "T_restored": "0",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -971,7 +971,7 @@
             "T_restored": "0",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -999,7 +999,7 @@
             "T_restored": "0",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -1030,7 +1030,7 @@
         },
         "reset": {
           "reset_valid": true,
-          "reason": "RESET_VALID",
+          "reason": "RESET_VALID_PRESERVE_ONLY",
           "arms_reset_per_member": [
             "A",
             "B",
@@ -1083,7 +1083,7 @@
             "T_restored": "1/2",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -1111,7 +1111,7 @@
             "T_restored": "1/2",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -1139,7 +1139,7 @@
             "T_restored": "-1/2",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -1167,7 +1167,7 @@
             "T_restored": "-1/2",
             "literal_restored_ok": false,
             "reset_ok": true,
-            "reset_reason": "RESET_VALID",
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
             "j_timing_valid": true,
             "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
             "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
@@ -1198,7 +1198,7 @@
         },
         "reset": {
           "reset_valid": true,
-          "reason": "RESET_VALID",
+          "reason": "RESET_VALID_PRESERVE_ONLY",
           "arms_reset_per_member": [
             "A",
             "B",
@@ -1253,7 +1253,7 @@
         "post": {},
         "reset": {
           "reset_valid": true,
-          "reason": "RESET_VALID: clear+preserve+access all verified"
+          "reason": "RESET_VALID_PRESERVE_ONLY (clear/access = LOGICAL declaration, not OS-verified)"
         },
         "l2": {},
         "notes": []
