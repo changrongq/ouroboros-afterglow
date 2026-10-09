@@ -1,28 +1,31 @@
-# Independent Verification Guide (RC6)
+# Independent Verification Guide (RC7)
 
-For 凌翼 / 睫. This mirrors the four-point interface requested: from source hash to raw ledger.
+For 凌翼 / 睫 / 知微. This mirrors the four-point interface requested.
 
 ---
 
-## 0 · Reproduce the frozen MANIFEST hash
+## 0 · Reproduce the frozen hashes
 
 ```bash
-# LF, no BOM, exactly one final newline
-wc -c manifest/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-# expected: 22904
-sha256sum manifest/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-# expected: ba1202769ed5a8c7e58a3809967e2593ddb89fbfb85bde5d99616883c440af93
-```
+wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md   # 23700
+sha256sum reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
+# 45acd8b1c38142f43e3102b79d8467a0312e114e6a4771ea56dcad6be18cba89
 
-Cross-check: the detached record `manifest/MANIFEST_v0.1_HASH.txt` must carry the same value.
-
-Also reproduce the SPEC:
-
-```bash
 wc -c spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md   # 36719
 sha256sum spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md
 # b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
+
+# NOTE: the frozen PARENT prereg value ad0855b0… corresponds to the
+# FREEZE_CANDIDATE bytes (52129 B), which is what prereg/ holds:
+wc -c prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md   # 52129
+sha256sum prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md
+# ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
+
+# All .py must be LF (no CR). Example:
+python -c "print(open('afterglow_harness/harness_constants.py','rb').read().count(b'\r'))"   # 0
 ```
+
+Cross-check: `reports/MANIFEST_v0.1_HASH.txt` must carry the same MANIFEST value.
 
 ---
 
@@ -67,7 +70,7 @@ grep -n "fixture_id" afterglow_harness/evaluator.py   # should show NO result-br
 
 ## 3 · the driver really ran 13 fixtures
 
-`artifacts/RC6/RC6_qualifying_run_raw.json` contains:
+`artifacts/RC7/RC7_qualifying_run_raw.json` contains:
 
 ```text
 binding_captured_before_first_fixture : {SPEC_HASH, MANIFEST_HASH, MANIFEST_BYTES, detached_match, component_binding_no_drift}
@@ -82,7 +85,7 @@ per_fixture             : [13 entries, each {fixture_id, expected, actual, oracl
 
 ## 4 · raw ledgers derive the 13/13
 
-Each `artifacts/RC6/ledgers/<id>.json` carries `expected`, `actual`, `oracle_match`, `ledger`.
+Each `artifacts/RC7/ledgers/<id>.json` carries `expected`, `actual`, `oracle_match`, `ledger`.
 Reconcile `per_fixture` in the raw JSON against the 13 ledger files.
 
 ---
@@ -91,12 +94,16 @@ Reconcile `per_fixture` in the raw JSON against the 13 ledger files.
 
 ```bash
 cd afterglow_harness
-python tools/smoke_components.py        # expect 29/29
-python tools/smoke_evaluator.py         # expect 18/18
-python tools/bd52_timing_witness_check.py   # expect PASS
-python verify_manifest_binding.py     # expect BINDING_INTEGRITY = PASS
-python run_known_answer_suite.py      # expect KNOWN_ANSWER_SUITE = PASS (13/13)
+python smoke_components.py             # expect 29/29
+python smoke_evaluator.py              # expect 18/18
+python bd52_timing_witness_check.py    # expect PASS
+python verify_counterexamples.py       # expect COUNTEREXAMPLE REGRESSION = PASS
+python verify_manifest_binding.py      # expect BINDING_INTEGRITY = PASS
+python run_known_answer_suite.py       # expect KNOWN_ANSWER_SUITE = PASS (13/13, full preflight)
 ```
+
+`verify_counterexamples.py` reproduces the independent-review counterexamples (no-op
+storage, wrong-J substitution, empty C3, INVALID L2) and asserts each is now REJECTED.
 
 (The last will report QUALIFYING only if the frozen MANIFEST hash matches the current bytes.)
 

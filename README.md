@@ -11,12 +11,12 @@ verify the artifacts without relying on a chat attachment.
 ## Layout
 
 ```
-prereg/                  # frozen preregistration
+prereg/                  # frozen preregistration (FREEZE_CANDIDATE = frozen ad0855b0…)
 spec/                    # frozen SPEC object + freeze record
 reports/                 # implementation-binding MANIFEST + detached hash record + errata
 reports/review_history/  # correspondence + review reports
 afterglow_harness/       # the Reference Harness source (flat module layout, all .py)
-artifacts/RC6/           # RC6 qualifying run: raw machine-readable output + ledgers/
+artifacts/RC7/           # RC7 qualifying run: raw machine-readable output + ledgers/
 tests/                   # (reserved)
 README.md / VERIFY.md / .gitattributes / .gitignore
 ```
@@ -32,18 +32,26 @@ README.md / VERIFY.md / .gitattributes / .gitignore
 
 ---
 
-## Current frozen state (RC6)
+## Current frozen state (RC7)
 
 ```text
 REFERENCE_HARNESS_SPEC_HASH          = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
                                        （= spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md, 36719 B, LF）
-IMPLEMENTATION_BINDING_MANIFEST_HASH = ba1202769ed5a8c7e58a3809967e2593ddb89fbfb85bde5d99616883c440af93
-                                       （= manifest/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md, 22904 B, LF）
+IMPLEMENTATION_BINDING_MANIFEST_HASH = 45acd8b1c38142f43e3102b79d8467a0312e114e6a4771ea56dcad6be18cba89
+                                       （= reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md, 23700 B, LF）
 PARENT_PREREG_SHA256                 = ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
+                                       （= prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md, 52129 B, LF）
 ```
 
 MANIFEST lineage: RC1 `b3802142…` → RC2 `6cf3f7e3…` → RC3 `718d86fe…` → RC4 `d6a0f36d…`
-→ RC5 `2b38e69f…` → **RC6 `ba120276…`（current）**.
+→ RC5 `2b38e69f…` → RC6 `ba120276…` → **RC7 `45acd8b1…`（current）**。
+
+**RC7 repairs (BD-57 + independent review):**
+- all source `.py` converted to **LF** (eliminates the CRLF/LF binding drift);
+- V2/V3 consume the **real** L1/C2/C3 (no discarded/hard-coded results);
+- V5 rebuilds **post-reset** C1/C2/C3 from **post-reset** reads (reset all required arms);
+- observer + both registered read paths are actually invoked;
+- qualification preflight checks drivers + the ACTUAL SPEC/prereg files + the fixture set.
 
 ---
 

@@ -155,8 +155,15 @@ L2_RULE_ID = "SYNTHETIC_L2_AGGREGATION_V1"
 
 
 def l2_aggregate(post_c1: str, post_c2: str, post_c3: str) -> str:
-    """Frozen L2 aggregation when no positive class was re-established."""
-    attempted = [p for p in (post_c1, post_c2, post_c3) if p != NOT_ASSESSED]
+    """Frozen L2 aggregation when no positive class was re-established.
+
+    ★ INVALID propagates (知微 §9): a protocol-level INVALID must NOT be
+    silently downgraded to UNRESOLVED. INVALID dominates.
+    """
+    values = (post_c1, post_c2, post_c3)
+    if any(p == INVALID for p in values):
+        return INVALID
+    attempted = [p for p in values if p != NOT_ASSESSED]
     if not attempted:
         return NOT_ASSESSED
     if any(p == UNRESOLVED for p in attempted):
@@ -324,6 +331,21 @@ def evaluate_c3(
         by the fixture, not here).
     """
     per = {m["member_id"]: m for m in members}
+
+    # ★ member-set validation (知微 §9): an empty member set must NOT satisfy
+    #   all([]) == True. Require a non-empty, unique, well-formed frozen set.
+    if not members:
+        return C3Result(result=INVALID, reason="MEMBER_SET_EMPTY: C3 needs the frozen member set")
+    ids = [m["member_id"] for m in members]
+    if len(ids) != len(set(ids)):
+        return C3Result(result=INVALID, reason=f"MEMBER_ID_DUPLICATE: {ids}")
+    # every referenced pair endpoint must exist
+    for a, b in list(same_class_pairs) + list(cross_class_pairs):
+        if a not in per or b not in per:
+            return C3Result(
+                result=INVALID,
+                reason=f"PAIR_ENDPOINT_MISSING: ({a},{b}) not in member set",
+            )
 
     # all members must be attributed
     unattributed = [m["member_id"] for m in members if not m.get("attributed", False)]

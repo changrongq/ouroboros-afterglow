@@ -1,0 +1,170 @@
+{
+  "fixture_id": "V5b",
+  "expected": {
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C2",
+    "post_C3": "NOT_ESTABLISHED"
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "post_C3": "NOT_ESTABLISHED",
+    "post_C1_ok": true,
+    "reset_valid": true,
+    "j_timing_ok": true,
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C2"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5b",
+    "attempted_scope": {
+      "pre_reset_C1": true,
+      "pre_reset_C2": true,
+      "pre_reset_C3": true,
+      "post_reset": true
+    },
+    "per_member": {
+      "A1": {
+        "content_class": "L",
+        "T_write": "1",
+        "T_j_after": "1",
+        "T_restored": "1",
+        "literal_restored_ok": true,
+        "reset_ok": true,
+        "reset_reason": "RESET_VALID",
+        "j_timing_valid": true,
+        "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+        "j_after_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+        "handoff_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+        "restored_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+        "read_afterglow": {
+          "0": {
+            "num": 0,
+            "den": 1
+          },
+          "2": {
+            "num": 2,
+            "den": 1
+          }
+        },
+        "read_literal": {
+          "0": 1377,
+          "2": 1379
+        }
+      },
+      "A2": {
+        "content_class": "L",
+        "T_write": "1",
+        "T_j_after": "1",
+        "T_restored": "1",
+        "literal_restored_ok": true,
+        "reset_ok": true,
+        "reset_reason": "RESET_VALID",
+        "j_timing_valid": true,
+        "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+        "j_after_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+        "handoff_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+        "restored_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+        "read_afterglow": {
+          "0": {
+            "num": 0,
+            "den": 1
+          },
+          "2": {
+            "num": 2,
+            "den": 1
+          }
+        },
+        "read_literal": {
+          "0": 1378,
+          "2": 1380
+        }
+      },
+      "B1": {
+        "content_class": "R",
+        "T_write": "-1",
+        "T_j_after": "1",
+        "T_restored": "1",
+        "literal_restored_ok": true,
+        "reset_ok": true,
+        "reset_reason": "RESET_VALID",
+        "j_timing_valid": true,
+        "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+        "j_after_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+        "handoff_digest": "12c1d14ec1a3fde758e1f60ba177efd178281106cafc75ff17fa5ba26ddb704f",
+        "restored_digest": "12c1d14ec1a3fde758e1f60ba177efd178281106cafc75ff17fa5ba26ddb704f",
+        "read_afterglow": {
+          "0": {
+            "num": 0,
+            "den": 1
+          },
+          "2": {
+            "num": 2,
+            "den": 1
+          }
+        },
+        "read_literal": {
+          "0": 1383,
+          "2": 1385
+        }
+      },
+      "B2": {
+        "content_class": "R",
+        "T_write": "-1",
+        "T_j_after": "1",
+        "T_restored": "1",
+        "literal_restored_ok": true,
+        "reset_ok": true,
+        "reset_reason": "RESET_VALID",
+        "j_timing_valid": true,
+        "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+        "j_after_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+        "handoff_digest": "18f3f7bd2bff3527e63189c5dbfb8aa19de9b6fec9e9484cba090fd284be878a",
+        "restored_digest": "18f3f7bd2bff3527e63189c5dbfb8aa19de9b6fec9e9484cba090fd284be878a",
+        "read_afterglow": {
+          "0": {
+            "num": 0,
+            "den": 1
+          },
+          "2": {
+            "num": 2,
+            "den": 1
+          }
+        },
+        "read_literal": {
+          "0": 1384,
+          "2": 1386
+        }
+      }
+    },
+    "pre": {
+      "c3": "NOT_ESTABLISHED"
+    },
+    "post": {
+      "c3": "NOT_ESTABLISHED",
+      "c1_payload_ok": true
+    },
+    "reset": {
+      "reset_valid": true,
+      "reason": "RESET_VALID",
+      "arms_reset_per_member": [
+        "A",
+        "B",
+        "C"
+      ],
+      "per_member_reset_ok": {
+        "A1": true,
+        "A2": true,
+        "B1": true,
+        "B2": true
+      }
+    },
+    "l2": {
+      "result": "PASS",
+      "POST_RESET_SUPPORTED_CLASS": "C2"
+    },
+    "notes": [
+      "J=COLLAPSE_SIGN -> post T collapse -> C3 NOT_ESTABLISHED, C2 recovered"
+    ]
+  }
+}

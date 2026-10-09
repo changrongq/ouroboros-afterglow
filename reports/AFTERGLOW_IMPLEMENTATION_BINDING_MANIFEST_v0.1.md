@@ -6,7 +6,7 @@
 **性质**：**MANIFEST 实例化版。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
 
 ```text
-STATUS = INSTANTIATED MANIFEST (RC6) / PENDING FREEZE
+STATUS = INSTANTIATED MANIFEST (RC7) / PENDING FREEZE
 EXECUTION_AUTHORIZATION = NONE
 IGNITION = PROHIBITED
 ```
@@ -74,7 +74,7 @@ digest 算法                  = SHA-256 over the 24-byte canonical input
 ```
 
 ```text
-STATE_SCHEMA_HASH = a0ce6180ceb6cc2fd1bc136909a0d30151ebd18cd39498f0c31feac6c8cbf7fb
+STATE_SCHEMA_HASH = 9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
                     （= harness_constants.py SHA-256；schema/encoding 的实现载体）
 ```
 
@@ -359,12 +359,12 @@ fixtures: V0 / V0b / V1 / V2 / V3 / V4.1 / V4b / V5a / V5b / V5c / V5d / V5e / V
 | V3   | 9e5fb39bc0cf8a8334416acf998dfc071008bb0675a7a5eddc2a2681c696187b |
 | V4.1 | 247f9e6f07e3645ba63a9c77d4cad1deb42b9156857fcab0fc5ecf42fe9e6c02 |
 | V4b  | b35038e7059e49e46b94c2eb55ed09b7b2d617e7329d9aa8a531bc62f81e399f |
-| V5a  | 471ae90b05ae17bab0b83edd8dd5e0817bb3bad661000f2b99815b987cff7935 |
-| V5b  | f4dc262f3bfdcf42c8967a269eded4eb793db4aec9ab468b36d69fd4ae04cf64 |
-| V5c  | 6a33fe1e58c67a32477a81977c6addcb5d1f8187ed7bf476346f0ff116cb1fd6 |
-| V5d  | 595b17842a1d952d37c0261d526515700d69648561e66bada1c8b337d28c2c81 |
-| V5e  | b893247bbca7a32dbb00897790d1cdcfe28b6f8b999b041bac7d5da5c70c854a |
-| V5f  | 9ebf51049811cdfa29a4875d73ec0111894517f4f42c75642263db6c8dd3fc87 |
+| V5a  | 9b989cb42f82e126cd70ddd0a774b200c571594d364a78e18d4a66315ceacaef |
+| V5b  | 82d579b16599710b12959a27d37528c72d06564c7317e26c3cccdd3a5288f184 |
+| V5c  | 62db6956f65c71503f08845a4ee9617e0c1343cb9279540f00c731a087e3e73d |
+| V5d  | 04f141b31df9bd1240af85397394e9aa2bb4966d9996b48859fa0b8eb7da2930 |
+| V5e  | 124809a20f36ba957774e7a9b5fff459a8462acde9899d7c1441db8a1884ecb9 |
+| V5f  | ae6b16f6d389f049f41208f61f7a3b7dd63de8032d35eaff92a102b26e57ab5f |
 
 **V4.1 唯一 oracle（凌翼 R1 裁定：留在 pre-reset C2 scope）：**
 
@@ -400,19 +400,19 @@ evaluator 由 `attempted_scope` + 缺失 rule 推导 invalidity，不由 fixture
 （即“实现源码/构建产物 hash”；对应提案 §十一 #1 的“实现源码 hash”。）
 
 ```text
-harness_constants.py     1.0  a0ce6180ceb6cc2fd1bc136909a0d30151ebd18cd39498f0c31feac6c8cbf7fb
-storage.py               1.0  8271f42c6a9116e8b079bd759bb6b2d75fb75ee189b97d1445f71bf0206db7b7
-writers.py               1.0  ae64731b322dc1c4e827d06562eacfbf83b42069d03ed9d4fbd502daaab0cc87
-readers.py               1.0  83cbc20be47ec96871c830507e5ba9c26fa7e043319258b9e49328af8a867adc
-observer.py              1.0  f8b68319dc4b8731eb869035884ed8767ebc96c54e7bc28059a5a47e05c3cf52
-perturbation_j.py        1.0  d0920afdd9cc0a6bd14a45babb0da4468c7417a8c4ccd92896d0d66a7d06cc25
-reset.py                 1.0  d985c278330af1e552b545c791a32b351c83f51566c38b54321ce266374a9ca8
-evaluator.py             1.0  101f1170dd8ad737ae79a29074ad168596ccb1fb844f4a9fc9766e2918b363dd
-fixtures.py              1.0  916f62a10ca5a472cb5e5dbf62bf3da917cb4fb8c1fea23cf5526905a630e8c5
+harness_constants.py     1.0  9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
+storage.py               1.0  76c376c6a413f47c8c68a6340f67b62d9ab2ba62c6807571600836ca7a59303b
+writers.py               1.0  08f7d968bdb4aa37c206e169cabbb08b9616b0990c0e758e7958c93c6b5b690c
+readers.py               1.0  2180f0d9747a4e1c21178f1d24244723538153ca126138163b0778813231f2b2
+observer.py              1.0  82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
+perturbation_j.py        1.0  28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
+reset.py                 1.0  9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
+evaluator.py             1.0  fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
+fixtures.py              1.0  2fe46a151df25d3243266bb2ff6294fc503a42ddb7f759c010f42c6560bdecc4
 
 # Execution-critical DRIVERS（凌翼边界：能改变 qualification 判定 ⇒ MUST BE BOUND）
-run_known_answer_suite.py    1.0  9953fa0f43efb96e05fcba011442eaef6a44d6a07c2cde9029c704af7c03e491
-verify_manifest_binding.py   1.0  8f9193a794c5b8bfa8e069e7dd2e93b132f04b1a22cddd1c40d2684eb71a771c
+run_known_answer_suite.py    1.0  44f8a70fa4e786d1e0cf195279e543d5b7fdbd0ff989cfd22936c36a49b8958d
+verify_manifest_binding.py   1.0  cafc29b8c5ade4a944ecd1c3051d639eb2e7e4ea465ad551081c9769aa3a1b37
 ```
 
 **BUILD PROVENANCE（记录但不 execution-critical binding；见 §十五 BUILD_TOOL_HASHES）：**
@@ -458,8 +458,8 @@ observer ID-version-hash                          ✅ 见 §九
 **BUILD_TOOL_HASHES（provenance，供历史审计；非 execution-critical binding）：**
 
 ```text
-manifest_bind.py     1.0  e24ff0189b776dee496cbe1d032f2073cba1bac52c2890a4211ae711863c07dc
-freeze_manifest.py   1.0  6dd7bffeb611f30fce5594bcf5496cb723e3de9e7a0bd6b8ba517278113039ae
+manifest_bind.py     1.0  ae74a2710be7e9031a474ec3b67450d0ada485b1ba555d49c2925cf70e2d74e2
+freeze_manifest.py   1.0  f748f8bdba40f4eaae82b8fc21cc98790c0807e0a7d42c783b3842cc912a0639
 ```
 
 **变更历史（lineage）：**
@@ -477,14 +477,22 @@ v0.1-RC4            SPEC 根锚点修正：1386ba22…（36485 B，加冻结标�
 v0.1-RC5            BD-55 修正：§十五 去掉重复的旧值前缀（改引用 §八/§十一）；
                      措辞更正：1386ba22… = SUPERSEDED（非"不存在"）；
                      顺手落实睫 observation①/②/③/④（粒度注明 / witness 改名 / h 计算式 / 复用注明）
-v0.1-RC6            （本次）BD-56 修正：§四 domain partition —— identity-only = EMPTY_SET；
+v0.1-RC6            BD-56 修正：§四 domain partition —— identity-only = EMPTY_SET；
                      literal = literal storage；nonstorage = q only；补 NONSTATE nuisance 声明。
-                     并使 canonical delta 与代码 actual semantics 对齐（新增 DOMAIN_PARTITION_HASH）。
                      同时：文件由 CRLF 转为 LF（与 SPEC 一致；canonical form 合规）。
+v0.1-RC7            （本次）BD-57 + 知微 P1 修复：
+                     · §2 源码绑定：全部 .py 转 LF（消除 CRLF⇄LF 漂移）；源码 hash 全部重算；
+                        prereg 主路径改为与冻结值 ad0855b0… 对应的 FREEZE_CANDIDATE。
+                     · §3 V2/V3 不再丢弃/写死 L1；从真实读到 actual。
+                     · §4/BD-57 V5 post-reset 的 C1/C2/C3 从【reset 后】重新读取重建。
+                     · §5 reset 覆盖全部 required 臂（A/B/C）；每个 member 的结果都保留。
+                     · §7 observer + 两条 read 路径实际接通；reset witness 明确为逻辑声明。
+                     · §6 资格 preflight：校验 9 组件 + 2 driver + 实际 SPEC/prereg 文件 + fixture 集合。
+                     · §9 加固：C3 成员集校验；INVALID 传播；B 后置复读；V4b wrapper 语义。
                      —— 新 MANIFEST_HASH 见 detached 记录
 ```
 
 ---
 
-**STATUS = INSTANTIATED MANIFEST (RC6) / PENDING FREEZE**
-**—— Coder · 2026-10-09**
+**STATUS = INSTANTIATED MANIFEST (RC7) / PENDING FREEZE**
+**—— Coder · 2026-10-10**

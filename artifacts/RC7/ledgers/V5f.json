@@ -4,8 +4,7 @@
     "L2": "PASS",
     "POST_RESET_SUPPORTED_CLASS": "C1",
     "post_C2": "NOT_ASSESSED",
-    "post_C3": "NOT_ASSESSED",
-    "j_timing_ok": true
+    "post_C3": "NOT_ASSESSED"
   },
   "actual": {
     "PRE_RESET_CHANGE_CLASS": "C1",
@@ -18,26 +17,23 @@
   "oracle_match": true,
   "ledger": {
     "fixture_id": "V5f",
-    "arm_A": {},
-    "arm_B": {},
-    "arm_C": {},
-    "l1": {
-      "result": "PASS",
+    "attempted_scope": {
+      "pre_reset_C1": true,
+      "pre_reset_C2": false,
+      "pre_reset_C3": false,
+      "post_reset": true
+    },
+    "per_member": {},
+    "pre": {
+      "L1": "PASS",
       "change_class": "C1"
     },
-    "c2": {},
-    "c3": {},
+    "post": {},
     "reset": {
       "reset_valid": true,
-      "J": "IDENTITY"
+      "reason": "RESET_VALID: clear+preserve+access all verified"
     },
-    "l2": {
-      "L2": "PASS",
-      "POST_RESET_SUPPORTED_CLASS": "C1"
-    },
-    "attempted_scope": {},
-    "notes": [
-      "higher class not attempted -> NOT_ASSESSED; L2 via post C1"
-    ]
+    "l2": {},
+    "notes": []
   }
 }

@@ -2,8 +2,8 @@
 # (detached: NOT written into the MANIFEST, to avoid self-reference)
 
 MANIFEST_FILE              = AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-MANIFEST_BYTES             = 22904
-IMPLEMENTATION_BINDING_MANIFEST_HASH = ba1202769ed5a8c7e58a3809967e2593ddb89fbfb85bde5d99616883c440af93
+MANIFEST_BYTES             = 23700
+IMPLEMENTATION_BINDING_MANIFEST_HASH = 45acd8b1c38142f43e3102b79d8467a0312e114e6a4771ea56dcad6be18cba89
 HASH_ALGORITHM             = SHA-256 over exact file bytes
 
 REFERENCE_HARNESS_SPEC_HASH = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
@@ -16,15 +16,15 @@ DISCRIMINATION_RULESET_HASH = 770fb3ec33a7f3976ed6dfc511419601f515956b638ceba47e
 CONTENT_CLASS_MANIFEST_HASH = 27616f8b1f8b0bdcb82c0c1aeb6cb6d78c6d038c96817776cf96f0f16600c75a
 
 # Component source hashes:
-  evaluator.py             101f1170dd8ad737ae79a29074ad168596ccb1fb844f4a9fc9766e2918b363dd
-  fixtures.py              916f62a10ca5a472cb5e5dbf62bf3da917cb4fb8c1fea23cf5526905a630e8c5
-  harness_constants.py     a0ce6180ceb6cc2fd1bc136909a0d30151ebd18cd39498f0c31feac6c8cbf7fb
-  observer.py              f8b68319dc4b8731eb869035884ed8767ebc96c54e7bc28059a5a47e05c3cf52
-  perturbation_j.py        d0920afdd9cc0a6bd14a45babb0da4468c7417a8c4ccd92896d0d66a7d06cc25
-  readers.py               83cbc20be47ec96871c830507e5ba9c26fa7e043319258b9e49328af8a867adc
-  reset.py                 d985c278330af1e552b545c791a32b351c83f51566c38b54321ce266374a9ca8
-  storage.py               8271f42c6a9116e8b079bd759bb6b2d75fb75ee189b97d1445f71bf0206db7b7
-  writers.py               ae64731b322dc1c4e827d06562eacfbf83b42069d03ed9d4fbd502daaab0cc87
+  evaluator.py             fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
+  fixtures.py              2fe46a151df25d3243266bb2ff6294fc503a42ddb7f759c010f42c6560bdecc4
+  harness_constants.py     9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
+  observer.py              82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
+  perturbation_j.py        28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
+  readers.py               2180f0d9747a4e1c21178f1d24244723538153ca126138163b0778813231f2b2
+  reset.py                 9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
+  storage.py               76c376c6a413f47c8c68a6340f67b62d9ab2ba62c6807571600836ca7a59303b
+  writers.py               08f7d968bdb4aa37c206e169cabbb08b9616b0990c0e758e7958c93c6b5b690c
 
 # Residual TO_IMPLEMENT in manifest (must be 0):
 TO_IMPLEMENT_RESIDUAL = 0
