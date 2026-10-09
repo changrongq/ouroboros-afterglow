@@ -1,0 +1,30 @@
+# AFTERGLOW IMPLEMENTATION BINDING MANIFEST v0.1 — DETACHED HASH RECORD
+# (detached: NOT written into the MANIFEST, to avoid self-reference)
+
+MANIFEST_FILE              = AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
+MANIFEST_BYTES             = 22904
+IMPLEMENTATION_BINDING_MANIFEST_HASH = ba1202769ed5a8c7e58a3809967e2593ddb89fbfb85bde5d99616883c440af93
+HASH_ALGORITHM             = SHA-256 over exact file bytes
+
+REFERENCE_HARNESS_SPEC_HASH = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
+PARENT_PREREG_SHA256        = ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
+
+# Derived execution-critical hashes (from manifest_bind.compute_all):
+J_RULE_BUNDLE_HASH          = 472aaec1cb6b6b187f529163fffdc5c09137dd8ffc24df2b21817063e0ae70e4
+RESET_PROFILE_HASH          = bf90552c73626ed449892ab2f1b9b4614cd97fd262ddb9b56e02ff7781058a8c
+DISCRIMINATION_RULESET_HASH = 770fb3ec33a7f3976ed6dfc511419601f515956b638ceba47ec35ba9719f323a
+CONTENT_CLASS_MANIFEST_HASH = 27616f8b1f8b0bdcb82c0c1aeb6cb6d78c6d038c96817776cf96f0f16600c75a
+
+# Component source hashes:
+  evaluator.py             101f1170dd8ad737ae79a29074ad168596ccb1fb844f4a9fc9766e2918b363dd
+  fixtures.py              916f62a10ca5a472cb5e5dbf62bf3da917cb4fb8c1fea23cf5526905a630e8c5
+  harness_constants.py     a0ce6180ceb6cc2fd1bc136909a0d30151ebd18cd39498f0c31feac6c8cbf7fb
+  observer.py              f8b68319dc4b8731eb869035884ed8767ebc96c54e7bc28059a5a47e05c3cf52
+  perturbation_j.py        d0920afdd9cc0a6bd14a45babb0da4468c7417a8c4ccd92896d0d66a7d06cc25
+  readers.py               83cbc20be47ec96871c830507e5ba9c26fa7e043319258b9e49328af8a867adc
+  reset.py                 d985c278330af1e552b545c791a32b351c83f51566c38b54321ce266374a9ca8
+  storage.py               8271f42c6a9116e8b079bd759bb6b2d75fb75ee189b97d1445f71bf0206db7b7
+  writers.py               ae64731b322dc1c4e827d06562eacfbf83b42069d03ed9d4fbd502daaab0cc87
+
+# Residual TO_IMPLEMENT in manifest (must be 0):
+TO_IMPLEMENT_RESIDUAL = 0

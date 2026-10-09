@@ -1,0 +1,39 @@
+{
+  "fixture_id": "V5d",
+  "expected": {
+    "L2": "FAIL",
+    "j_timing_ok": true
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "j_timing_ok": true,
+    "L2": "FAIL",
+    "POST_RESET_SUPPORTED_CLASS": null
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5d",
+    "arm_A": {},
+    "arm_B": {},
+    "arm_C": {},
+    "l1": {},
+    "c2": {},
+    "c3": {},
+    "reset": {
+      "reset_valid": true,
+      "reason": "RESET_VALID: clear+preserve+access all verified",
+      "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+      "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    "l2": {
+      "L2": "FAIL",
+      "POST_RESET_SUPPORTED_CLASS": null
+    },
+    "attempted_scope": {},
+    "notes": [
+      "J=ERASE_EFFECT applied for real on B and C pair arms",
+      "J-timing triple witnessed per member (S_write, J_after, S_handoff)",
+      "report may NOT say 'reset caused forgetting'; J changed the evidence"
+    ]
+  }
+}

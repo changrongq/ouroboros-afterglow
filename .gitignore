@@ -1,0 +1,24 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- harness runtime ----
+# sandboxes / temp dirs created by the harness at run time
+afterglow_fx_*
+*.pyc
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ---- large / derived artifacts (never commit) ----
+*.pt
+*.gguf
+*.bin
+!afterglow_harness/**/*.bin

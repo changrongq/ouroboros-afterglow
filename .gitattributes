@@ -1,0 +1,18 @@
+# Preserve frozen bytes EXACTLY. Do NOT let git convert line endings here:
+# the frozen SPEC / MANIFEST hashes are computed over exact bytes (LF, no BOM,
+# exactly one final newline). Any CRLF conversion would invalidate them.
+
+# frozen artifacts + all text: force LF, no conversion
+* text=auto eol=lf
+
+# frozen objects — mark binary-ish so git never touches their bytes
+reports/AFTERGLOW*.md   -text
+reports/MANIFEST_v0.1_HASH.txt   -text
+reports/REFERENCE_HARNESS_SPEC_v0.1_FROZEN_20261008.md   -text
+artifacts/RC6_qualifying_run_raw.json   -text
+artifacts/RC6_ledgers/*.json   -text
+
+# source code: LF
+*.py   text eol=lf
+*.md   text eol=lf
+*.json text eol=lf

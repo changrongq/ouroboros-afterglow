@@ -1,0 +1,42 @@
+{
+  "fixture_id": "V4b",
+  "expected": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "actual": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V4b",
+    "arm_A": {
+      "mode": "NO_WRITE",
+      "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    "arm_B": {
+      "mode": "STORE_FULL",
+      "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+    },
+    "arm_C": {},
+    "l1": {
+      "result": "PASS",
+      "change_class": "C1",
+      "h": 16,
+      "reason": "L1 PASS (h>=2) and B literal matches registered payload -> C1 established"
+    },
+    "c2": {},
+    "c3": {},
+    "reset": {},
+    "l2": {},
+    "attempted_scope": {},
+    "notes": [
+      "isolated wrapper exposes only combined storage op; W_extra ON/OFF not separable"
+    ]
+  }
+}
