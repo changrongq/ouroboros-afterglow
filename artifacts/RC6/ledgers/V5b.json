@@ -1,0 +1,44 @@
+{
+  "fixture_id": "V5b",
+  "expected": {
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C2",
+    "post_C3": "NOT_ESTABLISHED",
+    "j_timing_ok": true
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "post_C3": "NOT_ESTABLISHED",
+    "j_timing_ok": true,
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C2"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5b",
+    "arm_A": {},
+    "arm_B": {},
+    "arm_C": {},
+    "l1": {},
+    "c2": {},
+    "c3": {
+      "pre": "C3",
+      "post": "NOT_ESTABLISHED"
+    },
+    "reset": {
+      "reset_valid": true,
+      "reason": "RESET_VALID: clear+preserve+access all verified",
+      "handoff_digest": "18f3f7bd2bff3527e63189c5dbfb8aa19de9b6fec9e9484cba090fd284be878a",
+      "restored_digest": "18f3f7bd2bff3527e63189c5dbfb8aa19de9b6fec9e9484cba090fd284be878a"
+    },
+    "l2": {
+      "L2": "PASS",
+      "POST_RESET_SUPPORTED_CLASS": "C2"
+    },
+    "attempted_scope": {},
+    "notes": [
+      "J=COLLAPSE_SIGN applied for real on B and C pair arms",
+      "J-timing triple witnessed per member (S_write, J_after, S_handoff)"
+    ]
+  }
+}

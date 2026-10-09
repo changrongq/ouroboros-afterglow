@@ -1,0 +1,43 @@
+{
+  "fixture_id": "V5c",
+  "expected": {
+    "L2": "INVALID",
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "pre_result_still_valid": true,
+    "j_timing_ok": true
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "pre_result_still_valid": true,
+    "j_timing_ok": true,
+    "L2": "INVALID",
+    "POST_RESET_SUPPORTED_CLASS": null
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5c",
+    "arm_A": {},
+    "arm_B": {},
+    "arm_C": {},
+    "l1": {},
+    "c2": {},
+    "c3": {},
+    "reset": {
+      "reset_valid": false,
+      "reason": "RESET_INVALID: preserved registered state changed across reset",
+      "handoff_digest": "b3cf49d53039030ff9de102e79b1f9dd95d6905b07e1b6caf78a0fe4fcf058fb",
+      "restored_digest": "d3cb56a3146bb88667a8a259958a4f33559d1b50a6ac7aaf503115ac39fe2e0d"
+    },
+    "l2": {
+      "L2": "INVALID",
+      "POST_RESET_SUPPORTED_CLASS": null
+    },
+    "attempted_scope": {},
+    "notes": [
+      "J=IDENTITY applied for real on B and C pair arms",
+      "J-timing triple witnessed per member (S_write, J_after, S_handoff)",
+      "pre-reset C3 remains separately valid; reset invalid does NOT erase it",
+      "preserve-side reset fault injected AFTER handoff (BD-52 timing holds)"
+    ]
+  }
+}

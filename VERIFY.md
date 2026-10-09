@@ -8,19 +8,19 @@ For 凌翼 / 睫. This mirrors the four-point interface requested: from source h
 
 ```bash
 # LF, no BOM, exactly one final newline
-wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
+wc -c manifest/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
 # expected: 22904
-sha256sum reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
+sha256sum manifest/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
 # expected: ba1202769ed5a8c7e58a3809967e2593ddb89fbfb85bde5d99616883c440af93
 ```
 
-Cross-check: the detached record `reports/MANIFEST_v0.1_HASH.txt` must carry the same value.
+Cross-check: the detached record `manifest/MANIFEST_v0.1_HASH.txt` must carry the same value.
 
 Also reproduce the SPEC:
 
 ```bash
-wc -c "reports/AFTERGLOW IMPLEMENTATION BINDING v0.1.md"   # 36719
-sha256sum "reports/AFTERGLOW IMPLEMENTATION BINDING v0.1.md"
+wc -c spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md   # 36719
+sha256sum spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md
 # b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
 ```
 
@@ -67,7 +67,7 @@ grep -n "fixture_id" afterglow_harness/evaluator.py   # should show NO result-br
 
 ## 3 · the driver really ran 13 fixtures
 
-`artifacts/RC6_qualifying_run_raw.json` contains:
+`artifacts/RC6/RC6_qualifying_run_raw.json` contains:
 
 ```text
 binding_captured_before_first_fixture : {SPEC_HASH, MANIFEST_HASH, MANIFEST_BYTES, detached_match, component_binding_no_drift}
@@ -82,7 +82,7 @@ per_fixture             : [13 entries, each {fixture_id, expected, actual, oracl
 
 ## 4 · raw ledgers derive the 13/13
 
-Each `artifacts/RC6_ledgers/<id>.json` carries `expected`, `actual`, `oracle_match`, `ledger`.
+Each `artifacts/RC6/ledgers/<id>.json` carries `expected`, `actual`, `oracle_match`, `ledger`.
 Reconcile `per_fixture` in the raw JSON against the 13 ledger files.
 
 ---
@@ -91,9 +91,9 @@ Reconcile `per_fixture` in the raw JSON against the 13 ledger files.
 
 ```bash
 cd afterglow_harness
-python smoke_components.py        # expect 29/29
-python smoke_evaluator.py         # expect 18/18
-python bd52_timing_witness_check.py   # expect PASS
+python tools/smoke_components.py        # expect 29/29
+python tools/smoke_evaluator.py         # expect 18/18
+python tools/bd52_timing_witness_check.py   # expect PASS
 python verify_manifest_binding.py     # expect BINDING_INTEGRITY = PASS
 python run_known_answer_suite.py      # expect KNOWN_ANSWER_SUITE = PASS (13/13)
 ```

@@ -11,10 +11,24 @@ verify the artifacts without relying on a chat attachment.
 ## Layout
 
 ```
-afterglow_harness/    # the Reference Harness source (the thing being verified)
-artifacts/            # RC6 qualifying run: raw machine-readable output + 13 ledgers
-reports/              # frozen SPEC, prereg, MANIFEST, freeze records, errata, reports
+prereg/                  # frozen preregistration
+spec/                    # frozen SPEC object + freeze record
+reports/                 # implementation-binding MANIFEST + detached hash record + errata
+reports/review_history/  # correspondence + review reports
+afterglow_harness/       # the Reference Harness source (flat module layout, all .py)
+artifacts/RC6/           # RC6 qualifying run: raw machine-readable output + ledgers/
+tests/                   # (reserved)
+README.md / VERIFY.md / .gitattributes / .gitignore
 ```
+
+> **Deviation from the intended tree (documented honestly):** the MANIFEST lives under
+> `reports/`, not a separate `manifest/`. Reason: the frozen, hash-bound drivers
+> (`run_known_answer_suite.py`, `verify_manifest_binding.py`) hard-code
+> `../reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md`. Moving the MANIFEST would
+> require editing those drivers → changing their bound hashes → invalidating RC6.
+> All harness `.py` are kept in one flat directory for the same reason (they import each
+> other by bare module name). Both are deliberate, to keep the frozen binding intact.
+
 
 ---
 
@@ -22,9 +36,9 @@ reports/              # frozen SPEC, prereg, MANIFEST, freeze records, errata, r
 
 ```text
 REFERENCE_HARNESS_SPEC_HASH          = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
-                                       （= reports/AFTERGLOW IMPLEMENTATION BINDING v0.1.md, 36719 B, LF）
+                                       （= spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md, 36719 B, LF）
 IMPLEMENTATION_BINDING_MANIFEST_HASH = ba1202769ed5a8c7e58a3809967e2593ddb89fbfb85bde5d99616883c440af93
-                                       （= reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md, 22904 B, LF）
+                                       （= manifest/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md, 22904 B, LF）
 PARENT_PREREG_SHA256                 = ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
 ```
 
