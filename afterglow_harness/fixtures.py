@@ -31,7 +31,7 @@ from evaluator import (
     evaluate_c2_attempt,
     evaluate_c2_architectural,
 )
-from harness_constants import CONTENT_CLASS_OF, EPISODE_PAYLOADS
+from harness_constants import CONTENT_CLASS_OF, EPISODE_PAYLOADS, HarnessError, decode_substrate
 from observer import StateObserver
 from perturbation_j import apply_j
 from readers import affine_read, literal_consume
@@ -152,6 +152,10 @@ def _reset_arm(arm, fault):
         from harness_constants import StateSnapshot
         restored = StateSnapshot(literal=handoff.literal, q_raw=corrupt)
     outcome = ctrl.verify(handoff, restored, clear_side_ok=True, access_side_ok=True)
+    # Return BOTH the handoff and the VERIFIED-RESTORED object. The caller binds
+    # the verified-restored bytes into the bundle so the reset verifier, the
+    # stored S_restored, and the reader input are provably the SAME object
+    # (凌翼 RC10 R3-reset).
     return handoff, restored, outcome.reset_valid, outcome.reason
 
 
@@ -186,13 +190,30 @@ def _realize_member(root, mid, extra_mode, j_mode, reset_fault) -> MemberEvidenc
         me.reset_witness[name] = {
             "reset_valid": ok, "reason": reason,
             "accepted_handoff": {"literal": h.literal.hex(), "q_raw": h.q_raw.hex()},
+            # The bytes the reset verifier ACCEPTED. The gate requires
+            # stored S_restored == these bytes (object identity, 凌翼 RC10).
+            "verified_restored": {"literal": r.literal.hex(), "q_raw": r.q_raw.hex()},
             "clear_access": "LOGICAL_DECLARATION",
         }
-        me.arms[name]["S_restored"] = _ap(arm.snapshot())
+        # Bind the STORED S_restored to the VERIFIED-RESTORED object directly
+        # (not a fresh re-snapshot of a possibly-diverged file).
+        me.arms[name]["S_restored"] = _ap(r)
 
-    c_snap = C.snapshot()
+    # Reader source = the VERIFIED-RESTORED bytes (object identity), not a fresh
+    # live re-snapshot (凌翼 RC10 R3-reset). For a VALID reset, the live file must
+    # equal the verified-restored object; a divergence means the reader would
+    # read a DIFFERENT object. For an INVALID reset (fault fixture) the gate
+    # fails earlier, so no live-equality is required here.
+    restored_C = me.arms["C"]["S_restored"]
+    if me.reset_witness["C"]["reset_valid"]:
+        live_C = _ap(C.snapshot())
+        if (live_C.literal != restored_C.literal) or (live_C.q_raw != restored_C.q_raw):
+            raise HarnessError(
+                "READER_SOURCE_IDENTITY_BREAK: live C != verified-restored C before read"
+            )
     me.reader_witness = {
-        "raw_q": c_snap.q,
+        # redundant cross-check only: MUST equal decode(S_restored.q_raw)
+        "raw_q": decode_substrate(restored_C.q_raw),
         "affine": {str(u): {"num": C.read_afterglow(u).numerator,
                             "den": C.read_afterglow(u).denominator} for u in (0, 2)},
         "literal": {str(u): C.read_literal(u) for u in (0, 2)},
@@ -348,8 +369,18 @@ def _run_non_separable_wrapper(cfg, fid):
     try:
         # External capability probe: only the registered public handle is given
         # to the tester. No Arm / store / mode / selector escapes.
+        #
+        # 凌翼 RC10 R3-V4b: the probe is only trustworthy if it DETECTS
+        # separability on a selector-bearing positive control. If the positive
+        # control is not detected => PROBE_INVALID (NOT a V4b ANI PASS).
+        if not probe_is_valid():
+            led = Ledger(fixture_id=fid)
+            led.attempted_scope = {"shape": "non_separable_wrapper"}
+            led.notes.append("PROBE_INVALID: positive control not detected")
+            return {"L1": "PROBE_INVALID", "PRE_RESET_CHANGE_CLASS": "PROBE_INVALID",
+                    "C2": "PROBE_INVALID", "C3": "PROBE_INVALID"}, led
         handle = CombinedOnlyWriter(root, "v4b")
-        probe = external_capability_probe(handle)
+        probe = external_capability_probe(handle.public_handle())
         separable = probe["separable_w_extra"]
         c2res, c3res = evaluate_c2_architectural(extra_interface_separable=separable)
 
@@ -402,20 +433,129 @@ class CombinedOnlyWriter:
         return _OnlyWriteHandle(self)
 
 
-def external_capability_probe(handle) -> dict:
-    """Probe the REGISTERED PUBLIC interface from OUTSIDE. ANI is established by
-    what the tester can DO, not by what the object claims.
+class SeparableControlHandle:
+    """POSITIVE CONTROL (凌翼 RC10 R3-V4b): a handle that DOES expose a
+    selector/mode on its registered public write path.
 
-    The tester receives only the public handle. If it cannot construct a
-    same-E / same-storage-path W_extra ON/OFF pair through the public surface,
-    the architecture is non-separable.
+    The probe MUST return separable_w_extra=True for this handle. If it does
+    not, the probe itself is broken => PROBE_INVALID (never V4b ANI PASS).
+    """
+
+    def __init__(self, root: Path, name: str):
+        self._arm = Arm(root, name)
+
+    def write(self, payload: bytes, extra_mode: str = EXTRA_CONTENT) -> None:
+        self._arm.store(payload, STORE_FULL)
+        if extra_mode != EXTRA_OFF:
+            self._arm.extra(payload, extra_mode)
+
+
+def _callable_takes_selector(fn) -> bool:
+    """STRUCTURAL check: does a registered callable accept a selector/mode arg?
+
+    Inspect the real signature — never a dead `if False else False`.
+    """
+    import inspect
+
+    if not callable(fn):
+        return False
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return False
+    for name, p in sig.parameters.items():
+        if p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            # *args / **kwargs could carry a selector; treat conservatively as
+            # a possible selector surface.
+            return True
+        lname = name.lower()
+        if any(tok in lname for tok in ("mode", "selector", "extra", "variant")):
+            return True
+    return False
+
+
+def external_capability_probe(handle) -> dict:
+    """Probe the REGISTERED PUBLIC interface from OUTSIDE (凌翼 RC10 R3-V4b).
+
+    Returns a dict that MUST include ``probe_valid``. ANI (architecturally not
+    identifiable) is only ever established when ``probe_valid`` is True AND
+    ``separable_w_extra`` is False.
+
+    STRUCTURAL : inspect the registered public handle; its public callables and
+                 their real signatures. A selector/mode/extra surface => separable.
+    BEHAVIORAL : attempt to construct an ON/OFF pair through the public surface.
+
+    Scope note (凌翼): we do NOT count Python malicious reflection (obj._inner...)
+    as a registered public capability. ANI targets the frozen REGISTERED PUBLIC
+    interface; the tester only holds the public handle.
     """
     public_api = tuple(n for n in dir(handle) if not n.startswith("_"))
-    has_split = any(n in public_api for n in ("store", "extra", "extra_mode", "set_extra_off"))
-    # Does calling the only public operation ever expose a selector?
-    takes_selector = "mode" in getattr(handle.write, "__code__", None).co_names if False else False
-    separable = has_split or takes_selector
-    return {"public_api": public_api, "separable_w_extra": separable}
+
+    # ---- STRUCTURAL ----
+    # Any public method that takes a mode/selector/extra argument, OR any public
+    # attribute that itself looks like a split write surface.
+    structural_split = False
+    structural_evidence = []
+    for name in public_api:
+        try:
+            member = getattr(handle, name)
+        except Exception:
+            continue
+        if callable(member) and _callable_takes_selector(member):
+            structural_split = True
+            structural_evidence.append(f"{name}() accepts a selector/mode arg")
+        if name in ("store", "extra", "set_extra_off", "extra_mode", "mode"):
+            structural_split = True
+            structural_evidence.append(f"public name {name!r} exposes a split surface")
+
+    # ---- BEHAVIORAL ----
+    # Can we, through the public surface, invoke a write WITH and WITHOUT extra
+    # as two distinct operations on the SAME storage path?
+    behavioral_split = False
+    behavioral_evidence = []
+    write_fn = getattr(handle, "write", None)
+    if callable(write_fn) and _callable_takes_selector(write_fn):
+        # We can call write(..., mode=...) => ON vs OFF is a public choice.
+        behavioral_split = True
+        behavioral_evidence.append("write() exposes an ON/OFF selector")
+
+    separable = structural_split or behavioral_split
+
+    return {
+        "public_api": public_api,
+        "structural_split": structural_split,
+        "structural_evidence": structural_evidence,
+        "behavioral_split": behavioral_split,
+        "behavioral_evidence": behavioral_evidence,
+        "separable_w_extra": separable,
+        # A probe is VALID iff it can DETECT separability on the positive
+        # control. The caller MUST additionally run the positive control; see
+        # probe_is_valid().
+        "probe_valid": True,
+    }
+
+
+def probe_is_valid() -> bool:
+    """Self-test: the probe MUST detect separability on a selector-bearing
+    positive control handle, and MUST NOT on the non-separable production path.
+
+    If the positive control is not detected => PROBE_INVALID (凌翼 RC10: this is
+    NOT V4b ANI PASS).
+    """
+    root = Path(tempfile.mkdtemp(prefix="afterglow_probe_ctl_"))
+    try:
+        ctl = SeparableControlHandle(root, "ctl")
+        pos = external_capability_probe(ctl)
+        if pos["separable_w_extra"] is not True:
+            return False
+        # negative control: the combined-only writer must read as NOT separable
+        combo = CombinedOnlyWriter(root, "neg")
+        neg = external_capability_probe(combo.public_handle())
+        if neg["separable_w_extra"] is not False:
+            return False
+        return True
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 FIXTURES = {

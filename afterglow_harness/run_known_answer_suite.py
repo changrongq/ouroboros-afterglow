@@ -51,8 +51,8 @@ PREREG_PATH = _find(
 HARNESS_DIR = Path(__file__).resolve().parent
 
 ARTIFACTS = ROOT / "afterglow_harness_artifacts"
-RAW_PATH = ARTIFACTS / "RC9_qualifying_run_raw.json"
-LEDGER_DIR = ARTIFACTS / "RC9_ledgers"
+RAW_PATH = ARTIFACTS / "RC10_qualifying_run_raw.json"
+LEDGER_DIR = ARTIFACTS / "RC10_ledgers"
 
 
 def _sha256_file(p: Path) -> str:

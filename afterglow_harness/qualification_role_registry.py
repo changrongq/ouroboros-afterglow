@@ -32,7 +32,9 @@ EXECUTION_CRITICAL_ROLES = (
     "fixtures.py",
     # qualification runtime
     "fixture_contracts.py",
+    "evidence_contract.py",
     "evidence_bundle.py",
+    "replay_adapter.py",
     "qualification_role_registry.py",
     "qualification_binding.py",
     "run_known_answer_suite.py",

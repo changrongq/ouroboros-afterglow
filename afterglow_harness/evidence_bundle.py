@@ -1,23 +1,33 @@
 """
-evidence_bundle.py — the unified EVIDENCE_BUNDLE + its validation (RC9).
+evidence_bundle.py — the unified EVIDENCE_BUNDLE + its validation (RC10).
 
-凌翼 RC9: there is ONE evidence object that both production qualification and
-ledger replay must use; nothing may bypass it.
+凌翼 RC10: there is ONE evidence object and ONE pure adjudication chain. Both
+ingress paths feed it:
 
-    EVIDENCE_BUNDLE = member × arm × phase × raw observation × protocol witness
+    production ingress : live runtime -> EvidenceBundle
+    replay ingress     : raw ledger + canonical fixture contract -> EvidenceBundle
+
+    same adjudication chain, different ingress.
+
+The single new structural requirement (凌翼 RC10 R2) is
+REQUIRED_EVIDENCE_CONSUMPTION_MATRIX (see evidence_contract.py): every REQUIRED
+EVIDENCE field must be RECORDED AND CONSUMED AND NEGATIVE-TESTED. A field that
+is only recorded is a log, not a gate.
 
 Required chain (any protocol-invalid layer => INVALID; INVALID dominates):
 
     FROZEN MEMBER SET
-      -> required arms present
+      -> required arms/phases present
       -> S_write raw observations valid
       -> PRE gate
-      -> required_pre_class satisfied
-      -> J witness valid
+      -> required_pre_class satisfied (contract, NOT ledger)
+      -> J witness valid (J_after == S_handoff, byte-level)
       -> J S_handoff == RESET accepted handoff   (byte-level)
-      -> reset valid
+      -> reset valid (reset_valid MANDATORY; missing/malformed -> INVALID)
+      -> reset-object identity (verified-restored == S_restored, byte-level)
       -> S_restored observations valid
-      -> reader / literal-consumer witnesses valid
+      -> reader / literal witnesses valid (EXACT frozen probe set; expected
+         derived from S_restored.q_raw / S_restored.literal)
       -> POST gate
       -> L2
 
@@ -82,9 +92,11 @@ class MemberEvidence:
     payload: bytes
     # arm -> phase -> ArmPhase
     arms: dict = field(default_factory=dict)
-    # arm -> {"reset_valid": bool, "reason": str, "clear_access": str}
+    # arm -> {"reset_valid": bool, "reason": str, "clear_access": str,
+    #         "accepted_handoff": {"literal": hex, "q_raw": hex},
+    #         "verified_restored": {"literal": hex, "q_raw": hex}}
     reset_witness: dict = field(default_factory=dict)
-    # reader/literal witnesses: {"raw_q": int, "affine": {u: Fraction-or-str}, "literal": {u: int}}
+    # reader/literal witnesses: {"raw_q": int, "affine": {u: {"num","den"}}, "literal": {u: int}}
     reader_witness: dict = field(default_factory=dict)
 
 
@@ -172,34 +184,145 @@ def _validate_handoff_continuity(b: EvidenceBundle) -> tuple[bool, str]:
     return True, ""
 
 
-def _independent_reader_ok(m: MemberEvidence) -> bool:
+def _validate_reset(b: EvidenceBundle) -> tuple[bool, str]:
+    """reset_valid is MANDATORY and fail-closed (凌翼 RC10 R2).
+
+        True      -> continue
+        False     -> INVALID
+        missing   -> INVALID
+        malformed -> INVALID
+
+    No "not written => default good" is permitted.
+    """
+    from evidence_contract import REQUIRED_RESET_FIELDS
+
+    for mid, m in b.members.items():
+        for arm in b.required_arms:
+            rw = m.reset_witness.get(arm)
+            if not isinstance(rw, dict):
+                return False, f"RESET_WITNESS_MISSING: {mid}/{arm}"
+            for field in REQUIRED_RESET_FIELDS:
+                if field not in rw or rw.get(field) is None:
+                    return False, f"RESET_FIELD_MISSING: {mid}/{arm}/{field}"
+            if rw["reset_valid"] is not True:
+                return False, f"RESET_INVALID: {mid}/{arm} (reset_valid={rw['reset_valid']!r})"
+    return True, ""
+
+
+def _validate_reset_object_identity(b: EvidenceBundle) -> tuple[bool, str]:
+    """The reset-verified object, the stored S_restored, and the reader input
+    must be the SAME BYTES, machine-verified (凌翼 RC10 R3-reset).
+
+        reset verified restored bytes
+            == EvidenceBundle.S_restored bytes
+            == reader source observed bytes
+
+    Not "they usually should match" — verified to match. The reset witness
+    records ``verified_restored`` (the bytes the reset verifier accepted); the
+    stored arm phase S_restored must equal it byte-for-byte.
+    """
+    for mid, m in b.members.items():
+        for arm in b.required_arms:
+            rw = m.reset_witness.get(arm, {})
+            vr = rw.get("verified_restored")
+            if not isinstance(vr, dict) or "literal" not in vr or "q_raw" not in vr:
+                return False, f"RESET_VERIFIED_MISSING: {mid}/{arm}"
+            stored = m.arms.get(arm, {}).get("S_restored")
+            if stored is None:
+                return False, f"RESET_STORED_RESTORED_MISSING: {mid}/{arm}"
+            try:
+                vr_lit = bytes.fromhex(vr["literal"])
+                vr_q = bytes.fromhex(vr["q_raw"])
+            except Exception:
+                return False, f"RESET_VERIFIED_MALFORMED: {mid}/{arm}"
+            if (vr_lit != stored.literal) or (vr_q != stored.q_raw):
+                return False, (f"RESET_OBJECT_IDENTITY_BREAK: {mid}/{arm} "
+                               f"verified-restored != stored S_restored (byte-level)")
+    return True, ""
+
+
+def _independent_reader_ok(m: MemberEvidence) -> tuple[bool, str]:
     """Recompute expected R(q,u)=u+q/2 and L(lit,u)=u+sum(bytes) from RAW values
     and compare to the reader's returned values.
 
-    The reader is invoked AFTER reset, so it reads the C arm's S_restored state.
+    凌翼 RC10 (reader gate tightened):
+
+      · the witness MUST present EXACTLY the frozen probe key set
+        (affine: {0,2}, literal: {0,2}); {}, {"0"}, {"2"}, {...,extra} are all
+        ILLEGAL -> FAIL CLOSED;
+      · expected values are DERIVED from the C arm's S_restored bytes
+        (q := decode_int64_le(S_restored.q_raw); byte_sum := SUM(S_restored.literal));
+      · reader_witness.raw_q is a REDUNDANT cross-check field ONLY: it must
+        equal decode(S_restored.q_raw); it is NEVER the source of expected.
+
+    This is what kills a fake reader that returns `u` regardless of q: with a
+    q != 0 fixture, u != u + q/2, so the exact-key comparison fails.
     """
+    from evidence_contract import (
+        FROZEN_AFFINE_KEYS,
+        FROZEN_LITERAL_KEYS,
+        REQUIRED_RESET_FIELDS,
+    )
+    from harness_constants import decode_substrate
+
     rw = m.reader_witness
     if not rw:
-        return False
-    q = rw.get("raw_q")
-    if q is None:
-        return False
-    aff = rw.get("affine", {})
-    for u_s, got in aff.items():
-        u = int(u_s)
-        expected = Fraction(2 * u + q, 2)
-        if Fraction(got["num"], got["den"]) != expected:
-            return False
-    lit = rw.get("literal", {})
+        return False, "READER_WITNESS_MISSING"
+
+    # ---- the C arm's S_restored is the ONLY legitimate source of truth ----
     c_restored = m.arms.get("C", {}).get("S_restored")
     if c_restored is None:
-        return False
+        return False, "READER_SOURCE_MISSING: C/S_restored absent"
+
+    try:
+        q = decode_substrate(c_restored.q_raw)
+    except Exception:
+        return False, "READER_SOURCE_INVALID: S_restored.q_raw not decodable"
     byte_sum = sum(c_restored.literal)
-    for u_s, got in lit.items():
+
+    # ---- raw_q is a redundant cross-check, never the expected source ----
+    raw_q = rw.get("raw_q")
+    if raw_q is None:
+        return False, "READER_RAW_Q_MISSING"
+    if raw_q != q:
+        return False, (f"READER_RAW_Q_MISMATCH: witness raw_q={raw_q} != "
+                       f"decode(S_restored.q_raw)={q}")
+
+    # ---- EXACT frozen probe key equality (fail closed) ----
+    aff = rw.get("affine")
+    if not isinstance(aff, dict):
+        return False, "READER_AFFINE_MISSING"
+    if frozenset(aff.keys()) != FROZEN_AFFINE_KEYS:
+        return False, (f"READER_AFFINE_PROBE_SET: got {sorted(aff.keys())} "
+                       f"required {sorted(FROZEN_AFFINE_KEYS)}")
+    lit = rw.get("literal")
+    if not isinstance(lit, dict):
+        return False, "READER_LITERAL_MISSING"
+    if frozenset(lit.keys()) != FROZEN_LITERAL_KEYS:
+        return False, (f"READER_LITERAL_PROBE_SET: got {sorted(lit.keys())} "
+                       f"required {sorted(FROZEN_LITERAL_KEYS)}")
+
+    # ---- compare against independently-derived expected values ----
+    for u_s in FROZEN_AFFINE_KEYS:
         u = int(u_s)
+        got = aff[u_s]
+        try:
+            got_f = Fraction(got["num"], got["den"])
+        except Exception:
+            return False, f"READER_AFFINE_MALFORMED: probe {u_s}"
+        expected = Fraction(2 * u + q, 2)
+        if got_f != expected:
+            return False, (f"READER_AFFINE_MISMATCH: probe {u_s} got {got_f} "
+                           f"expected {expected}")
+    for u_s in FROZEN_LITERAL_KEYS:
+        u = int(u_s)
+        got = lit[u_s]
+        if not isinstance(got, int):
+            return False, f"READER_LITERAL_MALFORMED: probe {u_s}"
         if got != u + byte_sum:
-            return False
-    return True
+            return False, (f"READER_LITERAL_MISMATCH: probe {u_s} got {got} "
+                           f"expected {u + byte_sum}")
+    return True, ""
 
 
 # ---------------------------------------------------------------------------
@@ -258,19 +381,27 @@ def evaluate_bundle(b: EvidenceBundle, required_pre_class: str,
     if not hc_ok:
         return GateResult(protocol=INVALID_PROTOCOL, code=hc_code, l2=INVALID, c3_post=INVALID)
 
-    # ---- reset validity ----
-    for mid, m in b.members.items():
-        for arm in b.required_arms:
-            rw = m.reset_witness.get(arm, {})
-            if rw.get("reset_valid") is False:
-                return GateResult(protocol=INVALID_PROTOCOL,
-                                  code=f"RESET_INVALID: {mid}/{arm}", l2=INVALID, c3_post=INVALID)
+    # ---- reset validity (fail-closed; 凌翼 RC10 R2) ----
+    # reset_valid has three-valued intent: True -> continue; missing / False /
+    # malformed -> INVALID. There is no "not written => default good".
+    reset_ok, reset_code = _validate_reset(b)
+    if not reset_ok:
+        return GateResult(protocol=INVALID_PROTOCOL, code=reset_code,
+                          l2=INVALID, c3_post=INVALID)
 
-    # ---- reader witnesses (must be validated) ----
+    # ---- reset-object identity: reset-verified == S_restored == reader input ----
+    ident_ok, ident_code = _validate_reset_object_identity(b)
+    if not ident_ok:
+        return GateResult(protocol=INVALID_PROTOCOL, code=ident_code,
+                          l2=INVALID, c3_post=INVALID)
+
+    # ---- reader witnesses (must be validated, fail-closed) ----
     for mid, m in b.members.items():
-        if not _independent_reader_ok(m):
+        ok, code = _independent_reader_ok(m)
+        if not ok:
             return GateResult(protocol=INVALID_PROTOCOL,
-                              code=f"READER_WITNESS_INVALID: {mid}", l2=INVALID, c3_post=INVALID)
+                              code=f"READER_WITNESS_INVALID: {mid}/{code}",
+                              l2=INVALID, c3_post=INVALID)
 
     # ---- POST gate (source = S_restored) ----
     post_c1_ok, t_restored, c3_post, l2, supported = _post_from_bundle(b, attempted)

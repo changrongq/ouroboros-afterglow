@@ -1,15 +1,21 @@
 # AFTERGLOW IMPLEMENTATION BINDING MANIFEST v0.1
 ## 实例化版 / INSTANTIATED — 待冻结
 
-**日期**：2026-10-09
+**日期**：2026-10-10
 **产生人**：Coder（技术实施长）
-**性质**：**MANIFEST 实例化版。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
+**性质**：**MANIFEST 实例化版（RC10）。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
 
 ```text
-STATUS = INSTANTIATED MANIFEST (RC9) / PENDING FREEZE
+STATUS = INSTANTIATED MANIFEST (RC10) / PENDING FREEZE
 EXECUTION_AUTHORIZATION = NONE
 IGNITION = PROHIBITED
 ```
+
+**RC10 修正说明（2026-10-10，凌翼裁决 RC9→RC10）：**
+- RC9 = **NOT CLOSED**（知微独立复核 4 个 P1 全部成立：reader 空探针、replay 不还合同、V4b 探针失效、reset_valid 缺字段放行 + restored 断链）。
+- RC10 新增/修改的 execution-critical 角色：`evidence_contract.py`（REQUIRED_EVIDENCE_CONSUMPTION_MATRIX + 冻结探针集 + 每-fixture 合同）、`replay_adapter.py`（replay 入口，账本仅证据、合同来自 frozen contract）。
+- 单一纯裁决链 + 双入口（production / replay）已落地：`evidence_bundle.evaluate_bundle` 为唯一判决函数。
+- 每项 REQUIRED EVIDENCE 字段必须 RECORDED ∧ CONSUMED（生产）∧ CONSUMED（replay）∧ NEGATIVE-TESTED。
 
 **实例化方法：** 所有派生 hash 由 `afterglow_harness/manifest_bind.py` 的 `compute_all()` 经 SHA-256 规范编码实测产生；
 组件文件 hash 为对应 `.py` 源文件 SHA-256。可复现：重跑该脚本即得同值（源码不变时）。
@@ -414,16 +420,18 @@ observer.py 1.0 82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
 perturbation_j.py 1.0 28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
 reset.py 1.0 9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
 evaluator.py 1.0 fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-fixtures.py 1.0 b9deed4c130c8550d631372662fd9e9b1824e308ee4c6edb79e8d3aaced85e56
+fixtures.py 1.0 707e38c76ff4fbecf955eb93103a458c9cc7e65a6e1a9d81c6afc63b9d2a7dfa
 fixture_contracts.py 1.0 b3137d9988660aa596f639afef5c1962edb525f4ec497dbdcd9f2ad69d86485e
-evidence_bundle.py 1.0 bac900d074c2bfa613c414307e818460b8f5fd45a38a5a33ac69d59d0fe6d055
-qualification_role_registry.py 1.0 57f2ae0822d1ab7943032305718a25fc79f29e7eaee9f8928ef7df92e89a0a43
+evidence_contract.py 1.0 2c80928f7ca484f2864bdb995f01c72e48f0c21617ec731e389cd51386b91142
+evidence_bundle.py 1.0 9bdf78bf68b5797b5a76fac52b10b9e4fafcbb825dda08df4ff2f89165f84017
+replay_adapter.py 1.0 b5a83bd01e693ed995f3022b308f60aa9be21cf70963a27b36bc92d6a3923f74
+qualification_role_registry.py 1.0 1394c7f4fcb33319d17613a2770be04f599c14a25728b59c3a9b2316856bec0b
 qualification_binding.py 1.0 6d624ce1b22fdb33d6ca0e28979899e112b89718082e68ecc67f602b688bcb88
-run_known_answer_suite.py 1.0 ab0ea308966ee9569c08685f4b4af550c8d1a8f15720b06147f5d88bcfcdfa47
+run_known_answer_suite.py 1.0 4bcbc21ed9a4f1a865ab752b0ffd1aec451b26a7d07da820625d7d0dcfe03e75
 qualify_phase_a.py 1.0 a44fd95636baa40436078cb58a08e74027fc84ecdd7b7fa51ebf69c8ce48f430
 verify_manifest_binding.py 1.0 9448ef8f8eac751eba4b989a7de823921cf02a796b045a8699fae2dfb1fa331d
-adversarial_regression.py 1.0 739d5ad520c5f5ef5df38d1135098ca2f0ba6f659a443664f9714559ab89afcc
-recompute_from_ledger.py 1.0 909210aa247e70431442afec5a79e3e0931b0394f42fcdb54a148ff0594c88b0
+adversarial_regression.py 1.0 7f7959cb131794f088e493ed2155d56e60b49d855734061edab4361fe91b5aa3
+recompute_from_ledger.py 1.0 afaa3165499189a341f95df0bc36879d0777f33895da0c9467dd8079ee9c6f2f
 EXECUTION_CRITICAL_ROLE_TABLE_END
 ```
 
