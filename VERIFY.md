@@ -2,9 +2,10 @@
 
 For 凌翼 / 睫 / 知微.
 
-> **RC7 and RC8 are FAILED QUALIFICATION / RETAINED FOR AUDIT** (see README). Any RC7/RC8-era
-> hash printed elsewhere is NOT current. RC9 is the current candidate. Authoritative source =
-> the frozen bytes + the detached record, NOT this document.
+> **RC7, RC8, RC9, RC10 are RETAINED FOR AUDIT / NOT the current candidate** (see README).
+> RC11 is the CURRENT CLOSED CANDIDATE (`PHASE_A_QUALIFICATION = PASS`; 凌翼 FINAL
+> ADJUDICATION). Any hash printed in an older document is NOT current. Authoritative source
+> = the frozen bytes + the detached record, NOT this document.
 
 ---
 
@@ -16,17 +17,14 @@ before). Derive it live:
 
 ```bash
 # MANIFEST (authoritative: also in reports/MANIFEST_v0.1_HASH.txt)
-wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md      # 26705
 sha256sum reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-# 67dfb5380e8c3a0f6adaaa37372f339cf373202339324062b0aeefd16c7ec7aa
+# 78bdb90f7a56b5da0c9b37ce7f454fa98a64530800f9d0727cf773e120e23059
 
 # SPEC (unchanged since b7ec)
-wc -c spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md                  # 36719
 sha256sum spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md
 # b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
 
 # prereg (FREEZE_CANDIDATE bytes)
-wc -c prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md                    # 52129
 sha256sum prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md
 # ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
 
@@ -42,7 +40,7 @@ Cross-check: `reports/MANIFEST_v0.1_HASH.txt` must carry the same MANIFEST value
 
 ---
 
-## 1 · Bound-runtime roles (RC9 — single registry, three-way equality)
+## 1 · Bound-runtime roles (RC11 — single registry, three-way equality)
 
 `afterglow_harness/qualification_role_registry.py` is the ONE data-only role registry.
 The MANIFEST §十三 carries the role table between `EXECUTION_CRITICAL_ROLE_TABLE_BEGIN/END`.
@@ -80,9 +78,9 @@ Raw observations per **member × arm × phase** (S_write / J_after / S_handoff /
 reset_witness); `J = NOT_APPLICABLE` where an arm has no J.
 
 ```bash
-python afterglow_harness/recompute_from_ledger.py --ledger artifacts/RC9/ledgers
-# REQUIRED_SCOPE per fixture; zero checks => FAIL; digest recomputed from raw bytes;
-# must MATCH the recorded run
+python afterglow_harness/recompute_from_ledger.py --ledger artifacts/RC11/ledgers
+# CONTRACT-driven REQUIRED_SCOPE per fixture; zero checks / missing key / extra key => FAIL;
+# digest recomputed from raw bytes; must MATCH the recorded run
 ```
 
 ---
@@ -122,5 +120,5 @@ python run_known_answer_suite.py     # KNOWN_ANSWER_SUITE = PASS (QUALIFYING) on
 
 ```text
 SPEC     : 36719 B, UTF-8, no BOM, LF, exactly one final newline
-MANIFEST : 25165 B, UTF-8, no BOM, LF, exactly one final newline
+MANIFEST : 28142 B, UTF-8, no BOM, LF, exactly one final newline   (RC11)
 ```
