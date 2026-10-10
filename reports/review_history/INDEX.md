@@ -41,6 +41,7 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 27 | 2026-10-10 | Coder | `给知微凌翼睫_RC11_P2闭合报告_Coder_20261010.md` | **RC11 P2 closure**: tri-state sub-verdicts (UNEVALUATED); real ON/OFF behavioral calls; adversarial 51/51 |
 | 28 | 2026-10-10 | **知微** | `知微_RC11_P2复核_c11063c.md` | **seventh review**: P2-B real-call CLOSED; P2-A PARTIAL (3 adjacent identity-failure branches still default True) + P2-B docstring overclaim |
 | 29 | 2026-10-10 | Coder | `给知微凌翼睫_RC11_P2A补全报告_Coder_20261010.md` | **RC11 P2-A complete**: all identity-stage failures return (True,False,False,UNEVALUATED); docstring narrowed; adversarial 54/54 |
+| 30 | 2026-10-10 | **知微** | `知微_RC11_P2A闭合确认_5e17fe8.md` | **eighth review / closure**: P2-A CLOSED (84/84 error cases across member×arm); clean entry PASS; adversarial 54/54; both P2 now closed |
 
 ---
 
@@ -51,7 +52,7 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 - `review_rc8.py` / `review_rc8_followup.py` — 知微's RC8-closure reproduction (7 P1 seams).
 - `../../afterglow_harness/_verify_rc10_closure.py` — RC10 closure reproduction (§3/§5/§6/§7).
 - `../../afterglow_harness/_verify_rc11_closure.py` — RC11 closure reproduction (§4 same-run link + stale-dir).
-- `../../afterglow_harness/adversarial_regression.py` — the RC11 regression (43/43; R5-1..R5-6 + RC11 minimal acceptance + retained attacks).
+- `../../afterglow_harness/adversarial_regression.py` — the RC11 regression (54/54; R5-1..R5-6 + RC11 minimal acceptance + P2-A/P2-B + retained attacks).
 - `../../afterglow_harness/recompute_from_ledger.py` — independent, CONTRACT-DRIVEN re-derivation from raw ledger.
 - `../../afterglow_harness/qualify_phase_a.py` — the single Phase-A PASS entry point (consumes the run manifest).
 
@@ -64,9 +65,15 @@ RC7  = FAILED QUALIFICATION / RETAINED FOR AUDIT
 RC8  = FAILED QUALIFICATION / RETAINED FOR AUDIT
 RC9  = NOT CLOSED (FAILED QUALIFICATION) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
 RC10 = NOT CLOSED (知微 RC10 review: 4 P1) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
-RC11 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py; clean-snapshot; 4 P1 + P2-A + P2-B closed)
+RC11 = CLOSED  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py; clean-snapshot;
+                4 P1 + P2-A + P2-B all closed; 知微 closure review on 5e17fe8)
 ```
 
-RC7, RC8, RC9 are retained as the evidence that the adversarial machinery actually caught real
-errors (RC9's 4 P1 were all confirmed by Coder's own reproduction). RC10 is the current
-candidate (see delivery report). RC9 becomes `SUPERSEDED_BY_RC10` only after RC10 is accepted.
+RC7, RC8, RC9, RC10 are retained as the evidence that the adversarial machinery actually caught
+real errors (each round's findings were confirmed by Coder's own reproduction before repair).
+RC11 is the CURRENT CLOSED CANDIDATE; 知微 confirmed closure of all 4 P1 + 2 P2 on commit
+`5e17fe8` (P2-A verified across 84 member×arm error cases). RC9/RC10 remain
+`AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO`.
+
+> 注：RC11 的资格范围仍限于 reference harness 的逻辑层（HARNESS_VALIDATION）；
+> OS 级隔离、真实模型、科学候选仍按既有交付报告声明的后续范围，未在本轮开启。
