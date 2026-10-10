@@ -35,7 +35,7 @@
     "gates": {},
     "l2": {},
     "notes": [
-      "external_probe={'public_api': ('write',), 'structural_split': False, 'structural_evidence': [], 'behavioral_split': False, 'behavioral_evidence': ['public write() rejects a selector kwarg (no ON/OFF pair)'], 'separable_w_extra': False}"
+      "external_probe={'public_api': ('write',), 'structural_split': False, 'structural_evidence': [], 'behavioral_split': False, 'behavioral_calls': 1, 'behavioral_evidence': ['public write() does NOT accept an explicit ON/OFF pair (on_ok=True off_ok=False)'], 'separable_w_extra': False}"
     ]
   }
 }

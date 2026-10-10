@@ -3,7 +3,7 @@
 
 MANIFEST_FILE              = AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
 MANIFEST_BYTES             = 28142
-IMPLEMENTATION_BINDING_MANIFEST_HASH = dd30e3ad34bca196b5d2aefc66a6f369a8686a4cb990f6232bc99163c8249a46
+IMPLEMENTATION_BINDING_MANIFEST_HASH = ccf9ed2be364f6e111ecabb42f2a18cffb03305c633acca6f8e3fd6e4c033eb3
 HASH_ALGORITHM             = SHA-256 over exact file bytes
 
 REFERENCE_HARNESS_SPEC_HASH = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
@@ -16,11 +16,11 @@ DISCRIMINATION_RULESET_HASH = 770fb3ec33a7f3976ed6dfc511419601f515956b638ceba47e
 CONTENT_CLASS_MANIFEST_HASH = 27616f8b1f8b0bdcb82c0c1aeb6cb6d78c6d038c96817776cf96f0f16600c75a
 
 # Component source hashes:
-  adversarial_regression.py 8a60e1595e1c5990d6b020ae2e6d3df239d9806f98d8db0c6e716a8fb87c10e3
+  adversarial_regression.py dc25bea2c340a04fc8a96dd24ae4f247c431ae20558b7baf4abd9dd2aae7270c
   evaluator.py             fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-  evidence_bundle.py       552da969e3c54d5f0b9ad17c36bee6c7828c8caed00e9d04dbe0270a0f72599a
+  evidence_bundle.py       e1e8d756bc650d6e36bfcb2f4685aee110e28e952021c035ea11d91440178c82
   fixture_contracts.py     b3137d9988660aa596f639afef5c1962edb525f4ec497dbdcd9f2ad69d86485e
-  fixtures.py              6750c4ac81b617c69f8907970f816581d2c214b4310f4f39ddfe7cf0f9cc98b2
+  fixtures.py              42650fd2962c189215402acf37e5c46b26f1638b96577430d3524c42f403ecb8
   freeze_manifest.py       f748f8bdba40f4eaae82b8fc21cc98790c0807e0a7d42c783b3842cc912a0639
   harness_constants.py     9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
   manifest_bind.py         e805ba624456c5c6f4fda4eb6b3e0df1dbb7caed46a30b0a05cdf6da701a0f79

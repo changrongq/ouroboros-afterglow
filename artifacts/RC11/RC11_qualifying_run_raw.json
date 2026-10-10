@@ -3,7 +3,7 @@
   "phase": "PHASE_A_HARNESS_VALIDATION_EXECUTION",
   "scientific_claim_eligibility": "NONE",
   "preflight_captured_before_first_fixture": {
-    "MANIFEST_HASH": "dd30e3ad34bca196b5d2aefc66a6f369a8686a4cb990f6232bc99163c8249a46",
+    "MANIFEST_HASH": "ccf9ed2be364f6e111ecabb42f2a18cffb03305c633acca6f8e3fd6e4c033eb3",
     "MANIFEST_BYTES": 28142,
     "detached_match": true,
     "frozen_role_count": 20,
@@ -493,7 +493,7 @@
         "gates": {},
         "l2": {},
         "notes": [
-          "external_probe={'public_api': ('write',), 'structural_split': False, 'structural_evidence': [], 'behavioral_split': False, 'behavioral_evidence': ['public write() rejects a selector kwarg (no ON/OFF pair)'], 'separable_w_extra': False}"
+          "external_probe={'public_api': ('write',), 'structural_split': False, 'structural_evidence': [], 'behavioral_split': False, 'behavioral_calls': 1, 'behavioral_evidence': ['public write() does NOT accept an explicit ON/OFF pair (on_ok=True off_ok=False)'], 'separable_w_extra': False}"
         ]
       }
     },

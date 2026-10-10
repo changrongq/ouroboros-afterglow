@@ -37,6 +37,8 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 23 | 2026-10-10 | Coder | `给凌翼睫知微_RC10交付报告_Coder_20261010.md` | **RC10 delivery**: single adjudication chain + dual ingress; reader/reset/replay/V4b fail-closed; 6 top acceptance tests + 4 P1 all PASS |
 | 24 | 2026-10-10 | **知微** | `知微_RC10独立复核_ca4c510.md` | **fifth review**: 4 P1 bug (single-entry reads stale RC9_ledgers; V4 special results unchecked; 13-set checks filenames only; reset preserve not recomputed) + §8 wording/impl |
 | 25 | 2026-10-10 | Coder | `给知微凌翼睫_RC11交付报告_Coder_20261010.md` | **RC11 delivery** (Bug fix, no ruling needed): same-run manifest link; V4 full schema compared; 3-way fixture identity; preserve rule recomputed; structured sub-verdicts; adversarial 43/43 |
+| 26 | 2026-10-10 | **知微** | `知微_RC11独立复核_525f81f.md` | **sixth review**: 4 P1 CLOSED confirmed; 2 P2 kept (P2-A reset_identity_ok truthfulness; P2-B behavioral_split from signature not real call) |
+| 27 | 2026-10-10 | Coder | `给知微凌翼睫_RC11_P2闭合报告_Coder_20261010.md` | **RC11 P2 closure**: tri-state sub-verdicts (UNEVALUATED); real ON/OFF behavioral calls; adversarial 51/51 |
 
 ---
 
@@ -60,7 +62,7 @@ RC7  = FAILED QUALIFICATION / RETAINED FOR AUDIT
 RC8  = FAILED QUALIFICATION / RETAINED FOR AUDIT
 RC9  = NOT CLOSED (FAILED QUALIFICATION) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
 RC10 = NOT CLOSED (知微 RC10 review: 4 P1) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
-RC11 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py; clean-snapshot)
+RC11 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py; clean-snapshot; 4 P1 + 2 P2 closed)
 ```
 
 RC7, RC8, RC9 are retained as the evidence that the adversarial machinery actually caught real

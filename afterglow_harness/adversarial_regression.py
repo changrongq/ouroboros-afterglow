@@ -426,6 +426,88 @@ chk("§8 missing reset_valid -> structured reset_valid=False",
     res.reset_valid is False and res.l2 == e.INVALID)
 
 
+# ===========================================================================
+# RC11 P2 (知微 RC11 review) — structured flags must be TRUTHFUL
+# ===========================================================================
+
+# --- P2-A: identity break must set reset_identity_ok=False (not True) -------
+def _identity_break_bundle():
+    import struct
+    from fractions import Fraction as _Fr
+    b = _bundle_from_fixture("V5a")
+    rw = b.members["A1"].reset_witness["C"]
+    q = struct.unpack("<q", bytes.fromhex(rw["verified_restored"]["q_raw"]))[0] + 2
+    rw["verified_restored"] = {"literal": rw["verified_restored"]["literal"],
+                               "q_raw": struct.pack("<q", q).hex()}
+    return b
+
+
+res = _eval_v5a(_identity_break_bundle())
+chk("P2-A identity break -> RESET_OBJECT_IDENTITY_BREAK",
+    res.l2 == e.INVALID and "RESET_OBJECT_IDENTITY_BREAK" in res.code)
+chk("P2-A identity break -> reset_identity_ok=False",
+    res.reset_identity_ok is False)
+chk("P2-A identity break -> preserve_rule_ok=UNEVALUATED (not reached)",
+    res.preserve_rule_ok == "UNEVALUATED")
+
+# clean V5a -> all structured flags True (not UNEVALUATED)
+res_clean = _eval_v5a(_bundle_from_fixture("V5a"))
+chk("P2-A clean V5a -> reset_identity_ok=True & preserve_rule_ok=True",
+    res_clean.reset_identity_ok is True and res_clean.preserve_rule_ok is True)
+
+# preserve break (identity holds) -> preserve_rule_ok=False, reset_identity_ok=True
+res_pb = _eval_v5a(_preserve_break_bundle())
+chk("P2-A preserve break -> reset_identity_ok=True & preserve_rule_ok=False",
+    res_pb.reset_identity_ok is True and res_pb.preserve_rule_ok is False)
+
+# an early failure -> later flags stay UNEVALUATED (never default True)
+b = _bundle_from_fixture("V5a")
+del b.members["B2"]
+res = _eval_v5a(b)
+chk("P2-A early membership fail -> reset_valid=UNEVALUATED",
+    res.reset_valid == "UNEVALUATED" and res.membership_ok is False)
+
+# --- P2-B: behavioral_split must come from a REAL call ----------------------
+def _probe_behavioral_call_count():
+    import tempfile as _tmp
+    root = Path(_tmp.mkdtemp(prefix="adv_p2b_"))
+    calls = []
+    orig = f.SeparableControlHandle.write
+
+    def counting(self, payload, extra_mode=f.EXTRA_CONTENT):
+        calls.append(extra_mode)
+        return orig(self, payload, extra_mode)
+
+    f.SeparableControlHandle.write = counting
+    try:
+        ctl = f.SeparableControlHandle(root, "ctl")
+        probe = f.external_capability_probe(ctl)
+        return probe["behavioral_split"], probe["behavioral_calls"], len(calls)
+    finally:
+        f.SeparableControlHandle.write = orig
+        shutil.rmtree(root, ignore_errors=True)
+
+
+bsplit, bcalls, real_calls = _probe_behavioral_call_count()
+chk("P2-B positive control behavioral_split=True via REAL calls",
+    bsplit is True and bcalls == 2 and real_calls == 2)
+
+# production handle: real ON/OFF call attempt is REJECTED -> behavioral_split=False
+def _probe_production_behavioral():
+    import tempfile as _tmp
+    root = Path(_tmp.mkdtemp(prefix="adv_p2b2_"))
+    try:
+        handle = f.CombinedOnlyWriter(root, "v4b").public_handle()
+        probe = f.external_capability_probe(handle)
+        return probe["behavioral_split"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+chk("P2-B production handle behavioral_split=False (OFF call rejected)",
+    _probe_production_behavioral() is False)
+
+
 print()
 passed = sum(1 for _, ok in RESULTS if ok)
 print(f"adversarial_regression: {passed}/{len(RESULTS)} PASS")

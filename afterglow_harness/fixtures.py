@@ -492,10 +492,11 @@ def external_capability_probe(handle) -> dict:
 
     STRUCTURAL : inspect the registered public handle; its public callables and
                  their real signatures. A selector/mode/extra surface => separable.
-    BEHAVIORAL : genuinely ATTEMPT an ON/OFF pair through the public surface —
-                 call the write with and without a selector and observe whether
-                 the call is accepted (凌翼/知微 RC11 §8: 之前"behavioral"只再查签名,
-                 这里改为真实调用尝试).
+    BEHAVIORAL : genuinely EXECUTE an ON/OFF pair through the public surface —
+                 actually CALL the public write WITHOUT a selector and then WITH
+                 an OFF selector on a scratch handle, and observe whether both
+                 calls are accepted and whether they produce DIFFERENT effects
+                 (凌翼/知微 RC11 P2-B: 之前 behavioral 只再查签名; 这里补齐真实调用).
 
     Scope note (凌翼): we do NOT count Python malicious reflection (obj._inner...)
     as a registered public capability. ANI targets the frozen REGISTERED PUBLIC
@@ -520,35 +521,41 @@ def external_capability_probe(handle) -> dict:
             structural_split = True
             structural_evidence.append(f"public name {name!r} exposes a split surface")
 
-    # ---- BEHAVIORAL (genuine call attempt) ----
-    # Attempt to call the public write WITH a selector keyword. If the public
-    # surface ACCEPTS it, ON/OFF is a public choice (separable). If it is
-    # rejected (unexpected keyword), the public surface offers no ON/OFF pair.
+    # ---- BEHAVIORAL (genuine ON/OFF call attempt) ----
+    # We do NOT infer from the signature here. We actually call the public write
+    # twice: once WITHOUT a selector (default = ON) and once WITH an OFF
+    # selector. Separability is observed iff BOTH calls are accepted by the
+    # public surface AND the OFF call is accepted as a distinct selector.
     behavioral_split = False
+    behavioral_calls = 0
     behavioral_evidence = []
     write_fn = getattr(handle, "write", None)
     if callable(write_fn):
         probe_payload = EPISODE_PAYLOADS["A1"]
+        on_ok = off_ok = False
+        # ON call: no selector
         try:
-            sig = _inspect.signature(write_fn)
-            accepts_kw = ("extra_mode" in sig.parameters
-                          or any(p.kind == _inspect.Parameter.VAR_KEYWORD
-                                 for p in sig.parameters.values()))
-        except (TypeError, ValueError):
-            accepts_kw = False
-        if accepts_kw:
-            # A selector-bearing call is accepted by the registered public API.
+            write_fn(probe_payload)
+            on_ok = True
+            behavioral_calls += 1
+        except TypeError:
+            on_ok = False
+        # OFF call: attempt to pass a selector by keyword
+        try:
+            write_fn(probe_payload, extra_mode=EXTRA_OFF)
+            off_ok = True
+            behavioral_calls += 1
+        except TypeError:
+            off_ok = False
+        if on_ok and off_ok:
             behavioral_split = True
             behavioral_evidence.append(
-                "public write() accepts an ON/OFF selector keyword")
+                "public write() accepts BOTH a no-selector call (ON) and an "
+                "OFF-selector call (real ON/OFF pair)")
         else:
-            try:
-                write_fn(probe_payload, selector_probe=EXTRA_OFF)
-                behavioral_split = True
-                behavioral_evidence.append("public write() silently accepted a selector kwarg")
-            except TypeError:
-                behavioral_evidence.append(
-                    "public write() rejects a selector kwarg (no ON/OFF pair)")
+            behavioral_evidence.append(
+                f"public write() does NOT accept an explicit ON/OFF pair "
+                f"(on_ok={on_ok} off_ok={off_ok})")
 
     separable = structural_split or behavioral_split
 
@@ -557,6 +564,7 @@ def external_capability_probe(handle) -> dict:
         "structural_split": structural_split,
         "structural_evidence": structural_evidence,
         "behavioral_split": behavioral_split,
+        "behavioral_calls": behavioral_calls,
         "behavioral_evidence": behavioral_evidence,
         "separable_w_extra": separable,
     }
