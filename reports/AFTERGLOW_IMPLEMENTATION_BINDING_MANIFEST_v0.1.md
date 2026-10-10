@@ -3,19 +3,25 @@
 
 **日期**：2026-10-10
 **产生人**：Coder（技术实施长）
-**性质**：**MANIFEST 实例化版（RC10）。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
+**性质**：**MANIFEST 实例化版（RC11）。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
 
 ```text
-STATUS = INSTANTIATED MANIFEST (RC10) / PENDING FREEZE
+STATUS = INSTANTIATED MANIFEST (RC11) / PENDING FREEZE
 EXECUTION_AUTHORIZATION = NONE
 IGNITION = PROHIBITED
 ```
 
-**RC10 修正说明（2026-10-10，凌翼裁决 RC9→RC10）：**
-- RC9 = **NOT CLOSED**（知微独立复核 4 个 P1 全部成立：reader 空探针、replay 不还合同、V4b 探针失效、reset_valid 缺字段放行 + restored 断链）。
-- RC10 新增/修改的 execution-critical 角色：`evidence_contract.py`（REQUIRED_EVIDENCE_CONSUMPTION_MATRIX + 冻结探针集 + 每-fixture 合同）、`replay_adapter.py`（replay 入口，账本仅证据、合同来自 frozen contract）。
-- 单一纯裁决链 + 双入口（production / replay）已落地：`evidence_bundle.evaluate_bundle` 为唯一判决函数。
-- 每项 REQUIRED EVIDENCE 字段必须 RECORDED ∧ CONSUMED（生产）∧ CONSUMED（replay）∧ NEGATIVE-TESTED。
+**RC11 修正说明（2026-10-10，知微 RC10 独立复核 → Coder 自行修复，属 Bug 非方向变更）：**
+- §4 单入口目录错位（Bug）：`qualify_phase_a.py` 曾硬编码读 `RC9_ledgers`，而 suite 写当前版本目录；
+  干净快照下 `PHASE_A_QUALIFICATION=FAIL`。**修法**：suite 写 `RC11_run_manifest.json`（记录本次实际
+  ledger 目录 + 产物身份），单入口读取该 manifest 决定 replay 目录；不再跨脚本硬编版本目录。
+- §5 V4.1/V4b 特殊判定被重算却未纳入比较。**修法**：为 V4.1/V4b 登记各自完整结果 schema，
+  replay 落实 `recomputed_keys == expected_keys` 精确相等，并校验 actual 必需字段存在（缺≠None）。
+- §6 精确 13 集只核对文件名。**修法**：核对 `filename stem == item.fixture_id == ledger.fixture_id`
+  三源一致 + 内部 ID 唯一 + 精确等于冻结集。
+- §7 reset preserve 规则未由原始字节重算。**修法**：门禁从 raw bytes 重算 `accepted_handoff ==
+  verified_restored`（reset.py preserve 规则），`reset_valid` 只作待核对声明。
+- §8 结构化派生：`GateResult` 增加显式子判定字段，生产/replay 都读结构字段，不从错误消息前缀猜状态。
 
 **实例化方法：** 所有派生 hash 由 `afterglow_harness/manifest_bind.py` 的 `compute_all()` 经 SHA-256 规范编码实测产生；
 组件文件 hash 为对应 `.py` 源文件 SHA-256。可复现：重跑该脚本即得同值（源码不变时）。
@@ -420,18 +426,18 @@ observer.py 1.0 82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
 perturbation_j.py 1.0 28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
 reset.py 1.0 9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
 evaluator.py 1.0 fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-fixtures.py 1.0 707e38c76ff4fbecf955eb93103a458c9cc7e65a6e1a9d81c6afc63b9d2a7dfa
+fixtures.py 1.0 6750c4ac81b617c69f8907970f816581d2c214b4310f4f39ddfe7cf0f9cc98b2
 fixture_contracts.py 1.0 b3137d9988660aa596f639afef5c1962edb525f4ec497dbdcd9f2ad69d86485e
-evidence_contract.py 1.0 2c80928f7ca484f2864bdb995f01c72e48f0c21617ec731e389cd51386b91142
-evidence_bundle.py 1.0 9bdf78bf68b5797b5a76fac52b10b9e4fafcbb825dda08df4ff2f89165f84017
-replay_adapter.py 1.0 b5a83bd01e693ed995f3022b308f60aa9be21cf70963a27b36bc92d6a3923f74
+evidence_contract.py 1.0 a55152de0887cece751d8ab185bd5c7ea174df409a4a38cb54b95c857f9e6cb2
+evidence_bundle.py 1.0 552da969e3c54d5f0b9ad17c36bee6c7828c8caed00e9d04dbe0270a0f72599a
+replay_adapter.py 1.0 6c0771f2952edc16db884527940852f4c2a7284492ebbdbdf78d462ed4cf9b3e
 qualification_role_registry.py 1.0 1394c7f4fcb33319d17613a2770be04f599c14a25728b59c3a9b2316856bec0b
 qualification_binding.py 1.0 6d624ce1b22fdb33d6ca0e28979899e112b89718082e68ecc67f602b688bcb88
-run_known_answer_suite.py 1.0 4bcbc21ed9a4f1a865ab752b0ffd1aec451b26a7d07da820625d7d0dcfe03e75
-qualify_phase_a.py 1.0 a44fd95636baa40436078cb58a08e74027fc84ecdd7b7fa51ebf69c8ce48f430
+run_known_answer_suite.py 1.0 70435fb058d6012ebb7fca91ad0c6c1531699ba998eb9c9326296e77e9e16c75
+qualify_phase_a.py 1.0 3ca947700901d607a0ea6f22218c0e32c30bf7b8663c9d6b78606e9201f0a1a0
 verify_manifest_binding.py 1.0 9448ef8f8eac751eba4b989a7de823921cf02a796b045a8699fae2dfb1fa331d
-adversarial_regression.py 1.0 7f7959cb131794f088e493ed2155d56e60b49d855734061edab4361fe91b5aa3
-recompute_from_ledger.py 1.0 afaa3165499189a341f95df0bc36879d0777f33895da0c9467dd8079ee9c6f2f
+adversarial_regression.py 1.0 8a60e1595e1c5990d6b020ae2e6d3df239d9806f98d8db0c6e716a8fb87c10e3
+recompute_from_ledger.py 1.0 5203f0dee2f1c0fe32c9463bb67cab00d79b72171ab766447f89cc6115ffcd82
 EXECUTION_CRITICAL_ROLE_TABLE_END
 ```
 

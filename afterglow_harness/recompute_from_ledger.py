@@ -67,8 +67,9 @@ def recompute_reset_suite(fixture_id: str, observations: dict) -> dict:
         "PRE_RESET_CHANGE_CLASS": pre_class if pre_class else "",
         "post_C3": res.c3_post,
         "post_C1_ok": res.post_c1_ok,
-        "reset_valid": not res.code.startswith("RESET_") if res.code else True,
-        "j_timing_ok": not res.code.startswith(("J_", "HANDOFF_")) if res.code else True,
+        # structured sub-verdicts (RC11 §8): read flags, never guess from code prefix
+        "reset_valid": res.reset_valid,
+        "j_timing_ok": res.j_timing_ok,
         "L2": res.l2,
         "POST_RESET_SUPPORTED_CLASS": res.supported,
     }
@@ -132,16 +133,28 @@ def _recompute_v4_1(observations: dict) -> dict:
 def _recompute_non_separable(observations: dict) -> dict:
     """V4b — re-derive L1 and the architectural C2/C3 from the probe.
 
-    Replay re-runs the SAME probe validity gate production runs; a probe that
-    fails its positive control => PROBE_INVALID (never ANI PASS).
+    凌翼/知微 RC11 §5: replay MUST NOT hard-code ``extra_interface_separable``;
+    it re-runs the SAME registered-handle capability probe production runs, and
+    feeds the OBSERVED capability result into the architectural judgement.
+    Completeness of the probe is guarded by probe_is_valid() (positive control must
+    be detected, else PROBE_INVALID — never an ANI PASS).
     """
-    from fixtures import probe_is_valid
+    import tempfile
+    import shutil
+    from fixtures import CombinedOnlyWriter, external_capability_probe, probe_is_valid
     from evaluator import evaluate_c2_architectural
     base = _recompute_two_arm(observations, "A1")
     if not probe_is_valid():
         return {**base, "C2": "PROBE_INVALID", "C3": "PROBE_INVALID"}
-    c2res, c3res = evaluate_c2_architectural(extra_interface_separable=False)
-    return {**base, "C2": c2res, "C3": c3res}
+    root = Path(tempfile.mkdtemp(prefix="afterglow_replay_probe_"))
+    try:
+        handle = CombinedOnlyWriter(root, "v4b").public_handle()
+        probe = external_capability_probe(handle)
+        separable = probe["separable_w_extra"]
+        c2res, c3res = evaluate_c2_architectural(extra_interface_separable=separable)
+        return {**base, "C2": c2res, "C3": c3res}
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def _recompute_digest_ok(observations: dict) -> bool:
@@ -234,14 +247,24 @@ def main() -> int:
             all_ok = False
             continue
 
+        # EXACT key-set equality (凌翼/知微 RC11 §5): recomputed_keys == expected_keys,
+        # not merely "no scope key missing". Extra or missing recomputed keys FAIL.
         rec_keys = set(rec.keys())
-        missing = [k for k in scope if k not in rec_keys]
-        if missing:
-            print(f"[FAIL] {fid} MISSING_RECOMPUTED_KEYS: {missing}")
+        if rec_keys != set(scope):
+            missing = sorted(set(scope) - rec_keys)
+            extra = sorted(rec_keys - set(scope))
+            print(f"[FAIL] {fid} RECOMPUTED_KEY_SET: missing={missing} extra={extra}")
             all_ok = False
             continue
 
-        mism = {k: (actual.get(k), rec.get(k)) for k in scope if actual.get(k) != rec.get(k)}
+        # required actual fields MUST be PRESENT (缺字段 != 合法 None)
+        absent = [k for k in scope if k not in actual]
+        if absent:
+            print(f"[FAIL] {fid} ACTUAL_MISSING_REQUIRED_KEYS: {absent}")
+            all_ok = False
+            continue
+
+        mism = {k: (actual[k], rec[k]) for k in scope if actual[k] != rec[k]}
         status = "MATCH" if not mism else "MISMATCH"
         if mism:
             all_ok = False

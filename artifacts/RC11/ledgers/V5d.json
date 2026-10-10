@@ -1,0 +1,482 @@
+{
+  "fixture_id": "V5d",
+  "frozen_oracle": {
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "L2": "FAIL",
+    "j_timing_ok": true,
+    "reset_valid": true
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C3",
+    "post_C3": "NOT_ESTABLISHED",
+    "post_C1_ok": false,
+    "reset_valid": true,
+    "j_timing_ok": true,
+    "L2": "FAIL",
+    "POST_RESET_SUPPORTED_CLASS": null
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5d",
+    "attempted_scope": {
+      "attempted": "full",
+      "required_pre_class": "C3",
+      "shape": "reset_suite"
+    },
+    "observations": {
+      "A1": {
+        "member": "A1",
+        "content_class": "L",
+        "payload": "636c733d4c3b73616d706c653d30313b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0200000000000000"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 0,
+            "2": 2
+          }
+        }
+      },
+      "A2": {
+        "member": "A2",
+        "content_class": "L",
+        "payload": "636c733d4c3b73616d706c653d30323b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0200000000000000"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 0,
+            "2": 2
+          }
+        }
+      },
+      "B1": {
+        "member": "B1",
+        "content_class": "R",
+        "payload": "636c733d523b73616d706c653d30313b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "feffffffffffffff"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 0,
+            "2": 2
+          }
+        }
+      },
+      "B2": {
+        "member": "B2",
+        "content_class": "R",
+        "payload": "636c733d523b73616d706c653d30323b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "feffffffffffffff"
+            },
+            "J_after": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "verified_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 0,
+            "2": 2
+          }
+        }
+      }
+    },
+    "gates": {
+      "protocol": "PASS",
+      "code": ""
+    },
+    "l2": {
+      "result": "FAIL",
+      "POST_RESET_SUPPORTED_CLASS": null
+    },
+    "notes": []
+  }
+}

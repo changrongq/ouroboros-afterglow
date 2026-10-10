@@ -114,11 +114,50 @@ def observed_fixture_ids(ledger_dir: Path) -> set:
 
 
 def assert_exact_fixture_set(ledger_dir: Path) -> None:
-    """Replay REQUIRES the exact frozen 13-fixture set: observed == required."""
-    got = observed_fixture_ids(ledger_dir)
-    if got != set(REQUIRED_FIXTURE_IDS):
-        missing = sorted(set(REQUIRED_FIXTURE_IDS) - got)
-        extra = sorted(got - set(REQUIRED_FIXTURE_IDS))
+    """Replay REQUIRES the exact frozen 13-fixture set: observed == required.
+
+    凌翼/知微 RC11 §6: completeness MUST verify the LOGICAL EVIDENCE IDENTITY, not
+    merely which filenames are present. For every ledger file we require:
+        filename stem  ==  outer item["fixture_id"]  ==  item["ledger"]["fixture_id"]
+    and the actual internal ids must be unique and exactly the frozen 13-set.
+    Unknown / missing / duplicate / name-mismatch all FAIL CLOSED.
+    """
+    import json
+
+    led_dir = Path(ledger_dir)
+    files = sorted(led_dir.glob("*.json"))
+
+    # filename stems
+    stems = [p.stem for p in files]
+    if len(stems) != len(set(stems)):
+        raise ReplayContractError(f"DUPLICATE_FILENAMES: {sorted(stems)}")
+
+    internal_ids = []
+    for p in files:
+        try:
+            item = json.loads(p.read_text(encoding="utf-8"))
+        except Exception as e:
+            raise ReplayContractError(f"LEDGER_UNREADABLE: {p.name}: {e}")
+        outer = item.get("fixture_id")
+        inner = (item.get("ledger") or {}).get("fixture_id")
+        if outer is None or inner is None:
+            raise ReplayContractError(f"LEDGER_ID_MISSING: {p.name}")
+        if not (p.stem == outer == inner):
+            raise ReplayContractError(
+                f"LEDGER_IDENTITY_MISMATCH: file={p.name} stem={p.stem!r} "
+                f"outer={outer!r} inner={inner!r}"
+            )
+        internal_ids.append(inner)
+
+    if len(internal_ids) != len(set(internal_ids)):
+        raise ReplayContractError(
+            f"DUPLICATE_INTERNAL_FIXTURE_IDS: {sorted(internal_ids)}"
+        )
+
+    got_internal = set(internal_ids)
+    if got_internal != set(REQUIRED_FIXTURE_IDS):
+        missing = sorted(set(REQUIRED_FIXTURE_IDS) - got_internal)
+        extra = sorted(got_internal - set(REQUIRED_FIXTURE_IDS))
         raise ReplayContractError(
             f"FIXTURE_SET_MISMATCH: missing={missing} extra={extra}"
         )

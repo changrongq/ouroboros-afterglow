@@ -35,6 +35,8 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 21 | 2026-10-10 | Coder | `给凌翼_RC9复核裁决请求_Coder_20261010.md` | RC9 per-item reproduction (all four confirmed); request ruling |
 | 22 | 2026-10-10 | 凌翼 | （R1–R5 裁定） | RC9 = NOT CLOSED; RC10 AUTHORIZED; +REQUIRED_EVIDENCE_CONSUMPTION_MATRIX; one chain two ingress; preserve RC9 |
 | 23 | 2026-10-10 | Coder | `给凌翼睫知微_RC10交付报告_Coder_20261010.md` | **RC10 delivery**: single adjudication chain + dual ingress; reader/reset/replay/V4b fail-closed; 6 top acceptance tests + 4 P1 all PASS |
+| 24 | 2026-10-10 | **知微** | `知微_RC10独立复核_ca4c510.md` | **fifth review**: 4 P1 bug (single-entry reads stale RC9_ledgers; V4 special results unchecked; 13-set checks filenames only; reset preserve not recomputed) + §8 wording/impl |
+| 25 | 2026-10-10 | Coder | `给知微凌翼睫_RC11交付报告_Coder_20261010.md` | **RC11 delivery** (Bug fix, no ruling needed): same-run manifest link; V4 full schema compared; 3-way fixture identity; preserve rule recomputed; structured sub-verdicts; adversarial 43/43 |
 
 ---
 
@@ -44,9 +46,10 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 - `review_rc7.py` — 知微's RC7-closure reproduction.
 - `review_rc8.py` / `review_rc8_followup.py` — 知微's RC8-closure reproduction (7 P1 seams).
 - `../../afterglow_harness/_verify_rc10_closure.py` — RC10 closure reproduction (§3/§5/§6/§7).
-- `../../afterglow_harness/adversarial_regression.py` — the RC10 regression (32/32; R5-1..R5-6 top acceptance + retained attacks).
+- `../../afterglow_harness/_verify_rc11_closure.py` — RC11 closure reproduction (§4 same-run link + stale-dir).
+- `../../afterglow_harness/adversarial_regression.py` — the RC11 regression (43/43; R5-1..R5-6 + RC11 minimal acceptance + retained attacks).
 - `../../afterglow_harness/recompute_from_ledger.py` — independent, CONTRACT-DRIVEN re-derivation from raw ledger.
-- `../../afterglow_harness/qualify_phase_a.py` — the single Phase-A PASS entry point.
+- `../../afterglow_harness/qualify_phase_a.py` — the single Phase-A PASS entry point (consumes the run manifest).
 
 ---
 
@@ -56,7 +59,8 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 RC7  = FAILED QUALIFICATION / RETAINED FOR AUDIT
 RC8  = FAILED QUALIFICATION / RETAINED FOR AUDIT
 RC9  = NOT CLOSED (FAILED QUALIFICATION) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
-RC10 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py)
+RC10 = NOT CLOSED (知微 RC10 review: 4 P1) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
+RC11 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py; clean-snapshot)
 ```
 
 RC7, RC8, RC9 are retained as the evidence that the adversarial machinery actually caught real

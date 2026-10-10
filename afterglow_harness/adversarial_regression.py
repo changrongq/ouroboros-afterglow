@@ -291,6 +291,141 @@ chk("every matrix row has all required legs",
         for row in REQUIRED_EVIDENCE_CONSUMPTION_MATRIX))
 
 
+# ===========================================================================
+# RC11 MINIMAL ACCEPTANCE (知微 RC10 复核 §5) — Bug fixes
+# ===========================================================================
+
+# --- §5: V4.1 / V4b special decision fields must be COMPARED ----------------
+import recompute_from_ledger as _rec
+
+
+def _replay_v4_corrupt(fid, corrupt):
+    obs = copy.deepcopy(F(fid).ledger.observations)
+    rec = _rec.recompute_one(fid, obs)
+    actual = dict(rec)
+    actual.update(corrupt)
+    # exact-key check + comparison as the replay main loop does
+    contract = _contract(fid)
+    scope = tuple(contract["expected_keys"])
+    if set(rec.keys()) != set(scope):
+        return "KEY_SET_MISMATCH"
+    absent = [k for k in scope if k not in actual]
+    if absent:
+        return "MISSING"
+    mism = {k for k in scope if actual[k] != rec[k]}
+    return "FAIL" if mism else "PASS"
+
+
+from evidence_contract import get_contract as _contract
+
+chk("§5 V4.1 corrupt C2_ATTEMPT/INVALIDITY_CODE/L2 -> replay FAIL",
+    _replay_v4_corrupt("V4.1", {"C2_ATTEMPT": "PASS", "INVALIDITY_CODE": "WRONG", "L2": "PASS"}) == "FAIL")
+chk("§5 V4b corrupt C2/C3 -> replay FAIL",
+    _replay_v4_corrupt("V4b", {"C2": "ATTRIBUTED", "C3": "C3"}) == "FAIL")
+chk("§5 V4.1 clean -> replay PASS",
+    _replay_v4_corrupt("V4.1", {}) == "PASS")
+chk("§5 V4b clean -> replay PASS",
+    _replay_v4_corrupt("V4b", {}) == "PASS")
+
+
+# --- §6: filename / outer id / inner id identity + uniqueness --------------
+def _make_ledger(dirpath, name, fixture_id, inner_id):
+    import json as _json
+    item = {"fixture_id": fixture_id,
+            "actual": {},
+            "ledger": {"fixture_id": inner_id, "observations": {}}}
+    (dirpath / f"{name}.json").write_text(_json.dumps(item), encoding="utf-8")
+
+
+def _identity_check(dirpath):
+    import replay_adapter as ra
+    try:
+        ra.assert_exact_fixture_set(dirpath)
+        return "PASS"
+    except ra.ReplayContractError as ex:
+        return str(ex)
+
+
+import tempfile as _tf
+
+
+def _fresh_dir():
+    return Path(_tf.mkdtemp(prefix="adv_rc11_"))
+
+
+# 13 correct filenames but all internal V1
+d = _fresh_dir()
+from fixture_contracts import REQUIRED_FIXTURE_IDS as _REQ
+for fid in sorted(_REQ):
+    _make_ledger(d, fid, "V1", "V1")
+r = _identity_check(d)
+chk("§6 13 correct names but duplicate internal V1 -> FAIL",
+    r.startswith("LEDGER_IDENTITY_MISMATCH"))
+shutil.rmtree(d, ignore_errors=True)
+
+# name/content mismatch on one file
+d = _fresh_dir()
+for fid in sorted(_REQ):
+    _make_ledger(d, fid, fid, fid)
+_make_ledger(d, "V0", "V1", "V1")  # V0.json now claims V1
+r = _identity_check(d)
+chk("§6 name/content mismatch (V0.json=V1) -> FAIL",
+    r.startswith("LEDGER_IDENTITY_MISMATCH"))
+shutil.rmtree(d, ignore_errors=True)
+
+# clean identity -> PASS
+d = _fresh_dir()
+for fid in sorted(_REQ):
+    _make_ledger(d, fid, fid, fid)
+chk("§6 clean 13 identities -> PASS", _identity_check(d) == "PASS")
+shutil.rmtree(d, ignore_errors=True)
+
+
+# --- §7: preserve rule recomputed from raw handoff vs restored -------------
+def _preserve_break_bundle():
+    import struct
+    from fractions import Fraction as _Fr
+    b = _bundle_from_fixture("V5a")
+    for mid, me in b.members.items():
+        rw = me.reset_witness["C"]
+        q = struct.unpack("<q", bytes.fromhex(rw["verified_restored"]["q_raw"]))[0] * 2
+        rw["verified_restored"] = {"literal": rw["verified_restored"]["literal"],
+                                   "q_raw": struct.pack("<q", q).hex()}
+        st = me.arms["C"]["S_restored"]
+        me.arms["C"]["S_restored"] = ArmPhase(st.literal, struct.pack("<q", q))
+        me.reader_witness["raw_q"] = q
+        for uk in me.reader_witness["affine"]:
+            u = int(uk)
+            v = _Fr(2 * u + q, 2)
+            me.reader_witness["affine"][uk] = {"num": v.numerator, "den": v.denominator}
+    return b
+
+
+res = _eval_v5a(_preserve_break_bundle())
+chk("§7 preserved bytes changed across reset (reset_valid=True) -> INVALID",
+    res.l2 == e.INVALID and "RESET_PRESERVE_RULE_BREAK" in res.code)
+chk("§7 preserve break sets structured preserve_rule_ok=False",
+    res.preserve_rule_ok is False)
+
+# clean V5a still PASS
+res_clean = _eval_v5a(_bundle_from_fixture("V5a"))
+chk("§7 clean V5a still PASS", res_clean.l2 == e.PASS and res_clean.preserve_rule_ok is True)
+
+
+# --- §8: structured reset_valid flag (not message-prefix guessing) ---------
+def _delete_reset_valid_flag():
+    b = _bundle_from_fixture("V5a")
+    for m in b.members.values():
+        for arm in ("A", "B", "C"):
+            m.reset_witness[arm].pop("reset_valid", None)
+    return b
+
+
+res = _eval_v5a(_delete_reset_valid_flag())
+chk("§8 missing reset_valid -> structured reset_valid=False",
+    res.reset_valid is False and res.l2 == e.INVALID)
+
+
 print()
 passed = sum(1 for _, ok in RESULTS if ok)
 print(f"adversarial_regression: {passed}/{len(RESULTS)} PASS")

@@ -1,0 +1,23 @@
+{
+  "run": "RC11",
+  "phase": "PHASE_A_HARNESS_VALIDATION_EXECUTION",
+  "ledger_dir": "D:\\qcr\\EntropyDrivenAI\\selective_forgetting\\afterglow_harness_artifacts\\RC11_ledgers",
+  "raw_result_path": "D:\\qcr\\EntropyDrivenAI\\selective_forgetting\\afterglow_harness_artifacts\\RC11_qualifying_run_raw.json",
+  "fixture_ids": [
+    "V0",
+    "V0b",
+    "V1",
+    "V2",
+    "V3",
+    "V4.1",
+    "V4b",
+    "V5a",
+    "V5b",
+    "V5c",
+    "V5d",
+    "V5e",
+    "V5f"
+  ],
+  "fixture_count": 13,
+  "known_answer_suite": "PASS"
+}

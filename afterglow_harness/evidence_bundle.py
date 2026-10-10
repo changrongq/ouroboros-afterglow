@@ -217,9 +217,15 @@ def _validate_reset_object_identity(b: EvidenceBundle) -> tuple[bool, str]:
             == EvidenceBundle.S_restored bytes
             == reader source observed bytes
 
-    Not "they usually should match" — verified to match. The reset witness
-    records ``verified_restored`` (the bytes the reset verifier accepted); the
-    stored arm phase S_restored must equal it byte-for-byte.
+    凌翼/知微 RC11 §7: we ALSO recompute the FROZEN RESET PRESERVE RULE from the
+    raw bytes — the reset-accepted handoff must equal the restored state:
+
+        accepted_handoff  ==  verified_restored   (byte-level, reset.py preserve)
+
+    ``reset_valid`` is treated as a CLAIM to be checked, not a substitute for
+    the computation. J may legally change state BEFORE the handoff; it may NOT
+    explain a change AFTER it. If the preserved bytes differ across reset, the
+    evidence itself violates the frozen rule and the fixture is INVALID.
     """
     for mid, m in b.members.items():
         for arm in b.required_arms:
@@ -238,6 +244,20 @@ def _validate_reset_object_identity(b: EvidenceBundle) -> tuple[bool, str]:
             if (vr_lit != stored.literal) or (vr_q != stored.q_raw):
                 return False, (f"RESET_OBJECT_IDENTITY_BREAK: {mid}/{arm} "
                                f"verified-restored != stored S_restored (byte-level)")
+
+            # ---- recompute the frozen PRESERVE rule from raw bytes (RC11 §7) ----
+            acc = rw.get("accepted_handoff")
+            if not isinstance(acc, dict) or "literal" not in acc or "q_raw" not in acc:
+                return False, f"RESET_HANDOFF_MISSING: {mid}/{arm}"
+            try:
+                acc_lit = bytes.fromhex(acc["literal"])
+                acc_q = bytes.fromhex(acc["q_raw"])
+            except Exception:
+                return False, f"RESET_HANDOFF_MALFORMED: {mid}/{arm}"
+            if (acc_lit != vr_lit) or (acc_q != vr_q):
+                return False, (f"RESET_PRESERVE_RULE_BREAK: {mid}/{arm} "
+                               f"accepted_handoff != verified_restored (byte-level); "
+                               f"preserved state changed across reset")
     return True, ""
 
 
@@ -343,6 +363,16 @@ class GateResult:
     t_restored: dict = field(default_factory=dict)
     l2: str = ""
     supported: str | None = None
+    # ---- structured sub-verdicts (凌翼/知微 RC11 §8) ----
+    # Downstream consumers MUST read these flags, never guess a state from the
+    # human-readable error-message prefix.
+    membership_ok: bool = True
+    j_timing_ok: bool = True
+    handoff_continuity_ok: bool = True
+    reset_valid: bool = True          # the RESET gate verdict (recomputed)
+    reset_identity_ok: bool = True
+    preserve_rule_ok: bool = True
+    reader_ok: bool = True
 
 
 def evaluate_bundle(b: EvidenceBundle, required_pre_class: str,
@@ -355,7 +385,7 @@ def evaluate_bundle(b: EvidenceBundle, required_pre_class: str,
                      _validate_bytes(b)):
         if not ok:
             return GateResult(protocol=INVALID_PROTOCOL, code=code,
-                              l2=INVALID, c3_post=INVALID)
+                              l2=INVALID, c3_post=INVALID, membership_ok=False)
 
     # ---- PRE gate (source = S_write) ----
     pre = _pre_from_bundle(b)
@@ -376,10 +406,12 @@ def evaluate_bundle(b: EvidenceBundle, required_pre_class: str,
     # ---- J timing + handoff continuity ----
     j_ok, j_code = _validate_j_witness(b)
     if not j_ok:
-        return GateResult(protocol=INVALID_PROTOCOL, code=j_code, l2=INVALID, c3_post=INVALID)
+        return GateResult(protocol=INVALID_PROTOCOL, code=j_code, l2=INVALID,
+                          c3_post=INVALID, j_timing_ok=False)
     hc_ok, hc_code = _validate_handoff_continuity(b)
     if not hc_ok:
-        return GateResult(protocol=INVALID_PROTOCOL, code=hc_code, l2=INVALID, c3_post=INVALID)
+        return GateResult(protocol=INVALID_PROTOCOL, code=hc_code, l2=INVALID,
+                          c3_post=INVALID, handoff_continuity_ok=False)
 
     # ---- reset validity (fail-closed; 凌翼 RC10 R2) ----
     # reset_valid has three-valued intent: True -> continue; missing / False /
@@ -387,13 +419,16 @@ def evaluate_bundle(b: EvidenceBundle, required_pre_class: str,
     reset_ok, reset_code = _validate_reset(b)
     if not reset_ok:
         return GateResult(protocol=INVALID_PROTOCOL, code=reset_code,
-                          l2=INVALID, c3_post=INVALID)
+                          l2=INVALID, c3_post=INVALID, reset_valid=False)
 
-    # ---- reset-object identity: reset-verified == S_restored == reader input ----
+    # ---- reset-object identity + frozen PRESERVE-rule recomputation ----
     ident_ok, ident_code = _validate_reset_object_identity(b)
     if not ident_ok:
+        preserve_break = ident_code.startswith("RESET_PRESERVE_RULE_BREAK")
         return GateResult(protocol=INVALID_PROTOCOL, code=ident_code,
-                          l2=INVALID, c3_post=INVALID)
+                          l2=INVALID, c3_post=INVALID,
+                          reset_identity_ok=not preserve_break,
+                          preserve_rule_ok=not preserve_break)
 
     # ---- reader witnesses (must be validated, fail-closed) ----
     for mid, m in b.members.items():
@@ -401,7 +436,7 @@ def evaluate_bundle(b: EvidenceBundle, required_pre_class: str,
         if not ok:
             return GateResult(protocol=INVALID_PROTOCOL,
                               code=f"READER_WITNESS_INVALID: {mid}/{code}",
-                              l2=INVALID, c3_post=INVALID)
+                              l2=INVALID, c3_post=INVALID, reader_ok=False)
 
     # ---- POST gate (source = S_restored) ----
     post_c1_ok, t_restored, c3_post, l2, supported = _post_from_bundle(b, attempted)

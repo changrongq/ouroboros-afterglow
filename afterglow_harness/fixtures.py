@@ -302,11 +302,17 @@ def _l1_of(bundle):
 
 
 def _run_reset_suite(cfg, fid):
+    # Construction params come from FIXTURE_CONFIGS; the JUDGEMENT contract
+    # (required_pre_class / attempted) comes from the SINGLE authority,
+    # evidence_contract — so production and replay agree by construction
+    # (凌翼/知微 RC11 §8).
+    from evidence_contract import get_contract
     j_mode = cfg["j_mode"]
     pre_extra = cfg.get("pre_extra", EXTRA_CONTENT)
     reset_fault = cfg["reset_fault"]
-    attempted = cfg["attempted"]
-    required_pre = cfg.get("required_pre_class", "")
+    contract = get_contract(fid)
+    attempted = contract["attempted"]
+    required_pre = contract["required_pre_class"]
     root = Path(tempfile.mkdtemp(prefix="afterglow_fx_"))
     try:
         bundle = EvidenceBundle(fixture_id=fid, required_members=_MEMBERS)
@@ -333,8 +339,10 @@ def _run_reset_suite(cfg, fid):
             "PRE_RESET_CHANGE_CLASS": pre_class if pre_class else "",
             "post_C3": res.c3_post,
             "post_C1_ok": res.post_c1_ok,
-            "reset_valid": not res.code.startswith("RESET_INVALID") if res.code else True,
-            "j_timing_ok": not res.code.startswith(("J_", "HANDOFF_")) if res.code else True,
+            # structured sub-verdicts (RC11 §8): read the flags, never guess
+            # from the error-message prefix.
+            "reset_valid": res.reset_valid,
+            "j_timing_ok": res.j_timing_ok,
             "L2": res.l2,
             "POST_RESET_SUPPORTED_CLASS": res.supported,
         }
@@ -477,23 +485,27 @@ def _callable_takes_selector(fn) -> bool:
 def external_capability_probe(handle) -> dict:
     """Probe the REGISTERED PUBLIC interface from OUTSIDE (凌翼 RC10 R3-V4b).
 
-    Returns a dict that MUST include ``probe_valid``. ANI (architecturally not
-    identifiable) is only ever established when ``probe_valid`` is True AND
-    ``separable_w_extra`` is False.
+    Returns a dict that MUST include a truthful capability observation. ANI
+    (architecturally not identifiable) is only ever established when the probe
+    can DETECT separability on a positive control (see probe_is_valid()) AND the
+    production handle reads as non-separable.
 
     STRUCTURAL : inspect the registered public handle; its public callables and
                  their real signatures. A selector/mode/extra surface => separable.
-    BEHAVIORAL : attempt to construct an ON/OFF pair through the public surface.
+    BEHAVIORAL : genuinely ATTEMPT an ON/OFF pair through the public surface —
+                 call the write with and without a selector and observe whether
+                 the call is accepted (凌翼/知微 RC11 §8: 之前"behavioral"只再查签名,
+                 这里改为真实调用尝试).
 
     Scope note (凌翼): we do NOT count Python malicious reflection (obj._inner...)
     as a registered public capability. ANI targets the frozen REGISTERED PUBLIC
     interface; the tester only holds the public handle.
     """
+    import inspect as _inspect
+
     public_api = tuple(n for n in dir(handle) if not n.startswith("_"))
 
     # ---- STRUCTURAL ----
-    # Any public method that takes a mode/selector/extra argument, OR any public
-    # attribute that itself looks like a split write surface.
     structural_split = False
     structural_evidence = []
     for name in public_api:
@@ -508,16 +520,35 @@ def external_capability_probe(handle) -> dict:
             structural_split = True
             structural_evidence.append(f"public name {name!r} exposes a split surface")
 
-    # ---- BEHAVIORAL ----
-    # Can we, through the public surface, invoke a write WITH and WITHOUT extra
-    # as two distinct operations on the SAME storage path?
+    # ---- BEHAVIORAL (genuine call attempt) ----
+    # Attempt to call the public write WITH a selector keyword. If the public
+    # surface ACCEPTS it, ON/OFF is a public choice (separable). If it is
+    # rejected (unexpected keyword), the public surface offers no ON/OFF pair.
     behavioral_split = False
     behavioral_evidence = []
     write_fn = getattr(handle, "write", None)
-    if callable(write_fn) and _callable_takes_selector(write_fn):
-        # We can call write(..., mode=...) => ON vs OFF is a public choice.
-        behavioral_split = True
-        behavioral_evidence.append("write() exposes an ON/OFF selector")
+    if callable(write_fn):
+        probe_payload = EPISODE_PAYLOADS["A1"]
+        try:
+            sig = _inspect.signature(write_fn)
+            accepts_kw = ("extra_mode" in sig.parameters
+                          or any(p.kind == _inspect.Parameter.VAR_KEYWORD
+                                 for p in sig.parameters.values()))
+        except (TypeError, ValueError):
+            accepts_kw = False
+        if accepts_kw:
+            # A selector-bearing call is accepted by the registered public API.
+            behavioral_split = True
+            behavioral_evidence.append(
+                "public write() accepts an ON/OFF selector keyword")
+        else:
+            try:
+                write_fn(probe_payload, selector_probe=EXTRA_OFF)
+                behavioral_split = True
+                behavioral_evidence.append("public write() silently accepted a selector kwarg")
+            except TypeError:
+                behavioral_evidence.append(
+                    "public write() rejects a selector kwarg (no ON/OFF pair)")
 
     separable = structural_split or behavioral_split
 
@@ -528,10 +559,6 @@ def external_capability_probe(handle) -> dict:
         "behavioral_split": behavioral_split,
         "behavioral_evidence": behavioral_evidence,
         "separable_w_extra": separable,
-        # A probe is VALID iff it can DETECT separability on the positive
-        # control. The caller MUST additionally run the positive control; see
-        # probe_is_valid().
-        "probe_valid": True,
     }
 
 

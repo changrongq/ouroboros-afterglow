@@ -2,8 +2,8 @@
 # (detached: NOT written into the MANIFEST, to avoid self-reference)
 
 MANIFEST_FILE              = AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-MANIFEST_BYTES             = 27638
-IMPLEMENTATION_BINDING_MANIFEST_HASH = d7a1a0bf425a29da7d35d08a09d6a6792695ade6c23d15fb83b06afa11fb4414
+MANIFEST_BYTES             = 28142
+IMPLEMENTATION_BINDING_MANIFEST_HASH = dd30e3ad34bca196b5d2aefc66a6f369a8686a4cb990f6232bc99163c8249a46
 HASH_ALGORITHM             = SHA-256 over exact file bytes
 
 REFERENCE_HARNESS_SPEC_HASH = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
@@ -16,11 +16,11 @@ DISCRIMINATION_RULESET_HASH = 770fb3ec33a7f3976ed6dfc511419601f515956b638ceba47e
 CONTENT_CLASS_MANIFEST_HASH = 27616f8b1f8b0bdcb82c0c1aeb6cb6d78c6d038c96817776cf96f0f16600c75a
 
 # Component source hashes:
-  adversarial_regression.py 7f7959cb131794f088e493ed2155d56e60b49d855734061edab4361fe91b5aa3
+  adversarial_regression.py 8a60e1595e1c5990d6b020ae2e6d3df239d9806f98d8db0c6e716a8fb87c10e3
   evaluator.py             fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-  evidence_bundle.py       9bdf78bf68b5797b5a76fac52b10b9e4fafcbb825dda08df4ff2f89165f84017
+  evidence_bundle.py       552da969e3c54d5f0b9ad17c36bee6c7828c8caed00e9d04dbe0270a0f72599a
   fixture_contracts.py     b3137d9988660aa596f639afef5c1962edb525f4ec497dbdcd9f2ad69d86485e
-  fixtures.py              707e38c76ff4fbecf955eb93103a458c9cc7e65a6e1a9d81c6afc63b9d2a7dfa
+  fixtures.py              6750c4ac81b617c69f8907970f816581d2c214b4310f4f39ddfe7cf0f9cc98b2
   freeze_manifest.py       f748f8bdba40f4eaae82b8fc21cc98790c0807e0a7d42c783b3842cc912a0639
   harness_constants.py     9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
   manifest_bind.py         e805ba624456c5c6f4fda4eb6b3e0df1dbb7caed46a30b0a05cdf6da701a0f79
@@ -28,11 +28,11 @@ CONTENT_CLASS_MANIFEST_HASH = 27616f8b1f8b0bdcb82c0c1aeb6cb6d78c6d038c96817776cf
   perturbation_j.py        28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
   qualification_binding.py 6d624ce1b22fdb33d6ca0e28979899e112b89718082e68ecc67f602b688bcb88
   qualification_role_registry.py 1394c7f4fcb33319d17613a2770be04f599c14a25728b59c3a9b2316856bec0b
-  qualify_phase_a.py       a44fd95636baa40436078cb58a08e74027fc84ecdd7b7fa51ebf69c8ce48f430
+  qualify_phase_a.py       3ca947700901d607a0ea6f22218c0e32c30bf7b8663c9d6b78606e9201f0a1a0
   readers.py               2180f0d9747a4e1c21178f1d24244723538153ca126138163b0778813231f2b2
-  recompute_from_ledger.py afaa3165499189a341f95df0bc36879d0777f33895da0c9467dd8079ee9c6f2f
+  recompute_from_ledger.py 5203f0dee2f1c0fe32c9463bb67cab00d79b72171ab766447f89cc6115ffcd82
   reset.py                 9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
-  run_known_answer_suite.py 4bcbc21ed9a4f1a865ab752b0ffd1aec451b26a7d07da820625d7d0dcfe03e75
+  run_known_answer_suite.py 70435fb058d6012ebb7fca91ad0c6c1531699ba998eb9c9326296e77e9e16c75
   storage.py               76c376c6a413f47c8c68a6340f67b62d9ab2ba62c6807571600836ca7a59303b
   verify_manifest_binding.py 9448ef8f8eac751eba4b989a7de823921cf02a796b045a8699fae2dfb1fa331d
   writers.py               08f7d968bdb4aa37c206e169cabbb08b9616b0990c0e758e7958c93c6b5b690c

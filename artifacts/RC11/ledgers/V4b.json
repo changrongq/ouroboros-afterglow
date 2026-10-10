@@ -1,0 +1,41 @@
+{
+  "fixture_id": "V4b",
+  "frozen_oracle": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "actual": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V4b",
+    "attempted_scope": {
+      "shape": "non_separable_wrapper"
+    },
+    "observations": {
+      "A": {
+        "S_write": {
+          "literal": "00000000000000000000000000000000",
+          "q_raw": "0000000000000000"
+        }
+      },
+      "B": {
+        "S_write": {
+          "literal": "636c733d4c3b73616d706c653d30313b",
+          "q_raw": "0000000000000000"
+        }
+      }
+    },
+    "gates": {},
+    "l2": {},
+    "notes": [
+      "external_probe={'public_api': ('write',), 'structural_split': False, 'structural_evidence': [], 'behavioral_split': False, 'behavioral_evidence': ['public write() rejects a selector kwarg (no ON/OFF pair)'], 'separable_w_extra': False}"
+    ]
+  }
+}

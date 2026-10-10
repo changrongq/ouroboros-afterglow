@@ -1,0 +1,47 @@
+{
+  "fixture_id": "V4.1",
+  "frozen_oracle": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2_ATTEMPT": "INVALID",
+    "INVALIDITY_CODE": "CAUSAL_CONTRAST_RULE_MISSING",
+    "C3": "NOT_ASSESSED",
+    "L2": "N/A"
+  },
+  "actual": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C3": "NOT_ASSESSED",
+    "C2_ATTEMPT": "INVALID",
+    "INVALIDITY_CODE": "CAUSAL_CONTRAST_RULE_MISSING",
+    "L2": "N/A"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V4.1",
+    "attempted_scope": {
+      "pre_reset_C1": true,
+      "pre_reset_C2": true,
+      "pre_reset_C3": false,
+      "post_reset": false,
+      "shape": "two_arm"
+    },
+    "observations": {
+      "A": {
+        "S_write": {
+          "literal": "00000000000000000000000000000000",
+          "q_raw": "0000000000000000"
+        }
+      },
+      "B": {
+        "S_write": {
+          "literal": "636c733d4c3b73616d706c653d30313b",
+          "q_raw": "0000000000000000"
+        }
+      }
+    },
+    "gates": {},
+    "l2": {},
+    "notes": []
+  }
+}

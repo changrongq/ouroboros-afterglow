@@ -1,0 +1,39 @@
+{
+  "fixture_id": "V1",
+  "frozen_oracle": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "NOT_ASSESSED",
+    "C3": "NOT_ASSESSED"
+  },
+  "actual": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "NOT_ASSESSED",
+    "C3": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V1",
+    "attempted_scope": {
+      "shape": "two_arm"
+    },
+    "observations": {
+      "A": {
+        "S_write": {
+          "literal": "00000000000000000000000000000000",
+          "q_raw": "0000000000000000"
+        }
+      },
+      "B": {
+        "S_write": {
+          "literal": "636c733d4c3b73616d706c653d30313b",
+          "q_raw": "0000000000000000"
+        }
+      }
+    },
+    "gates": {},
+    "l2": {},
+    "notes": []
+  }
+}

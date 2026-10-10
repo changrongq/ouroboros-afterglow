@@ -51,8 +51,12 @@ PREREG_PATH = _find(
 HARNESS_DIR = Path(__file__).resolve().parent
 
 ARTIFACTS = ROOT / "afterglow_harness_artifacts"
-RAW_PATH = ARTIFACTS / "RC10_qualifying_run_raw.json"
-LEDGER_DIR = ARTIFACTS / "RC10_ledgers"
+RAW_PATH = ARTIFACTS / "RC11_qualifying_run_raw.json"
+LEDGER_DIR = ARTIFACTS / "RC11_ledgers"
+#: The RUN MANIFEST is the SAME-RUN link between the suite and the single entry
+#: point (凌翼/知微 RC11 §4): the aggregator MUST consume the ledger dir THIS run
+#: actually produced, never a hard-coded version path.
+RUN_MANIFEST_PATH = ARTIFACTS / "RC11_run_manifest.json"
 
 
 def _sha256_file(p: Path) -> str:
@@ -163,12 +167,32 @@ def main() -> int:
         "per_fixture": ledgers,
     }
     RAW_PATH.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Clean THIS run's ledger dir so a previous run's contents can never be
+    # consumed as current evidence (凌翼/知微 RC11 §4: current products only).
+    if LEDGER_DIR.exists():
+        for old in LEDGER_DIR.glob("*.json"):
+            old.unlink()
     LEDGER_DIR.mkdir(parents=True, exist_ok=True)
     for item in ledgers:
         (LEDGER_DIR / f"{item['fixture_id']}.json").write_text(
             json.dumps(item, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    # ---- RUN MANIFEST: the SAME-RUN link the aggregator MUST consume ----
+    run_manifest = {
+        "run": "RC11",
+        "phase": "PHASE_A_HARNESS_VALIDATION_EXECUTION",
+        "ledger_dir": str(LEDGER_DIR.resolve()),
+        "raw_result_path": str(RAW_PATH.resolve()),
+        "fixture_ids": sorted(x["fixture_id"] for x in ledgers),
+        "fixture_count": len(ledgers),
+        "known_answer_suite": status,
+    }
+    RUN_MANIFEST_PATH.write_text(
+        json.dumps(run_manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
     print(f"  raw result     -> {RAW_PATH}")
     print(f"  ledgers (13)   -> {LEDGER_DIR}")
+    print(f"  run manifest   -> {RUN_MANIFEST_PATH}")
     print("=" * 72)
     return 0 if (all_ok and frozen_ok and completeness_ok) else 1
 

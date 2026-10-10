@@ -1,6 +1,6 @@
 """
-evidence_contract.py (RC10) — the SINGLE frozen source of REQUIRED EVIDENCE and
-its required CONSUMPTION (凌翼 RC10 ruling R2).
+evidence_contract.py (RC11) — the SINGLE frozen source of REQUIRED EVIDENCE and
+its required CONSUMPTION (凌翼 RC10 ruling R2; 知微 RC10 review → RC11 fixes).
 
 凌翼 RC10, R2:
 
@@ -95,6 +95,31 @@ _TWO_ARM = {
     "expected_keys": ("L1", "PRE_RESET_CHANGE_CLASS"),
 }
 
+# V4.1 has its OWN complete decision schema (凌翼/知微 RC11 §5): its special
+# pre-reset C2-attempt INVALIDITY decision MUST be compared, not merely computed.
+_V4_1 = {
+    "shape": "two_arm",
+    "required_members": ("A1",),
+    "required_arms": ("A", "B"),
+    "required_phases": ("S_write",),
+    "required_pre_class": "",
+    "attempted": "pre_reset_C2_only",
+    "expected_keys": ("L1", "PRE_RESET_CHANGE_CLASS", "C2_ATTEMPT",
+                      "INVALIDITY_CODE", "C3", "L2"),
+}
+
+# V4b has its OWN complete decision schema: the architectural non-separability
+# decision (C2/C3) MUST be compared.
+_V4_B = {
+    "shape": "non_separable_wrapper",
+    "required_members": ("A1",),
+    "required_arms": ("A", "B"),
+    "required_phases": ("S_write",),
+    "required_pre_class": "",
+    "attempted": "full",
+    "expected_keys": ("L1", "PRE_RESET_CHANGE_CLASS", "C2", "C3"),
+}
+
 _MULTI_MEMBER = {
     "shape": "multi_member",
     "required_members": MULTI_MEMBER_SET,
@@ -105,15 +130,7 @@ _MULTI_MEMBER = {
     "expected_keys": ("L1", "PRE_RESET_CHANGE_CLASS", "C3"),
 }
 
-_NON_SEPARABLE = {
-    "shape": "non_separable_wrapper",
-    "required_members": ("A1",),
-    "required_arms": ("A", "B"),
-    "required_phases": ("S_write",),
-    "required_pre_class": "",
-    "attempted": "full",
-    "expected_keys": ("L1", "PRE_RESET_CHANGE_CLASS"),
-}
+_NON_SEPARABLE = _V4_B  # retained name for clarity; V4b's canonical contract
 
 
 def _reset_suite(j_mode: str, reset_fault: bool, attempted: str, required_pre_class: str) -> dict:
@@ -139,8 +156,8 @@ CONTRACT_BY_FIXTURE = {
     "V1": dict(_TWO_ARM),
     "V2": dict(_MULTI_MEMBER),
     "V3": dict(_MULTI_MEMBER),
-    "V4.1": {**_TWO_ARM, "attempted": "pre_reset_C2_only"},
-    "V4b": dict(_NON_SEPARABLE),
+    "V4.1": dict(_V4_1),
+    "V4b": dict(_V4_B),
     "V5a": _reset_suite("IDENTITY", False, "full", "C3"),
     "V5b": _reset_suite("COLLAPSE_SIGN", False, "full", "C3"),
     "V5c": _reset_suite("IDENTITY", True, "full", "C3"),
@@ -260,10 +277,38 @@ REQUIRED_EVIDENCE_CONSUMPTION_MATRIX = (
         "negative_test": "CE-R15 drop one fixture ledger -> FAIL",
     },
     {
+        "field": "fixture_id identity (filename == outer == ledger.fixture_id)",
+        "recorded_in": "run_known_answer_suite (writes <id>.json with matching ids)",
+        "prod_gate": "run_known_answer_suite completeness (ran ids unique == required)",
+        "replay_gate": "replay_adapter.assert_exact_fixture_set (three-way identity + uniqueness)",
+        "negative_test": "RC11 §6: 13 correct names w/ duplicate internal V1 -> FAIL; name/content mismatch -> FAIL",
+    },
+    {
+        "field": "V4.1 / V4b special decision schema (C2_ATTEMPT/INVALIDITY_CODE/L2; C2/C3)",
+        "recorded_in": "evidence_contract.CONTRACT_BY_FIXTURE expected_keys",
+        "prod_gate": "fixtures runner emits the keys; run_known_answer_suite compares vs oracle",
+        "replay_gate": "recompute_from_ledger exact key-set + value comparison",
+        "negative_test": "RC11 §5: corrupt V4.1/V4b special fields -> replay FAIL",
+    },
+    {
+        "field": "reset preserve rule (accepted_handoff == verified_restored, raw bytes)",
+        "recorded_in": "fixtures._reset_arm reset_witness",
+        "prod_gate": "evidence_bundle._validate_reset_object_identity (recomputed)",
+        "replay_gate": "replay_adapter -> same preserve recomputation",
+        "negative_test": "RC11 §7: handoff q != restored q w/ reset_valid=True -> INVALID (RESET_PRESERVE_RULE_BREAK)",
+    },
+    {
+        "field": "same-run link (run manifest ledger_dir)",
+        "recorded_in": "run_known_answer_suite writes RC11_run_manifest.json",
+        "prod_gate": "qualify_phase_a reads the manifest to pick the replay dir",
+        "replay_gate": "recompute_from_ledger --ledger <that dir>",
+        "negative_test": "RC11 §4: clean snapshot PASS; aggregator has no hard-coded version dir",
+    },
+    {
         "field": "V4b separable positive control (probe validity)",
         "recorded_in": "fixtures.external_capability_probe(SeparableControlHandle)",
         "prod_gate": "fixtures.external_capability_probe -> evaluate_c2_architectural",
-        "replay_gate": "adversarial_regression probe-validity check",
+        "replay_gate": "recompute_from_ledger re-runs the probe (observed, not hardcoded)",
         "negative_test": "CE-R16 probe must return separable_w_extra=True on a selector-bearing control; else PROBE_INVALID",
     },
 )
