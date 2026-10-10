@@ -41,7 +41,7 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 27 | 2026-10-10 | Coder | `给知微凌翼睫_RC11_P2闭合报告_Coder_20261010.md` | **RC11 P2 closure**: tri-state sub-verdicts (UNEVALUATED); real ON/OFF behavioral calls; adversarial 51/51 |
 | 28 | 2026-10-10 | **知微** | `知微_RC11_P2复核_c11063c.md` | **seventh review**: P2-B real-call CLOSED; P2-A PARTIAL (3 adjacent identity-failure branches still default True) + P2-B docstring overclaim |
 | 29 | 2026-10-10 | Coder | `给知微凌翼睫_RC11_P2A补全报告_Coder_20261010.md` | **RC11 P2-A complete**: all identity-stage failures return (True,False,False,UNEVALUATED); docstring narrowed; adversarial 54/54 |
-| 30 | 2026-10-10 | **知微** | `知微_RC11_P2A闭合确认_5e17fe8.md` | **eighth review / closure**: P2-A CLOSED (84/84 error cases across member×arm); clean entry PASS; adversarial 54/54; both P2 now closed |
+| 30 | 2026-10-10 | **知微** | `知微_RC11_P2A闭合复核_5e17fe8.md` | **eighth review / closure (written report)**: P2-A CLOSED (84/84 full-chain identity error cases across 4 member × 3 arm + 12 helper S_restored-missing cases); clean entry PASS; adversarial 54/54; P2-B call + wording CLOSED |
 
 ---
 
