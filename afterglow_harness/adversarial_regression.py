@@ -455,6 +455,34 @@ res_clean = _eval_v5a(_bundle_from_fixture("V5a"))
 chk("P2-A clean V5a -> reset_identity_ok=True & preserve_rule_ok=True",
     res_clean.reset_identity_ok is True and res_clean.preserve_rule_ok is True)
 
+
+# --- P2-A adjacent branches (知微 P2-A re-review): identity-stage failures
+#     at ANY point must yield preserve_rule_ok=UNEVALUATED (not default True).
+def _ident_fail_bundle(mutate):
+    b = _bundle_from_fixture("V5a")
+    mutate(b)
+    return b
+
+
+def _m_missing(b):
+    del b.members["A1"].reset_witness["A"]["verified_restored"]
+
+
+def _m_partial(b):
+    del b.members["A1"].reset_witness["A"]["verified_restored"]["q_raw"]
+
+
+def _m_malformed(b):
+    b.members["A1"].reset_witness["A"]["verified_restored"]["q_raw"] = "zz"
+
+
+for _name, _mut in (("missing", _m_missing), ("partial", _m_partial),
+                    ("malformed", _m_malformed)):
+    res = _eval_v5a(_ident_fail_bundle(_mut))
+    chk(f"P2-A {_name} verified_restored -> identity False & preserve UNEVALUATED",
+        res.l2 == e.INVALID and res.reset_identity_ok is False
+        and res.preserve_rule_ok == "UNEVALUATED")
+
 # preserve break (identity holds) -> preserve_rule_ok=False, reset_identity_ok=True
 res_pb = _eval_v5a(_preserve_break_bundle())
 chk("P2-A preserve break -> reset_identity_ok=True & preserve_rule_ok=False",

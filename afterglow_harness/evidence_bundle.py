@@ -237,52 +237,54 @@ def _validate_reset_object_identity(b: EvidenceBundle) -> tuple[bool, str]:
         (identity_checked, identity_ok, preserve_checked, preserve_ok, code)
     where a check may be *not reached* (checked=False) and its *_ok is then
     UNEVALUATED — never silently True.
+
+    知微 RC11 P2-A re-review: EVERY identity-stage failure branch (missing /
+    partial / malformed / mismatched) returns the SAME explicit shape
+        (True, False, False, UNEVALUATED, code)
+    so a preserve check that was NOT reached can never carry a default True.
     """
-    identity_checked = identity_ok = preserve_checked = preserve_ok = True
     for mid, m in b.members.items():
         for arm in b.required_arms:
             rw = m.reset_witness.get(arm, {})
             vr = rw.get("verified_restored")
             stored = m.arms.get(arm, {}).get("S_restored")
 
-            # ---- identity check ----
-            identity_checked = True
+            # ---- identity check (ANY failure here -> preserve NOT reached) ----
+            id_fail = None
             if not isinstance(vr, dict) or "literal" not in vr or "q_raw" not in vr:
-                return identity_checked, False, preserve_checked, preserve_ok, \
-                    f"RESET_VERIFIED_MISSING: {mid}/{arm}"
-            if stored is None:
-                return identity_checked, False, preserve_checked, preserve_ok, \
-                    f"RESET_STORED_RESTORED_MISSING: {mid}/{arm}"
-            try:
-                vr_lit = bytes.fromhex(vr["literal"])
-                vr_q = bytes.fromhex(vr["q_raw"])
-            except Exception:
-                return identity_checked, False, preserve_checked, preserve_ok, \
-                    f"RESET_VERIFIED_MALFORMED: {mid}/{arm}"
-            if (vr_lit != stored.literal) or (vr_q != stored.q_raw):
+                id_fail = f"RESET_VERIFIED_MISSING: {mid}/{arm}"
+            elif stored is None:
+                id_fail = f"RESET_STORED_RESTORED_MISSING: {mid}/{arm}"
+            else:
+                try:
+                    vr_lit = bytes.fromhex(vr["literal"])
+                    vr_q = bytes.fromhex(vr["q_raw"])
+                except Exception:
+                    id_fail = f"RESET_VERIFIED_MALFORMED: {mid}/{arm}"
+                else:
+                    if (vr_lit != stored.literal) or (vr_q != stored.q_raw):
+                        id_fail = (f"RESET_OBJECT_IDENTITY_BREAK: {mid}/{arm} "
+                                   f"verified-restored != stored S_restored (byte-level)")
+            if id_fail is not None:
                 # identity failed -> preserve check NOT reached
-                return True, False, False, UNEVALUATED, \
-                    (f"RESET_OBJECT_IDENTITY_BREAK: {mid}/{arm} "
-                     f"verified-restored != stored S_restored (byte-level)")
+                return True, False, False, UNEVALUATED, id_fail
 
             # ---- preserve check (reached only if identity held) ----
-            preserve_checked = True
-            acc = rw.get("accepted_handoff")
-            if not isinstance(acc, dict) or "literal" not in acc or "q_raw" not in acc:
-                return True, True, preserve_checked, False, \
-                    f"RESET_HANDOFF_MISSING: {mid}/{arm}"
+            if not isinstance(rw.get("accepted_handoff"), dict) \
+                    or "literal" not in rw["accepted_handoff"] \
+                    or "q_raw" not in rw["accepted_handoff"]:
+                return True, True, True, False, f"RESET_HANDOFF_MISSING: {mid}/{arm}"
             try:
-                acc_lit = bytes.fromhex(acc["literal"])
-                acc_q = bytes.fromhex(acc["q_raw"])
+                acc_lit = bytes.fromhex(rw["accepted_handoff"]["literal"])
+                acc_q = bytes.fromhex(rw["accepted_handoff"]["q_raw"])
             except Exception:
-                return True, True, preserve_checked, False, \
-                    f"RESET_HANDOFF_MALFORMED: {mid}/{arm}"
+                return True, True, True, False, f"RESET_HANDOFF_MALFORMED: {mid}/{arm}"
             if (acc_lit != vr_lit) or (acc_q != vr_q):
                 return True, True, True, False, \
                     (f"RESET_PRESERVE_RULE_BREAK: {mid}/{arm} "
                      f"accepted_handoff != verified_restored (byte-level); "
                      f"preserved state changed across reset")
-    return identity_checked, identity_ok, preserve_checked, preserve_ok, ""
+    return True, True, True, True, ""
 
 
 def _independent_reader_ok(m: MemberEvidence) -> tuple[bool, str]:

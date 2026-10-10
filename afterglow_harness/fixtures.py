@@ -493,10 +493,12 @@ def external_capability_probe(handle) -> dict:
     STRUCTURAL : inspect the registered public handle; its public callables and
                  their real signatures. A selector/mode/extra surface => separable.
     BEHAVIORAL : genuinely EXECUTE an ON/OFF pair through the public surface —
-                 actually CALL the public write WITHOUT a selector and then WITH
-                 an OFF selector on a scratch handle, and observe whether both
-                 calls are accepted and whether they produce DIFFERENT effects
-                 (凌翼/知微 RC11 P2-B: 之前 behavioral 只再查签名; 这里补齐真实调用).
+                 actually CALL the public write WITHOUT a selector (ON) and then
+                 WITH an OFF selector, and observe whether BOTH calls are
+                 ACCEPTED by the registered public API. (知微 RC11 P2-B: the
+                 evidence is "both call forms are accepted"; this probe does NOT
+                 read or compare the two writes' storage effects — do not claim
+                 more than that.)
 
     Scope note (凌翼): we do NOT count Python malicious reflection (obj._inner...)
     as a registered public capability. ANI targets the frozen REGISTERED PUBLIC
