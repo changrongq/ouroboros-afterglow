@@ -31,6 +31,10 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 17 | 2026-10-10 | Coder | `给凌翼_RC8未闭合简报_Coder_20261010.md` | RC8 declared NOT closed; escalation to 凌翼 |
 | 18 | 2026-10-10 | 凌翼 | （R1–R4 裁定） | one RC9 closure round; single role registry; V4b external probe; retain RC8 |
 | 19 | 2026-10-10 | Coder | `给凌翼睫知微_RC9交付报告_Coder_20261010.md` | **RC9 delivery**: EVIDENCE_BUNDLE; single public chain; single role registry; qualify_phase_a single entry; adversarial 16/16 |
+| 20 | 2026-10-10 | **知微** | `知微_RC9独立复核_2a0737b.md` | **fourth review**: 4 P1 (reader empty-probe hole; replay does not restore contract; V4b probe misses selector; reset_valid missing + restored unlinked) |
+| 21 | 2026-10-10 | Coder | `给凌翼_RC9复核裁决请求_Coder_20261010.md` | RC9 per-item reproduction (all four confirmed); request ruling |
+| 22 | 2026-10-10 | 凌翼 | （R1–R5 裁定） | RC9 = NOT CLOSED; RC10 AUTHORIZED; +REQUIRED_EVIDENCE_CONSUMPTION_MATRIX; one chain two ingress; preserve RC9 |
+| 23 | 2026-10-10 | Coder | `给凌翼睫知微_RC10交付报告_Coder_20261010.md` | **RC10 delivery**: single adjudication chain + dual ingress; reader/reset/replay/V4b fail-closed; 6 top acceptance tests + 4 P1 all PASS |
 
 ---
 
@@ -39,8 +43,9 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 - `reproduce_review.py` — 知微's first-review reproduction (byte drift + V2/V3 + V5 attacks).
 - `review_rc7.py` — 知微's RC7-closure reproduction.
 - `review_rc8.py` / `review_rc8_followup.py` — 知微's RC8-closure reproduction (7 P1 seams).
-- `../../afterglow_harness/adversarial_regression.py` — the RC9 regression (all attacks must be rejected).
-- `../../afterglow_harness/recompute_from_ledger.py` — independent re-derivation (required-scope) from raw ledger.
+- `../../afterglow_harness/_verify_rc10_closure.py` — RC10 closure reproduction (§3/§5/§6/§7).
+- `../../afterglow_harness/adversarial_regression.py` — the RC10 regression (32/32; R5-1..R5-6 top acceptance + retained attacks).
+- `../../afterglow_harness/recompute_from_ledger.py` — independent, CONTRACT-DRIVEN re-derivation from raw ledger.
 - `../../afterglow_harness/qualify_phase_a.py` — the single Phase-A PASS entry point.
 
 ---
@@ -48,10 +53,12 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 ## Status snapshot
 
 ```text
-RC7 = FAILED QUALIFICATION / RETAINED FOR AUDIT
-RC8 = FAILED QUALIFICATION / RETAINED FOR AUDIT
-RC9 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py)
+RC7  = FAILED QUALIFICATION / RETAINED FOR AUDIT
+RC8  = FAILED QUALIFICATION / RETAINED FOR AUDIT
+RC9  = NOT CLOSED (FAILED QUALIFICATION) / RETAINED FOR AUDIT / AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
+RC10 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py)
 ```
 
-RC7 and RC8 are retained as the evidence that the adversarial machinery actually caught real
-errors. RC9 is the current candidate (see delivery report).
+RC7, RC8, RC9 are retained as the evidence that the adversarial machinery actually caught real
+errors (RC9's 4 P1 were all confirmed by Coder's own reproduction). RC10 is the current
+candidate (see delivery report). RC9 becomes `SUPERSEDED_BY_RC10` only after RC10 is accepted.
