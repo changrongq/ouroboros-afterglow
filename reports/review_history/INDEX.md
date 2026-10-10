@@ -30,7 +30,7 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 16 | 2026-10-10 | **知微** | `知微_RC8独立复核_e099ddf.md` + `review_rc8.py` / `review_rc8_followup.py` | **third review**: 7 P1 seams (reader not gated, pre-class not enforced, ledger zero-check, J↔reset unlinked, missing-member downgrade, role-set mismatch, V4b public arm) |
 | 17 | 2026-10-10 | Coder | `给凌翼_RC8未闭合简报_Coder_20261010.md` | RC8 declared NOT closed; escalation to 凌翼 |
 | 18 | 2026-10-10 | 凌翼 | （R1–R4 裁定） | one RC9 closure round; single role registry; V4b external probe; retain RC8 |
-| 19 | 2026-10-10 | Coder | **RC9** (this snapshot) | EVIDENCE_BUNDLE; single public chain; single role registry; qualify_phase_a single entry; adversarial 16/16 |
+| 19 | 2026-10-10 | Coder | `给凌翼睫知微_RC9交付报告_Coder_20261010.md` | **RC9 delivery**: EVIDENCE_BUNDLE; single public chain; single role registry; qualify_phase_a single entry; adversarial 16/16 |
 
 ---
 
