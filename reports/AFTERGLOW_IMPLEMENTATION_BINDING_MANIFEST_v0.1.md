@@ -6,7 +6,7 @@
 **性质**：**MANIFEST 实例化版。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
 
 ```text
-STATUS = INSTANTIATED MANIFEST (RC7) / PENDING FREEZE
+STATUS = INSTANTIATED MANIFEST (RC8) / PENDING FREEZE
 EXECUTION_AUTHORIZATION = NONE
 IGNITION = PROHIBITED
 ```
@@ -408,12 +408,18 @@ observer.py              1.0  82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3
 perturbation_j.py        1.0  28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
 reset.py                 1.0  9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
 evaluator.py             1.0  fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-fixtures.py              1.0  a0fcc641a9b7635c07c196c8709301f15ff8af4ced6a31d8f49e6b6608e892ce
-
-# Execution-critical DRIVERS（凌翼边界：能改变 qualification 判定 ⇒ MUST BE BOUND）
-run_known_answer_suite.py    1.0  44f8a70fa4e786d1e0cf195279e543d5b7fdbd0ff989cfd22936c36a49b8958d
+fixtures.py              1.0  6c432cf09fea063b19f57755a943bf849674f415f3ab31acaa3d269468c6d658
+fixture_contracts.py     1.0  a913e37cc972cc7b56f765444080cf16c0a715bee3e9e3309d3d488c02316ad0
+gates.py                 1.0  fc7aaaedb7d85c6c3d20a496284092ded327a9b3265d054a6757b4e4569c7047
+qualification_binding.py 1.0  84086eda44476687370f5dcb86c610438084e83eef7b41c10aee2f6de9f17907
+run_known_answer_suite.py    1.0  ea82a4c79fb4c11d7cd852024bd0fea56963bb40c5b509b38aa30a6a55b3fa64
 verify_manifest_binding.py   1.0  cafc29b8c5ade4a944ecd1c3051d639eb2e7e4ea465ad551081c9769aa3a1b37
+adversarial_regression.py    1.0  98a4cdb06a22dd27de7e6841f4629b1c729c29e0be916071089e65a53737ada7
+recompute_from_ledger.py     1.0  6b4e528aede270b33bed1e939e10094f0b335650f2e3fa85740043f9510ac6b3
 ```
+
+**（RC8：qualification 运行时依赖的全部模块纳入绑定。qualification_binding.py 的
+REQUIRED_RUNTIME_ROLES 与此表一致；缺一即 PREFLIGHT FAIL。manifest_bind.py 不在此列。）**
 
 **BUILD PROVENANCE（记录但不 execution-critical binding；见 §十五 BUILD_TOOL_HASHES）：**
 
@@ -489,10 +495,19 @@ v0.1-RC7            （本次）BD-57 + 知微 P1 修复：
                      · §7 observer + 两条 read 路径实际接通；reset witness 明确为逻辑声明。
                      · §6 资格 preflight：校验 9 组件 + 2 driver + 实际 SPEC/prereg 文件 + fixture 集合。
                      · §9 加固：C3 成员集校验；INVALID 传播；B 后置复读；V4b wrapper 语义。
+v0.1-RC8            （本次）凌翼裁定 + 知微 RC7 复核全部 P1：
+                     · PRE_EVIDENCE_GATE（源 = S_write；L1→C1→C2→C3；NO failure-default C3）
+                     · POST_RESET_EVIDENCE_GATE（源 = S_restored only；INVALID 支配）
+                     · J_GATE / RESET_GATE（任一失效 ⇒ INVALID）
+                     · 单一冻结 oracle 源 = fixture_contracts.FROZEN_ORACLES（fixtures 只取 config）
+                     · ledger = member × arm × phase 原始观察（recompute_from_ledger.py 可重算）
+                     · manifest_bind.py 移出 qualification 运行时；qualification_binding.py 取而代之
+                     · 绑定集合扩至全部运行时角色（非空、精确相等；空集必 FAIL）
+                     · V4b 改为真正不可分离接口；reader 见证读非零 q
                      —— 新 MANIFEST_HASH 见 detached 记录
 ```
 
 ---
 
-**STATUS = INSTANTIATED MANIFEST (RC7) / PENDING FREEZE**
+**STATUS = INSTANTIATED MANIFEST (RC8) / PENDING FREEZE**
 **—— Coder · 2026-10-10**

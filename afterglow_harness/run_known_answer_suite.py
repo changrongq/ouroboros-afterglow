@@ -20,8 +20,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from fixtures import REQUIRED_FIXTURE_IDS, SCIENTIFIC_CLAIM_ELIGIBILITY, run_all
-from manifest_bind import compute_all, hash_file, manifest_self_hash
+from fixture_contracts import FROZEN_ORACLES, REQUIRED_FIXTURE_IDS
+from fixtures import SCIENTIFIC_CLAIM_ELIGIBILITY, run_all
+import qualification_binding as qb
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "reports" / "AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md"
@@ -50,11 +51,8 @@ PREREG_PATH = _find(
 HARNESS_DIR = Path(__file__).resolve().parent
 
 ARTIFACTS = ROOT / "afterglow_harness_artifacts"
-RAW_PATH = ARTIFACTS / "RC7_qualifying_run_raw.json"
-LEDGER_DIR = ARTIFACTS / "RC7_ledgers"
-
-# Execution-critical, hash-bound drivers (must be present in the MANIFEST).
-BOUND_DRIVERS = ("run_known_answer_suite.py", "verify_manifest_binding.py")
+RAW_PATH = ARTIFACTS / "RC8_qualifying_run_raw.json"
+LEDGER_DIR = ARTIFACTS / "RC8_ledgers"
 
 
 def _sha256_file(p: Path) -> str:
@@ -65,64 +63,37 @@ def _sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
+def _subset_eq(expected: dict, actual: dict) -> bool:
+    """Expected (frozen oracle) must be a subset of actual."""
+    for k, v in expected.items():
+        if k not in actual:
+            return False
+        if isinstance(v, dict):
+            if not isinstance(actual[k], dict) or not _subset_eq(v, actual[k]):
+                return False
+        elif actual[k] != v:
+            return False
+    return True
+
+
 def capture_frozen_binding() -> tuple[dict, bool]:
-    """Full qualification preflight. Returns (evidence, ok).
+    """Full qualification preflight via the bound qualification_binding verifier.
 
-    ok is True ONLY if ALL of:
-      (a) detached record matches the current MANIFEST bytes;
-      (b) every bound component hash is present in the MANIFEST;
-      (c) every bound DRIVER hash is present in the MANIFEST;
-      (d) the ACTUAL SPEC file hash matches the frozen SPEC constant;
-      (e) the ACTUAL prereg file hash matches the frozen prereg constant;
-      (f) the required fixture-id set is exactly what the suite will run.
+    (凌翼 RC8 R2: manifest_bind.py is FORBIDDEN in the qualifying runtime; this
+    path uses qualification_binding only.)
     """
-    ev: dict = {}
-    if not MANIFEST_PATH.exists():
-        return {"error": "manifest missing"}, False
-    self_h = manifest_self_hash(MANIFEST_PATH)
-    ev["MANIFEST_HASH"] = self_h["sha256"]
-    ev["MANIFEST_BYTES"] = self_h["bytes"]
-
-    detached_match = False
-    if DETACHED_PATH.exists():
-        detached = DETACHED_PATH.read_text(encoding="utf-8")
-        detached_match = self_h["sha256"] in detached
-    ev["detached_match"] = detached_match
-
-    man_text = MANIFEST_PATH.read_text(encoding="utf-8")
-    derived = compute_all()
-
-    comp = {i["file"]: (i["sha256"] in man_text) for i in derived["components"].values()}
-    ev["component_binding_no_drift"] = all(comp.values())
-    ev["component_drift"] = {k: v for k, v in comp.items() if not v}
-
-    drivers = {name: (hash_file(HARNESS_DIR / name) in man_text) for name in BOUND_DRIVERS}
-    ev["driver_binding_no_drift"] = all(drivers.values())
-    ev["driver_drift"] = {k: v for k, v in drivers.items() if not v}
-
-    # (d)(e) actual file hashes vs the frozen constants in the MANIFEST text
-    spec_actual = _sha256_file(SPEC_PATH) if (SPEC_PATH and SPEC_PATH.exists()) else None
-    prereg_actual = _sha256_file(PREREG_PATH) if (PREREG_PATH and PREREG_PATH.exists()) else None
-    ev["SPEC_FILE_HASH"] = spec_actual
-    ev["PREREG_FILE_HASH"] = prereg_actual
-    ev["spec_file_matches_frozen"] = bool(spec_actual and spec_actual in man_text)
-    ev["prereg_file_matches_frozen"] = bool(prereg_actual and prereg_actual in man_text)
-
-    # (f) fixture-id set
-    from fixtures import FIXTURES
-
-    run_ids = set(FIXTURES.keys())
-    ev["fixture_set_ok"] = run_ids == set(REQUIRED_FIXTURE_IDS)
-    ev["fixture_set"] = sorted(run_ids)
-
-    ok = all([
-        detached_match,
-        ev["component_binding_no_drift"],
-        ev["driver_binding_no_drift"],
-        ev["spec_file_matches_frozen"],
-        ev["prereg_file_matches_frozen"],
-        ev["fixture_set_ok"],
-    ])
+    contract_hash = qb.sha256_file(HARNESS_DIR / "fixture_contracts.py")
+    ev, ok = qb.verify(
+        harness_dir=HARNESS_DIR,
+        manifest_path=MANIFEST_PATH,
+        detached_path=DETACHED_PATH,
+        spec_path=SPEC_PATH,
+        prereg_path=PREREG_PATH,
+        fixture_contract_hash=contract_hash,
+    )
+    # fixture-id set (completeness) still checked here
+    ev["fixture_set_ok"] = (set(FROZEN_ORACLES.keys()) == set(REQUIRED_FIXTURE_IDS))
+    ok = ok and ev["fixture_set_ok"]
     return ev, ok
 
 
@@ -141,20 +112,21 @@ def main() -> int:
         print("SCIENTIFIC_EXECUTION MAY NOT START")
     print()
 
-    # ---- run fixtures ----
+    # ---- run fixtures; compare against the SINGLE frozen oracle source ----
     results = run_all()
     all_ok = True
     ledgers = []
     for r in results:
-        ok = r.oracle_match
+        oracle = FROZEN_ORACLES[r.fixture_id]
+        ok = _subset_eq(oracle, r.actual)
         all_ok &= ok
         print(f"[{ 'ORACLE MATCH' if ok else 'ORACLE MISMATCH' }] {r.fixture_id}")
         if not ok:
-            print(f"    expected = {r.expected}")
-            print(f"    actual   = {r.actual}")
+            print(f"    frozen oracle = {oracle}")
+            print(f"    actual        = {r.actual}")
         ledgers.append({
             "fixture_id": r.fixture_id,
-            "expected": r.expected,
+            "frozen_oracle": oracle,
             "actual": r.actual,
             "oracle_match": ok,
             "ledger": dataclasses.asdict(r.ledger),
@@ -166,7 +138,7 @@ def main() -> int:
                        and set(ran_ids) == set(REQUIRED_FIXTURE_IDS))
 
     print("\n" + "=" * 72)
-    print(f"fixtures: {sum(1 for r in results if r.oracle_match)}/{len(results)} oracle match")
+    print(f"fixtures: {sum(1 for x in ledgers if x['oracle_match'])}/{len(results)} oracle match")
     status = "PASS" if (all_ok and frozen_ok and completeness_ok) else "FAIL"
     print(f"KNOWN_ANSWER_SUITE = {status}")
     if frozen_ok and completeness_ok:
@@ -186,7 +158,7 @@ def main() -> int:
         "preflight_ok": frozen_ok,
         "fixture_completeness_ok": completeness_ok,
         "fixtures_total": len(results),
-        "fixtures_oracle_match": sum(1 for r in results if r.oracle_match),
+        "fixtures_oracle_match": sum(1 for x in ledgers if x["oracle_match"]),
         "known_answer_suite": status,
         "per_fixture": ledgers,
     }

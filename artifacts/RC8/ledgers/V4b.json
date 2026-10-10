@@ -1,0 +1,28 @@
+{
+  "fixture_id": "V4b",
+  "frozen_oracle": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "actual": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V4b",
+    "attempted_scope": {},
+    "observations": {},
+    "pre": {},
+    "post": {},
+    "gates": {},
+    "l2": {},
+    "notes": [
+      "capability_surface=('write',); separable=False"
+    ]
+  }
+}

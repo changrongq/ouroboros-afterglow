@@ -1,0 +1,40 @@
+{
+  "fixture_id": "V0b",
+  "expected": {
+    "L1": "UNRESOLVED"
+  },
+  "actual": {
+    "L1": "UNRESOLVED",
+    "PRE_RESET_CHANGE_CLASS": "NOT_ESTABLISHED",
+    "C2": "NOT_ASSESSED",
+    "C3": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V0b",
+    "attempted_scope": {
+      "pre_reset_C1": true,
+      "pre_reset_C2": false,
+      "pre_reset_C3": false,
+      "post_reset": false
+    },
+    "per_member": {
+      "A1": {
+        "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+        "arm_B_digest": "d98b4c95d89a83c72b8b3ef5e42fc38ceeb3b48d405166b2618472bd3f801f2e"
+      }
+    },
+    "pre": {
+      "L1": "UNRESOLVED",
+      "change_class": "NOT_ESTABLISHED",
+      "h": 1,
+      "reason": "h=1: falls inside the frozen indeterminate region"
+    },
+    "post": {},
+    "reset": {},
+    "l2": {},
+    "notes": [
+      "B writes only first byte -> h=1 -> indeterminate region"
+    ]
+  }
+}

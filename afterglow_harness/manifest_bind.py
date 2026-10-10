@@ -92,6 +92,14 @@ COMPONENT_FILES = {
     "reset": "reset.py",
     "evaluator": "evaluator.py",
     "fixtures": "fixtures.py",
+    # RC8: qualification-side runtime modules are now bound too.
+    "fixture_contracts": "fixture_contracts.py",
+    "gates": "gates.py",
+    "qualification_binding": "qualification_binding.py",
+    "run_known_answer_suite": "run_known_answer_suite.py",
+    "verify_manifest_binding": "verify_manifest_binding.py",
+    "adversarial_regression": "adversarial_regression.py",
+    "recompute_from_ledger": "recompute_from_ledger.py",
 }
 
 #: Driven by harness_constants (single source of truth). Imported lazily to

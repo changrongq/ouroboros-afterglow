@@ -1,0 +1,40 @@
+{
+  "fixture_id": "V0",
+  "expected": {
+    "L1": "FAIL"
+  },
+  "actual": {
+    "L1": "FAIL",
+    "PRE_RESET_CHANGE_CLASS": "NOT_ESTABLISHED",
+    "C2": "NOT_ASSESSED",
+    "C3": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V0",
+    "attempted_scope": {
+      "pre_reset_C1": true,
+      "pre_reset_C2": false,
+      "pre_reset_C3": false,
+      "post_reset": false
+    },
+    "per_member": {
+      "A1": {
+        "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+        "arm_B_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+      }
+    },
+    "pre": {
+      "L1": "FAIL",
+      "change_class": "NOT_ESTABLISHED",
+      "h": 0,
+      "reason": "h=0: determinate negative (no registered change)"
+    },
+    "post": {},
+    "reset": {},
+    "l2": {},
+    "notes": [
+      "B invokes W_storage with preregistered NULL (on-invoked, zero-effect)"
+    ]
+  }
+}

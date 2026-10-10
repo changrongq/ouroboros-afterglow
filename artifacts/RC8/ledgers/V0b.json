@@ -1,0 +1,44 @@
+{
+  "fixture_id": "V0b",
+  "frozen_oracle": {
+    "L1": "UNRESOLVED"
+  },
+  "actual": {
+    "L1": "UNRESOLVED",
+    "PRE_RESET_CHANGE_CLASS": "NOT_ESTABLISHED",
+    "C2": "NOT_ASSESSED",
+    "C3": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V0b",
+    "attempted_scope": {},
+    "observations": {
+      "A": {
+        "S_write": {
+          "literal": "00000000000000000000000000000000",
+          "q_raw": "0000000000000000",
+          "q": 0,
+          "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+        }
+      },
+      "B": {
+        "S_write": {
+          "literal": "63000000000000000000000000000000",
+          "q_raw": "0000000000000000",
+          "q": 0,
+          "digest": "d98b4c95d89a83c72b8b3ef5e42fc38ceeb3b48d405166b2618472bd3f801f2e"
+        }
+      }
+    },
+    "pre": {
+      "L1": "UNRESOLVED",
+      "change_class": "NOT_ESTABLISHED",
+      "h": 1
+    },
+    "post": {},
+    "gates": {},
+    "l2": {},
+    "notes": []
+  }
+}

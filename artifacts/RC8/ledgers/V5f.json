@@ -1,0 +1,490 @@
+{
+  "fixture_id": "V5f",
+  "frozen_oracle": {
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C1",
+    "post_C2": "NOT_ASSESSED",
+    "post_C3": "NOT_ASSESSED",
+    "j_timing_ok": true,
+    "reset_valid": true
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "post_C3": "NOT_ASSESSED",
+    "post_C1_ok": true,
+    "reset_valid": true,
+    "j_timing_ok": true,
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C1",
+    "post_C2": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5f",
+    "attempted_scope": {
+      "attempted": "post_C1_only"
+    },
+    "observations": {
+      "A1": {
+        "member": "A1",
+        "content_class": "L",
+        "payload": "636c733d4c3b73616d706c653d30313b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            },
+            "J": "NOT_APPLICABLE",
+            "reset_witness": {
+              "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            },
+            "reset_witness": {
+              "handoff_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+              "restored_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            },
+            "reset_witness": {
+              "handoff_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+              "restored_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+            }
+          }
+        },
+        "reader_witness": {
+          "raw_q_hex": "0000000000000000",
+          "raw_q": 0,
+          "affine_u0": {
+            "num": 0,
+            "den": 1
+          },
+          "affine_u2": {
+            "num": 2,
+            "den": 1
+          },
+          "literal_u0": 1377
+        }
+      },
+      "A2": {
+        "member": "A2",
+        "content_class": "L",
+        "payload": "636c733d4c3b73616d706c653d30323b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            },
+            "J": "NOT_APPLICABLE",
+            "reset_witness": {
+              "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            },
+            "reset_witness": {
+              "handoff_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+              "restored_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            },
+            "reset_witness": {
+              "handoff_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+              "restored_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b"
+            }
+          }
+        },
+        "reader_witness": {
+          "raw_q_hex": "0000000000000000",
+          "raw_q": 0,
+          "affine_u0": {
+            "num": 0,
+            "den": 1
+          },
+          "affine_u2": {
+            "num": 2,
+            "den": 1
+          },
+          "literal_u0": 1378
+        }
+      },
+      "B1": {
+        "member": "B1",
+        "content_class": "R",
+        "payload": "636c733d523b73616d706c653d30313b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            },
+            "J": "NOT_APPLICABLE",
+            "reset_witness": {
+              "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            },
+            "reset_witness": {
+              "handoff_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+              "restored_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            },
+            "reset_witness": {
+              "handoff_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+              "restored_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270"
+            }
+          }
+        },
+        "reader_witness": {
+          "raw_q_hex": "0000000000000000",
+          "raw_q": 0,
+          "affine_u0": {
+            "num": 0,
+            "den": 1
+          },
+          "affine_u2": {
+            "num": 2,
+            "den": 1
+          },
+          "literal_u0": 1383
+        }
+      },
+      "B2": {
+        "member": "B2",
+        "content_class": "R",
+        "payload": "636c733d523b73616d706c653d30323b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            },
+            "J": "NOT_APPLICABLE",
+            "reset_witness": {
+              "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            },
+            "reset_witness": {
+              "handoff_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+              "restored_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            },
+            "J": "IDENTITY",
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            },
+            "reset_witness": {
+              "handoff_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+              "restored_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+              "reset_valid": true,
+              "reason": "RESET_VALID: clear+preserve+access all verified",
+              "clear_access": "LOGICAL_DECLARATION"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000",
+              "q": 0,
+              "digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f"
+            }
+          }
+        },
+        "reader_witness": {
+          "raw_q_hex": "0000000000000000",
+          "raw_q": 0,
+          "affine_u0": {
+            "num": 0,
+            "den": 1
+          },
+          "affine_u2": {
+            "num": 2,
+            "den": 1
+          },
+          "literal_u0": 1384
+        }
+      }
+    },
+    "pre": {
+      "pre_class": "C1",
+      "c2": "NOT_ESTABLISHED",
+      "c3": "NOT_ASSESSED"
+    },
+    "post": {
+      "post_c1_ok": true,
+      "c3_post": "NOT_ASSESSED",
+      "l2": "PASS",
+      "supported": "C1"
+    },
+    "gates": {
+      "j_timing_ok": true,
+      "reset_valid": true
+    },
+    "l2": {
+      "result": "PASS",
+      "POST_RESET_SUPPORTED_CLASS": "C1"
+    },
+    "notes": []
+  }
+}

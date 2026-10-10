@@ -2,8 +2,8 @@
 # (detached: NOT written into the MANIFEST, to avoid self-reference)
 
 MANIFEST_FILE              = AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-MANIFEST_BYTES             = 23700
-IMPLEMENTATION_BINDING_MANIFEST_HASH = c61d8aa78cd55054c4c17ed280dcc14376829e6517e03563532834f23931d9b0
+MANIFEST_BYTES             = 25165
+IMPLEMENTATION_BINDING_MANIFEST_HASH = 61cbfd9f78e545ef5bc8f0bdd87fd10064721dea06d0de879537a2e6ca5a99ed
 HASH_ALGORITHM             = SHA-256 over exact file bytes
 
 REFERENCE_HARNESS_SPEC_HASH = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
@@ -16,14 +16,21 @@ DISCRIMINATION_RULESET_HASH = 770fb3ec33a7f3976ed6dfc511419601f515956b638ceba47e
 CONTENT_CLASS_MANIFEST_HASH = 27616f8b1f8b0bdcb82c0c1aeb6cb6d78c6d038c96817776cf96f0f16600c75a
 
 # Component source hashes:
+  adversarial_regression.py 98a4cdb06a22dd27de7e6841f4629b1c729c29e0be916071089e65a53737ada7
   evaluator.py             fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-  fixtures.py              a0fcc641a9b7635c07c196c8709301f15ff8af4ced6a31d8f49e6b6608e892ce
+  fixture_contracts.py     a913e37cc972cc7b56f765444080cf16c0a715bee3e9e3309d3d488c02316ad0
+  fixtures.py              6c432cf09fea063b19f57755a943bf849674f415f3ab31acaa3d269468c6d658
+  gates.py                 fc7aaaedb7d85c6c3d20a496284092ded327a9b3265d054a6757b4e4569c7047
   harness_constants.py     9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
   observer.py              82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
   perturbation_j.py        28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
+  qualification_binding.py 84086eda44476687370f5dcb86c610438084e83eef7b41c10aee2f6de9f17907
   readers.py               2180f0d9747a4e1c21178f1d24244723538153ca126138163b0778813231f2b2
+  recompute_from_ledger.py 6b4e528aede270b33bed1e939e10094f0b335650f2e3fa85740043f9510ac6b3
   reset.py                 9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
+  run_known_answer_suite.py ea82a4c79fb4c11d7cd852024bd0fea56963bb40c5b509b38aa30a6a55b3fa64
   storage.py               76c376c6a413f47c8c68a6340f67b62d9ab2ba62c6807571600836ca7a59303b
+  verify_manifest_binding.py cafc29b8c5ade4a944ecd1c3051d639eb2e7e4ea465ad551081c9769aa3a1b37
   writers.py               08f7d968bdb4aa37c206e169cabbb08b9616b0990c0e758e7958c93c6b5b690c
 
 # Residual TO_IMPLEMENT in manifest (must be 0):

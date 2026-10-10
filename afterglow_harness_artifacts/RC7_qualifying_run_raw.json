@@ -1,0 +1,1263 @@
+{
+  "suite": "KNOWN_ANSWER_SUITE",
+  "phase": "PHASE_A_HARNESS_VALIDATION_EXECUTION",
+  "scientific_claim_eligibility": "NONE",
+  "preflight_captured_before_first_fixture": {
+    "MANIFEST_HASH": "c61d8aa78cd55054c4c17ed280dcc14376829e6517e03563532834f23931d9b0",
+    "MANIFEST_BYTES": 23700,
+    "detached_match": true,
+    "component_binding_no_drift": true,
+    "component_drift": {},
+    "driver_binding_no_drift": true,
+    "driver_drift": {},
+    "SPEC_FILE_HASH": "b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33",
+    "PREREG_FILE_HASH": "ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4",
+    "spec_file_matches_frozen": true,
+    "prereg_file_matches_frozen": true,
+    "fixture_set_ok": true,
+    "fixture_set": [
+      "V0",
+      "V0b",
+      "V1",
+      "V2",
+      "V3",
+      "V4.1",
+      "V4b",
+      "V5a",
+      "V5b",
+      "V5c",
+      "V5d",
+      "V5e",
+      "V5f"
+    ]
+  },
+  "preflight_ok": true,
+  "fixture_completeness_ok": true,
+  "fixtures_total": 13,
+  "fixtures_oracle_match": 13,
+  "known_answer_suite": "PASS",
+  "per_fixture": [
+    {
+      "fixture_id": "V0",
+      "expected": {
+        "L1": "FAIL"
+      },
+      "actual": {
+        "L1": "FAIL",
+        "PRE_RESET_CHANGE_CLASS": "NOT_ESTABLISHED",
+        "C2": "NOT_ASSESSED",
+        "C3": "NOT_ASSESSED"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V0",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": false,
+          "pre_reset_C3": false,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "arm_B_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+          }
+        },
+        "pre": {
+          "L1": "FAIL",
+          "change_class": "NOT_ESTABLISHED",
+          "h": 0,
+          "reason": "h=0: determinate negative (no registered change)"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "B invokes W_storage with preregistered NULL (on-invoked, zero-effect)"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V0b",
+      "expected": {
+        "L1": "UNRESOLVED"
+      },
+      "actual": {
+        "L1": "UNRESOLVED",
+        "PRE_RESET_CHANGE_CLASS": "NOT_ESTABLISHED",
+        "C2": "NOT_ASSESSED",
+        "C3": "NOT_ASSESSED"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V0b",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": false,
+          "pre_reset_C3": false,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "arm_B_digest": "d98b4c95d89a83c72b8b3ef5e42fc38ceeb3b48d405166b2618472bd3f801f2e"
+          }
+        },
+        "pre": {
+          "L1": "UNRESOLVED",
+          "change_class": "NOT_ESTABLISHED",
+          "h": 1,
+          "reason": "h=1: falls inside the frozen indeterminate region"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "B writes only first byte -> h=1 -> indeterminate region"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V1",
+      "expected": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "C2": "NOT_ASSESSED",
+        "C3": "NOT_ASSESSED"
+      },
+      "actual": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "C2": "NOT_ASSESSED",
+        "C3": "NOT_ASSESSED"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V1",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": false,
+          "pre_reset_C3": false,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "arm_B_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+          }
+        },
+        "pre": {
+          "L1": "PASS",
+          "change_class": "C1",
+          "h": 16,
+          "reason": "L1 PASS (h>=2) and B literal matches registered payload -> C1 established"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "architecture HAS higher-class capability, C2/C3 NOT attempted"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V2",
+      "expected": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C2",
+        "C3": "NOT_ESTABLISHED"
+      },
+      "actual": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C2",
+        "C3": "NOT_ESTABLISHED"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V2",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "1",
+            "c2_result": "ATTRIBUTED"
+          },
+          "A2": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "1",
+            "c2_result": "ATTRIBUTED"
+          },
+          "B1": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "1",
+            "c2_result": "ATTRIBUTED"
+          },
+          "B2": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "1",
+            "c2_result": "ATTRIBUTED"
+          }
+        },
+        "pre": {
+          "L1": "PASS",
+          "PRE_RESET_CHANGE_CLASS": "C2"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "constant extra; all real per-member T equal -> cross-class fails"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V3",
+      "expected": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "C3": "C3"
+      },
+      "actual": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "C3": "C3"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V3",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "1",
+            "c2_result": "ATTRIBUTED"
+          },
+          "A2": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "1",
+            "c2_result": "ATTRIBUTED"
+          },
+          "B1": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "-1",
+            "c2_result": "ATTRIBUTED"
+          },
+          "B2": {
+            "l1_result": "PASS",
+            "l1_change_class": "C1",
+            "h": 16,
+            "T": "-1",
+            "c2_result": "ATTRIBUTED"
+          }
+        },
+        "pre": {
+          "L1": "PASS",
+          "PRE_RESET_CHANGE_CLASS": "C3"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "content-conditioned extra; real per-member T split by class"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V4.1",
+      "expected": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "C2_ATTEMPT": "INVALID",
+        "INVALIDITY_CODE": "CAUSAL_CONTRAST_RULE_MISSING",
+        "C3": "NOT_ASSESSED",
+        "L2": "N/A"
+      },
+      "actual": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "C3": "NOT_ASSESSED",
+        "C2_ATTEMPT": "INVALID",
+        "INVALIDITY_CODE": "CAUSAL_CONTRAST_RULE_MISSING",
+        "L2": "N/A"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V4.1",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": false,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "arm_B_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+          }
+        },
+        "pre": {
+          "L1": "PASS",
+          "change_class": "C1",
+          "h": 16,
+          "reason": "L1 PASS (h>=2) and B literal matches registered payload -> C1 established"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "attempted_scope = PRE_RESET/C2; post_reset=false => L2 = N/A"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V4b",
+      "expected": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+        "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+      },
+      "actual": {
+        "L1": "PASS",
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+        "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V4b",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": false,
+          "pre_reset_C3": false,
+          "post_reset": false
+        },
+        "per_member": {
+          "A1": {
+            "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "arm_B_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+          }
+        },
+        "pre": {
+          "L1": "PASS",
+          "change_class": "C1",
+          "h": 16,
+          "reason": "L1 PASS (h>=2) and B literal matches registered payload -> C1 established"
+        },
+        "post": {},
+        "reset": {},
+        "l2": {},
+        "notes": [
+          "isolated wrapper exposes only combined_write(); no separable W_extra ON/OFF method (has_split=False) -> C2/C3 ARCHITECTURALLY_NOT_IDENTIFIABLE"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V5a",
+      "expected": {
+        "L2": "PASS",
+        "POST_RESET_SUPPORTED_CLASS": "C3"
+      },
+      "actual": {
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "post_C3": "C3",
+        "post_C1_ok": true,
+        "reset_valid": true,
+        "j_timing_ok": true,
+        "L2": "PASS",
+        "POST_RESET_SUPPORTED_CLASS": "C3"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V5a",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": true
+        },
+        "per_member": {
+          "A1": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "j_after_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "handoff_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+            "restored_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1377,
+              "2": 1379
+            }
+          },
+          "A2": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "j_after_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "handoff_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+            "restored_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1378,
+              "2": 1380
+            }
+          },
+          "B1": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "-1",
+            "T_restored": "-1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "j_after_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "handoff_digest": "ee93235cc133beebc4c7be53701a28ebbff50805b20552bb03da71b9cf24c6ce",
+            "restored_digest": "ee93235cc133beebc4c7be53701a28ebbff50805b20552bb03da71b9cf24c6ce",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1383,
+              "2": 1385
+            }
+          },
+          "B2": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "-1",
+            "T_restored": "-1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "j_after_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "handoff_digest": "b3cf49d53039030ff9de102e79b1f9dd95d6905b07e1b6caf78a0fe4fcf058fb",
+            "restored_digest": "b3cf49d53039030ff9de102e79b1f9dd95d6905b07e1b6caf78a0fe4fcf058fb",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1384,
+              "2": 1386
+            }
+          }
+        },
+        "pre": {
+          "c3": "C3"
+        },
+        "post": {
+          "c3": "C3",
+          "c1_payload_ok": true
+        },
+        "reset": {
+          "reset_valid": true,
+          "reason": "RESET_VALID_PRESERVE_ONLY",
+          "arms_reset_per_member": [
+            "A",
+            "B",
+            "C"
+          ],
+          "per_member_reset_ok": {
+            "A1": true,
+            "A2": true,
+            "B1": true,
+            "B2": true
+          }
+        },
+        "l2": {
+          "result": "PASS",
+          "POST_RESET_SUPPORTED_CLASS": "C3"
+        },
+        "notes": [
+          "J=IDENTITY -> post C3 re-established from post-reset reads"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V5b",
+      "expected": {
+        "L2": "PASS",
+        "POST_RESET_SUPPORTED_CLASS": "C2",
+        "post_C3": "NOT_ESTABLISHED"
+      },
+      "actual": {
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "post_C3": "NOT_ESTABLISHED",
+        "post_C1_ok": true,
+        "reset_valid": true,
+        "j_timing_ok": true,
+        "L2": "PASS",
+        "POST_RESET_SUPPORTED_CLASS": "C2"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V5b",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": true
+        },
+        "per_member": {
+          "A1": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "j_after_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "handoff_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+            "restored_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1377,
+              "2": 1379
+            }
+          },
+          "A2": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "j_after_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "handoff_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+            "restored_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1378,
+              "2": 1380
+            }
+          },
+          "B1": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "j_after_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "handoff_digest": "12c1d14ec1a3fde758e1f60ba177efd178281106cafc75ff17fa5ba26ddb704f",
+            "restored_digest": "12c1d14ec1a3fde758e1f60ba177efd178281106cafc75ff17fa5ba26ddb704f",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1383,
+              "2": 1385
+            }
+          },
+          "B2": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "j_after_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "handoff_digest": "18f3f7bd2bff3527e63189c5dbfb8aa19de9b6fec9e9484cba090fd284be878a",
+            "restored_digest": "18f3f7bd2bff3527e63189c5dbfb8aa19de9b6fec9e9484cba090fd284be878a",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1384,
+              "2": 1386
+            }
+          }
+        },
+        "pre": {
+          "c3": "NOT_ESTABLISHED"
+        },
+        "post": {
+          "c3": "NOT_ESTABLISHED",
+          "c1_payload_ok": true
+        },
+        "reset": {
+          "reset_valid": true,
+          "reason": "RESET_VALID_PRESERVE_ONLY",
+          "arms_reset_per_member": [
+            "A",
+            "B",
+            "C"
+          ],
+          "per_member_reset_ok": {
+            "A1": true,
+            "A2": true,
+            "B1": true,
+            "B2": true
+          }
+        },
+        "l2": {
+          "result": "PASS",
+          "POST_RESET_SUPPORTED_CLASS": "C2"
+        },
+        "notes": [
+          "J=COLLAPSE_SIGN -> post T collapse -> C3 NOT_ESTABLISHED, C2 recovered"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V5c",
+      "expected": {
+        "L2": "INVALID",
+        "reset_valid": false
+      },
+      "actual": {
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "post_C3": "C3",
+        "post_C1_ok": true,
+        "reset_valid": false,
+        "j_timing_ok": true,
+        "L2": "INVALID",
+        "POST_RESET_SUPPORTED_CLASS": null
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V5c",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": true
+        },
+        "per_member": {
+          "A1": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": false,
+            "reset_reason": "RESET_INVALID: preserved registered state changed across reset",
+            "j_timing_valid": true,
+            "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "j_after_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "handoff_digest": "9c48671bb7250fd465c5486f7243763b87cebdfc60c99ae84008bf09d670ecfa",
+            "restored_digest": "1dd5e95e01fc4a9bf02c93c16f8b3491f0e85439b102a52b01e7be4f2d07f015",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1377,
+              "2": 1379
+            }
+          },
+          "A2": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1",
+            "T_restored": "1",
+            "literal_restored_ok": true,
+            "reset_ok": false,
+            "reset_reason": "RESET_INVALID: preserved registered state changed across reset",
+            "j_timing_valid": true,
+            "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "j_after_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "handoff_digest": "a41064a2edc1dfe80b1cc165c5b528966f3f9655a987e37af574615d96d2548f",
+            "restored_digest": "2a9a9861036a65de77fb12dfc2dd61679b1b38015335079872b5324b69a7533d",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1378,
+              "2": 1380
+            }
+          },
+          "B1": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "-1",
+            "T_restored": "-1",
+            "literal_restored_ok": true,
+            "reset_ok": false,
+            "reset_reason": "RESET_INVALID: preserved registered state changed across reset",
+            "j_timing_valid": true,
+            "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "j_after_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "handoff_digest": "ee93235cc133beebc4c7be53701a28ebbff50805b20552bb03da71b9cf24c6ce",
+            "restored_digest": "529624d12f4a43eb5b351ab7aca21cdff5ee2fc833a006bc3178d33afab55420",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1383,
+              "2": 1385
+            }
+          },
+          "B2": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "-1",
+            "T_restored": "-1",
+            "literal_restored_ok": true,
+            "reset_ok": false,
+            "reset_reason": "RESET_INVALID: preserved registered state changed across reset",
+            "j_timing_valid": true,
+            "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "j_after_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "handoff_digest": "b3cf49d53039030ff9de102e79b1f9dd95d6905b07e1b6caf78a0fe4fcf058fb",
+            "restored_digest": "d3cb56a3146bb88667a8a259958a4f33559d1b50a6ac7aaf503115ac39fe2e0d",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 1384,
+              "2": 1386
+            }
+          }
+        },
+        "pre": {
+          "c3": "C3"
+        },
+        "post": {
+          "c3": "C3",
+          "c1_payload_ok": true
+        },
+        "reset": {
+          "reset_valid": false,
+          "reason": "RESET_INVALID: preserved registered state changed across reset",
+          "arms_reset_per_member": [
+            "A",
+            "B",
+            "C"
+          ],
+          "per_member_reset_ok": {
+            "A1": false,
+            "A2": false,
+            "B1": false,
+            "B2": false
+          }
+        },
+        "l2": {
+          "result": "INVALID",
+          "POST_RESET_SUPPORTED_CLASS": null
+        },
+        "notes": [
+          "preserve-side reset fault AFTER handoff -> reset INVALID; pre-reset C3 kept"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V5d",
+      "expected": {
+        "L2": "FAIL"
+      },
+      "actual": {
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "post_C3": "NOT_ESTABLISHED",
+        "post_C1_ok": false,
+        "reset_valid": true,
+        "j_timing_ok": true,
+        "L2": "FAIL",
+        "POST_RESET_SUPPORTED_CLASS": null
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V5d",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": true
+        },
+        "per_member": {
+          "A1": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "0",
+            "T_restored": "0",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          },
+          "A2": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "0",
+            "T_restored": "0",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          },
+          "B1": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "0",
+            "T_restored": "0",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          },
+          "B2": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "0",
+            "T_restored": "0",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "restored_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          }
+        },
+        "pre": {
+          "c3": "NOT_ESTABLISHED"
+        },
+        "post": {
+          "c3": "NOT_ESTABLISHED",
+          "c1_payload_ok": false
+        },
+        "reset": {
+          "reset_valid": true,
+          "reason": "RESET_VALID_PRESERVE_ONLY",
+          "arms_reset_per_member": [
+            "A",
+            "B",
+            "C"
+          ],
+          "per_member_reset_ok": {
+            "A1": true,
+            "A2": true,
+            "B1": true,
+            "B2": true
+          }
+        },
+        "l2": {
+          "result": "FAIL",
+          "POST_RESET_SUPPORTED_CLASS": null
+        },
+        "notes": [
+          "J=ERASE_EFFECT; J changed the evidence, not reset"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V5e",
+      "expected": {
+        "L2": "UNRESOLVED"
+      },
+      "actual": {
+        "PRE_RESET_CHANGE_CLASS": "C3",
+        "post_C3": "NOT_ESTABLISHED",
+        "post_C1_ok": false,
+        "reset_valid": true,
+        "j_timing_ok": true,
+        "L2": "UNRESOLVED",
+        "POST_RESET_SUPPORTED_CLASS": null
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V5e",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": true,
+          "pre_reset_C3": true,
+          "post_reset": true
+        },
+        "per_member": {
+          "A1": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1/2",
+            "T_restored": "1/2",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "85526ba79728a470972be92942ef4de212630c9368703cb4ab3cb42dece95912",
+            "restored_digest": "85526ba79728a470972be92942ef4de212630c9368703cb4ab3cb42dece95912",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          },
+          "A2": {
+            "content_class": "L",
+            "T_write": "1",
+            "T_j_after": "1/2",
+            "T_restored": "1/2",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "20da04ea57f1165292ce3213df754220866c2a933daa34c6cbbbc5b25cdef66b",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "85526ba79728a470972be92942ef4de212630c9368703cb4ab3cb42dece95912",
+            "restored_digest": "85526ba79728a470972be92942ef4de212630c9368703cb4ab3cb42dece95912",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          },
+          "B1": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "-1/2",
+            "T_restored": "-1/2",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "f06c5103be8cf6c2af655f7bb4287ca7ebe4c994d949133b4788aecff3d7c270",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "0fba003e5d62756059b291c7aeefed2ba91435b29c4b42468300ce0f4554f719",
+            "restored_digest": "0fba003e5d62756059b291c7aeefed2ba91435b29c4b42468300ce0f4554f719",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          },
+          "B2": {
+            "content_class": "R",
+            "T_write": "-1",
+            "T_j_after": "-1/2",
+            "T_restored": "-1/2",
+            "literal_restored_ok": false,
+            "reset_ok": true,
+            "reset_reason": "RESET_VALID_PRESERVE_ONLY",
+            "j_timing_valid": true,
+            "s_write_digest": "96a04b19b126381fff2939419a2b3bd7a95d078b6382416838c049dd39cdc81f",
+            "j_after_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+            "handoff_digest": "0fba003e5d62756059b291c7aeefed2ba91435b29c4b42468300ce0f4554f719",
+            "restored_digest": "0fba003e5d62756059b291c7aeefed2ba91435b29c4b42468300ce0f4554f719",
+            "read_afterglow": {
+              "0": {
+                "num": 0,
+                "den": 1
+              },
+              "2": {
+                "num": 2,
+                "den": 1
+              }
+            },
+            "read_literal": {
+              "0": 0,
+              "2": 2
+            }
+          }
+        },
+        "pre": {
+          "c3": "NOT_ESTABLISHED"
+        },
+        "post": {
+          "c3": "NOT_ESTABLISHED",
+          "c1_payload_ok": false
+        },
+        "reset": {
+          "reset_valid": true,
+          "reason": "RESET_VALID_PRESERVE_ONLY",
+          "arms_reset_per_member": [
+            "A",
+            "B",
+            "C"
+          ],
+          "per_member_reset_ok": {
+            "A1": true,
+            "A2": true,
+            "B1": true,
+            "B2": true
+          }
+        },
+        "l2": {
+          "result": "UNRESOLVED",
+          "POST_RESET_SUPPORTED_CLASS": null
+        },
+        "notes": [
+          "J=HALVE; post T in 0<|T|<1 -> UNRESOLVED (BD-53 rule)"
+        ]
+      }
+    },
+    {
+      "fixture_id": "V5f",
+      "expected": {
+        "L2": "PASS",
+        "POST_RESET_SUPPORTED_CLASS": "C1",
+        "post_C2": "NOT_ASSESSED",
+        "post_C3": "NOT_ASSESSED"
+      },
+      "actual": {
+        "PRE_RESET_CHANGE_CLASS": "C1",
+        "post_C2": "NOT_ASSESSED",
+        "post_C3": "NOT_ASSESSED",
+        "j_timing_ok": true,
+        "L2": "PASS",
+        "POST_RESET_SUPPORTED_CLASS": "C1"
+      },
+      "oracle_match": true,
+      "ledger": {
+        "fixture_id": "V5f",
+        "attempted_scope": {
+          "pre_reset_C1": true,
+          "pre_reset_C2": false,
+          "pre_reset_C3": false,
+          "post_reset": true
+        },
+        "per_member": {},
+        "pre": {
+          "L1": "PASS",
+          "change_class": "C1"
+        },
+        "post": {},
+        "reset": {
+          "reset_valid": true,
+          "reason": "RESET_VALID_PRESERVE_ONLY (clear/access = LOGICAL declaration, not OS-verified)"
+        },
+        "l2": {},
+        "notes": []
+      }
+    }
+  ]
+}

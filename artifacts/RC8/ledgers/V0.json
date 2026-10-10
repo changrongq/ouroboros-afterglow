@@ -1,0 +1,44 @@
+{
+  "fixture_id": "V0",
+  "frozen_oracle": {
+    "L1": "FAIL"
+  },
+  "actual": {
+    "L1": "FAIL",
+    "PRE_RESET_CHANGE_CLASS": "NOT_ESTABLISHED",
+    "C2": "NOT_ASSESSED",
+    "C3": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V0",
+    "attempted_scope": {},
+    "observations": {
+      "A": {
+        "S_write": {
+          "literal": "00000000000000000000000000000000",
+          "q_raw": "0000000000000000",
+          "q": 0,
+          "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+        }
+      },
+      "B": {
+        "S_write": {
+          "literal": "00000000000000000000000000000000",
+          "q_raw": "0000000000000000",
+          "q": 0,
+          "digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+        }
+      }
+    },
+    "pre": {
+      "L1": "FAIL",
+      "change_class": "NOT_ESTABLISHED",
+      "h": 0
+    },
+    "post": {},
+    "gates": {},
+    "l2": {},
+    "notes": []
+  }
+}

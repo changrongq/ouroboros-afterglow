@@ -1,0 +1,43 @@
+{
+  "fixture_id": "V4b",
+  "expected": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "actual": {
+    "L1": "PASS",
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "C2": "ARCHITECTURALLY_NOT_IDENTIFIABLE",
+    "C3": "ARCHITECTURALLY_NOT_IDENTIFIABLE"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V4b",
+    "attempted_scope": {
+      "pre_reset_C1": true,
+      "pre_reset_C2": false,
+      "pre_reset_C3": false,
+      "post_reset": false
+    },
+    "per_member": {
+      "A1": {
+        "arm_A_digest": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+        "arm_B_digest": "7961d35991e7049c6eeccf5a829a19689f1f79a1e8bd9ce5a106002d04d14fe9"
+      }
+    },
+    "pre": {
+      "L1": "PASS",
+      "change_class": "C1",
+      "h": 16,
+      "reason": "L1 PASS (h>=2) and B literal matches registered payload -> C1 established"
+    },
+    "post": {},
+    "reset": {},
+    "l2": {},
+    "notes": [
+      "isolated wrapper exposes only combined_write(); no separable W_extra ON/OFF method (has_split=False) -> C2/C3 ARCHITECTURALLY_NOT_IDENTIFIABLE"
+    ]
+  }
+}
