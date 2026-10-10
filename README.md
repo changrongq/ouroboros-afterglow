@@ -31,51 +31,48 @@ README.md / VERIFY.md / .gitattributes / .gitignore
 
 ---
 
-## ⚠️ RC7 STATUS — FAILED QUALIFICATION / RETAINED FOR AUDIT
+## Qualification lineage
 
 ```text
-RC7 = NOT CLOSED
-RC7 QUALIFICATION = FAIL / NON-QUALIFYING
-REASON = ADVERSARIAL FALSE-PASS DEFECTS (independent review reproduced)
-AUTHORITATIVE_FOR_SCIENTIFIC_EXECUTION = NO
+RC7 = FAILED QUALIFICATION / RETAINED FOR AUDIT (adversarial false-PASS defects)
+RC8 = FAILED QUALIFICATION / RETAINED FOR AUDIT (seams: reader/pre-class/handoff/member/binding)
+RC9 = CURRENT CANDIDATE  (all fail-open -> fail-closed)
 ```
 
-RC7's own run reported 13/13, **but** an independent adversarial review (review_history)
-reproduced false-PASS inputs. RC7 is retained unchanged as an audit record.
-
-MANIFEST lineage: RC1 `b3802142…` → … → RC7 `45acd8b1…`→`c61d8aa7…`（FAILED）
-→ **RC8 `61cbfd9f…`（current candidate）**。
+MANIFEST lineage: RC1 `b3802142…` → … → RC7 `c61d8aa7…`(FAILED) → RC8 `61cbfd9f…`(FAILED)
+→ **RC9 `67dfb538…`（current candidate）**。
 
 ---
 
-## RC8 — closure round (凌翼 R1–R4 + 知微 §10)
+## RC9 — closure round (凌翼 R1–R4 + 知微 RC8 review §11)
 
 ```text
-IMPLEMENTATION_BINDING_MANIFEST_HASH (RC8) = 61cbfd9f78e545ef5bc8f0bdd87fd10064721dea06d0de879537a2e6ca5a99ed
+IMPLEMENTATION_BINDING_MANIFEST_HASH (RC9) = 67dfb5380e8c3a0f6adaaa37372f339cf373202339324062b0aeefd16c7ec7aa
 REFERENCE_HARNESS_SPEC_HASH                = b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
 PARENT_PREREG_SHA256                       = ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
 ```
 
-RC8 repairs (all of 知微 §2–§9 + 凌翼's R1–R4):
-- **Two public gates only**: `PRE_EVIDENCE_GATE` (source = **S_write**; L1→C1→C2→C3; **no failure-default C3**)
-  and `POST_RESET_EVIDENCE_GATE` (source = **S_restored only**; **INVALID dominates**), plus `J_GATE`/`RESET_GATE`.
-- **Single frozen oracle source** = `fixture_contracts.FROZEN_ORACLES` (fixtures take config only;
-  runner takes oracle only; `evaluator` takes neither).
-- **Ledger** = raw observations per **member × arm × phase**; independently recomputable
-  (`recompute_from_ledger.py` re-derives via the same gates).
-- **`manifest_bind.py` removed from the qualifying runtime**; `qualification_binding.py` (bound) verifies
-  a non-empty, exact required-role set (empty set FAILS).
-- **V4b** = `CombinedOnlyWriter` (no ON/OFF selector in the capability surface).
-- **Reader witness** reads a **non-zero** C-arm q.
-- **Adversarial regression** (all attacks rejected): bad J timing · storage no-op · constant extra ·
-  invalid reset V5f · V4b separability · constant reader · empty component-set · empty C3 · INVALID L2.
+RC9 repairs (all fail-open -> fail-closed):
+- **ONE evidence object**: `evidence_bundle.EVIDENCE_BUNDLE` = member × arm × phase × raw × witness;
+  both production and replay must use it.
+- **ONE public chain**: member-set → arms/phases → S_write → PRE → **required_pre_class** →
+  J witness → **J.S_handoff == RESET accepted handoff (byte-level)** → reset → S_restored →
+  **reader/literal witnesses** → POST → L2. **INVALID dominates everywhere.**
+- **ONE role registry**: `qualification_role_registry.py` (data only); MANIFEST §十三 uses
+  `EXECUTION_CRITICAL_ROLE_TABLE_BEGIN/END`; **three-way exact equality** (registry == MANIFEST == files).
+- **`manifest_bind.py` is BUILD_PROVENANCE only** (removed from runtime).
+- **`qualify_phase_a.py`** = the SINGLE PASS entry (suite AND adversarial AND ledger replay).
+- **`recompute_from_ledger.py`**: REQUIRED_SCOPE per fixture; zero-check ⇒ FAIL; digest recomputed from raw bytes.
+- **V4b** = `CombinedOnlyWriter` + `external_capability_probe` (no public Arm/store/mode/selector).
+- **Adversarial regression** (16/16): bad J timing · handoff discontinuity · missing member ·
+  constant reader · constant-pre V5b · invalid reset V5f · V4b probe · empty roles · empty C3 · INVALID L2.
 
 ---
 
 ## Status
 
 ```text
-PHASE_A_HARNESS_QUALIFICATION = RC7 FAILED; RC8 = QUALIFYING RUN (awaiting independent review)
+PHASE_A_QUALIFICATION = PASS (RC9)   [by qualify_phase_a.py: suite + adversarial + replay]
 SCIENTIFIC_CLAIM_ELIGIBILITY  = NONE
 SCIENTIFIC_EXECUTION          = MAY NOT START
 ```

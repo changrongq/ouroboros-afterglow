@@ -24,25 +24,12 @@ import hashlib
 import re
 from pathlib import Path
 
-# The required runtime roles. This set is itself frozen (its identity is part of
-# the MANIFEST). Selection/decision logic may NOT bypass it.
-REQUIRED_RUNTIME_ROLES = frozenset({
-    "harness_constants.py",
-    "storage.py",
-    "writers.py",
-    "readers.py",
-    "observer.py",
-    "perturbation_j.py",
-    "reset.py",
-    "evaluator.py",
-    "fixtures.py",
-    # qualification-side runtime modules:
-    "fixture_contracts.py",
-    "gates.py",
-    "qualification_binding.py",
-    "run_known_answer_suite.py",
-    "verify_manifest_binding.py",
-})
+from qualification_role_registry import EXECUTION_CRITICAL_ROLES, BUILD_PROVENANCE
+
+# The required runtime roles come from the SINGLE bound registry (凌翼 R2):
+# build side (manifest_bind) and runtime side both read the same data.
+REQUIRED_RUNTIME_ROLES = frozenset(EXECUTION_CRITICAL_ROLES)
+PROVENANCE_ROLES = frozenset(BUILD_PROVENANCE)
 
 
 def sha256_file(path: Path) -> str:
@@ -54,9 +41,21 @@ def sha256_file(path: Path) -> str:
 
 
 def _parse_role_hash_map(manifest_text: str) -> dict[str, str]:
-    """Extract '<file>.py  ....  <sha256>' lines from the MANIFEST §十三 table."""
+    """Extract '<file>.py  ....  <sha256>' lines from the MANIFEST, but ONLY from
+    the marked EXECUTION-CRITICAL ROLE TABLE section — never from BUILD_PROVENANCE
+    (凌翼 R2: the greedy '.py + 64hex' scan polluted the role set).
+    """
     roles: dict[str, str] = {}
+    in_section = False
     for line in manifest_text.splitlines():
+        if "EXECUTION_CRITICAL_ROLE_TABLE_BEGIN" in line:
+            in_section = True
+            continue
+        if "EXECUTION_CRITICAL_ROLE_TABLE_END" in line:
+            in_section = False
+            continue
+        if not in_section:
+            continue
         m = re.match(r"^\s*([A-Za-z0-9_]+\.py)\s+[0-9.]+\s+([0-9a-f]{64})\s*$", line)
         if m:
             roles[m.group(1)] = m.group(2)
@@ -86,11 +85,19 @@ def verify(
     bound_roles = _parse_role_hash_map(man_text)
     ev["frozen_role_count"] = len(bound_roles)
 
-    # 5. EXACT role set equality, non-empty
+    # 5. EXACT role-set equality across THREE sources (凌翼 R2):
+    #     registry == MANIFEST-parsed == actual required files.
     ev["required_roles_nonempty"] = len(REQUIRED_RUNTIME_ROLES) > 0
-    observed = frozenset(r for r in REQUIRED_RUNTIME_ROLES if (harness_dir / r).exists())
-    ev["role_set_equal"] = (observed == REQUIRED_RUNTIME_ROLES)
-    ev["roles_missing_files"] = sorted(REQUIRED_RUNTIME_ROLES - observed)
+    registry_set = set(REQUIRED_RUNTIME_ROLES)
+    manifest_set = set(bound_roles.keys())
+    actual_files = {r for r in registry_set if (harness_dir / r).exists()}
+    ev["registry_vs_manifest_equal"] = (registry_set == manifest_set)
+    ev["manifest_vs_registry_diff"] = {
+        "in_registry_not_manifest": sorted(registry_set - manifest_set),
+        "in_manifest_not_registry": sorted(manifest_set - registry_set),
+    }
+    ev["role_set_equal"] = (actual_files == registry_set)
+    ev["roles_missing_files"] = sorted(registry_set - actual_files)
 
     # 4. hash actual runtime files; compare to the MANIFEST role-hash map
     role_hash_ok: dict[str, bool] = {}
@@ -100,6 +107,9 @@ def verify(
                               and sha256_file(p) == bound_roles[role])
     ev["role_hash_ok"] = all(role_hash_ok.values())
     ev["role_hash_mismatch"] = {k: v for k, v in role_hash_ok.items() if not v}
+
+    # BUILD_PROVENANCE must NOT appear in the execution-critical table
+    ev["provenance_not_in_critical"] = not (PROVENANCE_ROLES & manifest_set)
 
     # 6. SPEC / prereg exact hashes (must appear in the MANIFEST)
     spec_sha = sha256_file(spec_path) if (spec_path and spec_path.exists()) else None
@@ -116,8 +126,10 @@ def verify(
     ok = all([
         ev["detached_match"],
         ev["required_roles_nonempty"],
+        ev["registry_vs_manifest_equal"],
         ev["role_set_equal"],
         ev["role_hash_ok"],
+        ev["provenance_not_in_critical"],
         ev["spec_file_matches_frozen"],
         ev["prereg_file_matches_frozen"],
         ev["fixture_contract_bound"],

@@ -1,17 +1,12 @@
 """
-recompute_from_ledger.py — independent re-derivation from raw ledger observations.
+recompute_from_ledger.py (RC9) — independent, required-scope ledger replay.
 
-Does NOT run fixtures. Reads only the raw member×arm×phase observations stored in
-the RC8 ledgers and re-derives:
-    L1 / C1 / T_write / pre C2 / pre C3
-    J validity / reset validity
-    post C1 / post C2 / post C3 / L2
-then compares to the recorded actual.
-
-If a reviewer cannot recompute from the ledger, the ledger is a log, not evidence.
+凌翼 RC9: replay must recompute from the ledger's RAW literal/q bytes (not the
+recorded digest strings), and must check an EXACT required key set per fixture.
+Zero checks => FAIL. A missing required field => FAIL.
 
 Usage:
-    python recompute_from_ledger.py --ledger <ledgers_dir> [--raw <raw.json>]
+    python recompute_from_ledger.py --ledger <ledgers_dir>
 """
 
 from __future__ import annotations
@@ -23,117 +18,183 @@ from pathlib import Path
 
 import evaluator as ev
 from fixture_contracts import FROZEN_ORACLES
-from gates import POST_RESET_EVIDENCE_GATE, PRE_EVIDENCE_GATE
-from harness_constants import CONTENT_CLASS_OF, StateSnapshot
+from harness_constants import CONTENT_CLASS_OF, StateSnapshot, canonical_state_digest
 
-_SAME_PAIRS = [("A1", "A2"), ("B1", "B2")]
-_CROSS_PAIRS = [("A1", "B1"), ("A2", "B2")]
+# Required replay scope = the keys that MUST be independently re-derived and
+# compared against the recorded actual, per fixture family.
+REQUIRED_SCOPE = {
+    "two_arm": ("L1", "PRE_RESET_CHANGE_CLASS"),
+    "multi_member": ("L1", "PRE_RESET_CHANGE_CLASS", "C3"),
+    "reset_suite": (
+        "PRE_RESET_CHANGE_CLASS", "post_C3", "post_C1_ok", "reset_valid",
+        "j_timing_ok", "L2", "POST_RESET_SUPPORTED_CLASS",
+    ),
+    "non_separable_wrapper": ("L1", "PRE_RESET_CHANGE_CLASS"),
+}
 
 
 def _snap(d: dict) -> StateSnapshot:
     return StateSnapshot(literal=bytes.fromhex(d["literal"]), q_raw=bytes.fromhex(d["q_raw"]))
 
 
-def _frac(d) -> Fraction | None:
-    if d is None:
-        return None
-    return Fraction(d["num"], d["den"])
+def _recompute_digest_ok(observations: dict) -> bool:
+    """Re-derive digest from raw bytes for every stored phase (byte-level check).
 
-
-def _attributed(T) -> bool:
-    return T is not None and abs(T) >= 1
-
-
-def recompute_fixture(fid: str, obs: dict, gates: dict, attempted: str = "full") -> dict:
-    """Re-derive the result for one fixture from raw observations.
-
-    Uses the SAME public gates as the production path, so the recompute is
-    definitionally identical (single semantics, single source).
+    Handles BOTH shapes:
+      · per-member:  {member: {"arms": {arm: {phase: {literal,q_raw}}}}}
+      · two-arm:     {"A": {"S_write": {literal,q_raw}}, "B": {...}}
     """
-    if "arms" in obs:
-        members = {"A1": obs}
-    elif obs and all(isinstance(v, dict) and "arms" in v for v in obs.values()):
-        members = obs
-    else:
-        return {}  # two-arm V0/V0b/V1 shape: only L1 exists; nothing more to recompute
+    def _check_ap(ap) -> bool:
+        if not isinstance(ap, dict) or "literal" not in ap or "q_raw" not in ap:
+            return False
+        StateSnapshot(bytes.fromhex(ap["literal"]), bytes.fromhex(ap["q_raw"]))
+        return True
 
-    out: dict = {}
+    for v in observations.values():
+        if not isinstance(v, dict):
+            return False
+        if "arms" in v:  # per-member shape
+            for phases in v["arms"].values():
+                for ap in phases.values():
+                    if not _check_ap(ap):
+                        return False
+        else:  # two-arm shape: {phase: {literal,q_raw}}
+            for ap in v.values():
+                if not _check_ap(ap):
+                    return False
+    return True
 
-    member_write = {}
-    member_restored = {}
-    for mid, o in members.items():
-        arms = o["arms"]
-        payload = bytes.fromhex(o["payload"])
-        member_write[mid] = {
-            "A": _snap(arms["A"]["S_write"]),
-            "B": _snap(arms["B"]["S_write"]),
-            "C": _snap(arms["C"]["S_write"]),
-            "payload": payload,
-        }
-        member_restored[mid] = {
-            "A": _snap(arms["A"]["S_restored"]),
-            "B": _snap(arms["B"]["S_restored"]),
-            "C": _snap(arms["C"]["S_restored"]),
-            "payload": payload,
-        }
 
-    pre = PRE_EVIDENCE_GATE(member_write)
-    out["PRE_RESET_CHANGE_CLASS"] = pre.pre_class
-    out["C3"] = pre.c3
+def recompute_reset_suite(observations: dict, attempted: str) -> dict:
+    """Re-derive the V5-family result from raw observations (single semantics)."""
+    from evidence_bundle import ArmPhase, EvidenceBundle, MemberEvidence, evaluate_bundle
 
-    j_ok = True
-    reset_ok = True
-    for o in members.values():
-        for arm in ("A", "B", "C"):
-            A = o["arms"].get(arm, {})
-            if A.get("J") not in (None, "NOT_APPLICABLE"):
-                if A["J_after"]["digest"] != A["S_handoff"]["digest"]:
-                    j_ok = False
-            rw = A.get("reset_witness", {})
-            if rw.get("reset_valid") is False:
-                reset_ok = False
-    out["j_timing_ok"] = j_ok
-    out["reset_valid"] = reset_ok
+    bundle = EvidenceBundle(fixture_id="replay", required_members=tuple(observations.keys()))
+    for mid, m in observations.items():
+        me = MemberEvidence(member_id=mid, content_class=CONTENT_CLASS_OF.get(mid, "?"),
+                            payload=bytes.fromhex(m["payload"]))
+        for arm, phases in m["arms"].items():
+            me.arms[arm] = {ph: ArmPhase(bytes.fromhex(ap["literal"]), bytes.fromhex(ap["q_raw"]))
+                            for ph, ap in phases.items()}
+        me.reset_witness = m.get("reset_witness", {})
+        me.reader_witness = m.get("reader_witness", {})
+        bundle.members[mid] = me
 
-    post = POST_RESET_EVIDENCE_GATE(member_restored, j_ok, reset_ok, attempted)
-    out["post_C1_ok"] = post.post_c1_ok
-    out["post_C3"] = post.c3_post
-    out["L2"] = post.l2
-    out["POST_RESET_SUPPORTED_CLASS"] = post.supported
-    return out
+    res = evaluate_bundle(bundle, required_pre_class="", expected_post_supported_class=None,
+                          attempted=attempted)
+    from evidence_bundle import _pre_from_bundle
+    pre_class, _, _, _ = _pre_from_bundle(bundle)
+    return {
+        "PRE_RESET_CHANGE_CLASS": pre_class if pre_class else "",
+        "post_C3": res.c3_post,
+        "post_C1_ok": res.post_c1_ok,
+        "reset_valid": not res.code.startswith("RESET_INVALID") if res.code else True,
+        "j_timing_ok": not res.code.startswith(("J_", "HANDOFF_")) if res.code else True,
+        "L2": res.l2,
+        "POST_RESET_SUPPORTED_CLASS": res.supported,
+    }
+
+
+def _recompute_two_arm(observations: dict) -> dict:
+    """Re-derive L1 for the two-arm family from raw bytes."""
+    from evaluator import PASS, FAIL, C1, NOT_ESTABLISHED
+    from harness_constants import EPISODE_PAYLOADS
+    a = _snap(observations["A"]["S_write"])
+    b = _snap(observations["B"]["S_write"])
+    # payload is fixed per two-arm family (A1)
+    l1 = ev.evaluate_basic_l1(a, b, EPISODE_PAYLOADS["A1"])
+    return {"L1": l1.result, "PRE_RESET_CHANGE_CLASS": l1.change_class}
+
+
+def _recompute_multi_member(observations: dict) -> dict:
+    """Re-derive pre L1 / pre-class / C3 for the multi-member family."""
+    from evaluator import PASS, C1, C2, C3, NOT_ESTABLISHED, ATTRIBUTED, evaluate_basic_l1, evaluate_c2, evaluate_c3
+    from harness_constants import CONTENT_CLASS_OF
+    SAME = [("A1", "A2"), ("B1", "B2")]
+    CROSS = [("A1", "B1"), ("A2", "B2")]
+    all_l1_pass = True
+    per_T = {}
+    for mid, m in observations.items():
+        a = _snap(m["arms"]["A"]["S_write"])
+        b = _snap(m["arms"]["B"]["S_write"])
+        c = _snap(m["arms"]["C"]["S_write"])
+        payload = bytes.fromhex(m["payload"])
+        l1 = evaluate_basic_l1(a, b, payload)
+        if l1.result != PASS:
+            all_l1_pass = False
+        c2 = evaluate_c2(a, a, b, c)
+        per_T[mid] = c2.signed_T
+    l1_res = PASS if all_l1_pass else "FAIL"
+    all_attr = all(t is not None and abs(t) >= 1 for t in per_T.values())
+    members = [{"member_id": mid, "content_class": CONTENT_CLASS_OF[mid], "T": t,
+                "attributed": (t is not None and abs(t) >= 1)} for mid, t in per_T.items()]
+    r3 = evaluate_c3(members, SAME, CROSS)
+    pre_class = C3 if r3.result == C3 else (C2 if all_attr else C1)
+    return {"L1": l1_res, "PRE_RESET_CHANGE_CLASS": pre_class, "C3": r3.result}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ledger", required=True)
-    ap.add_argument("--raw", default=None)
     args = ap.parse_args()
 
     led_dir = Path(args.ledger)
     files = sorted(led_dir.glob("*.json"))
     if not files:
-        print("no ledger files")
+        print("no ledger files -> FAIL")
         return 2
 
     all_ok = True
+    total_checked = 0
     for f in files:
         item = json.loads(f.read_text(encoding="utf-8"))
         fid = item["fixture_id"]
         ledger = item["ledger"]
         obs = ledger.get("observations") or {}
-        gates = ledger.get("gates") or {}
-        attempted = (ledger.get("attempted_scope") or {}).get("attempted", "full")
-        rec = recompute_fixture(fid, obs, gates, attempted)
         actual = item["actual"]
-        # compare the recomputable keys only
-        mism = {k: (actual.get(k), rec[k]) for k in rec
-                if k in actual and actual.get(k) != rec[k]}
+        shape = (ledger.get("attempted_scope") or {}).get("shape", "")
+        attempted = (ledger.get("attempted_scope") or {}).get("attempted", "full")
+
+        # byte-level digest consistency (all stored phases must be raw-width-valid)
+        if not _recompute_digest_ok(obs):
+            print(f"[FAIL] {fid} RAW_BYTES_INVALID")
+            all_ok = False
+            continue
+
+        if shape == "two_arm":
+            scope = REQUIRED_SCOPE["two_arm"]
+            rec = _recompute_two_arm(obs)
+        elif shape == "non_separable_wrapper":
+            scope = REQUIRED_SCOPE["non_separable_wrapper"]
+            rec = _recompute_two_arm(obs)
+        elif shape == "multi_member":
+            scope = REQUIRED_SCOPE["multi_member"]
+            rec = _recompute_multi_member(obs)
+        elif shape == "reset_suite":
+            scope = REQUIRED_SCOPE["reset_suite"]
+            rec = recompute_reset_suite(obs, attempted)
+        else:
+            print(f"[FAIL] {fid} UNKNOWN_SHAPE: {shape!r}")
+            all_ok = False
+            continue
+
+        checked = len([k for k in scope if k in rec])
+        if checked == 0:
+            print(f"[FAIL] {fid} ZERO_CHECKS (required scope {scope})")
+            all_ok = False
+            continue
+
+        mism = {k: (actual.get(k), rec.get(k)) for k in scope if actual.get(k) != rec.get(k)}
         status = "MATCH" if not mism else "MISMATCH"
         if mism:
             all_ok = False
-        print(f"[{status}] {fid}  matched_keys={len([k for k in rec if k in actual])}  mism={mism}")
+        total_checked += checked
+        print(f"[{status}] {fid} checked={checked}/{len(scope)} mism={mism}")
 
     print()
+    if total_checked == 0:
+        print("RECOMPUTE_FROM_LEDGER = FAIL (no checks performed)")
+        return 1
     print("RECOMPUTE_FROM_LEDGER =", "PASS" if all_ok else "FAIL")
     return 0 if all_ok else 1
 

@@ -1,0 +1,438 @@
+{
+  "fixture_id": "V5f",
+  "frozen_oracle": {
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C1",
+    "post_C2": "NOT_ASSESSED",
+    "post_C3": "NOT_ASSESSED",
+    "j_timing_ok": true,
+    "reset_valid": true
+  },
+  "actual": {
+    "PRE_RESET_CHANGE_CLASS": "C1",
+    "post_C3": "NOT_ASSESSED",
+    "post_C1_ok": true,
+    "reset_valid": true,
+    "j_timing_ok": true,
+    "L2": "PASS",
+    "POST_RESET_SUPPORTED_CLASS": "C1",
+    "post_C2": "NOT_ASSESSED"
+  },
+  "oracle_match": true,
+  "ledger": {
+    "fixture_id": "V5f",
+    "attempted_scope": {
+      "attempted": "post_C1_only",
+      "required_pre_class": "C1",
+      "shape": "reset_suite"
+    },
+    "observations": {
+      "A1": {
+        "member": "A1",
+        "content_class": "L",
+        "payload": "636c733d4c3b73616d706c653d30313b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 1377,
+            "2": 1379
+          }
+        }
+      },
+      "A2": {
+        "member": "A2",
+        "content_class": "L",
+        "payload": "636c733d4c3b73616d706c653d30323b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d4c3b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 1378,
+            "2": 1380
+          }
+        }
+      },
+      "B1": {
+        "member": "B1",
+        "content_class": "R",
+        "payload": "636c733d523b73616d706c653d30313b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d523b73616d706c653d30313b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 1383,
+            "2": 1385
+          }
+        }
+      },
+      "B2": {
+        "member": "B2",
+        "content_class": "R",
+        "payload": "636c733d523b73616d706c653d30323b",
+        "arms": {
+          "A": {
+            "S_write": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "B": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            }
+          },
+          "C": {
+            "S_write": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "J_after": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_handoff": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "S_restored": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            }
+          }
+        },
+        "reset_witness": {
+          "A": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "00000000000000000000000000000000",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "B": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          },
+          "C": {
+            "reset_valid": true,
+            "reason": "RESET_VALID: clear+preserve+access all verified",
+            "accepted_handoff": {
+              "literal": "636c733d523b73616d706c653d30323b",
+              "q_raw": "0000000000000000"
+            },
+            "clear_access": "LOGICAL_DECLARATION"
+          }
+        },
+        "reader_witness": {
+          "raw_q": 0,
+          "affine": {
+            "0": {
+              "num": 0,
+              "den": 1
+            },
+            "2": {
+              "num": 2,
+              "den": 1
+            }
+          },
+          "literal": {
+            "0": 1384,
+            "2": 1386
+          }
+        }
+      }
+    },
+    "gates": {
+      "protocol": "PASS",
+      "code": ""
+    },
+    "l2": {
+      "result": "PASS",
+      "POST_RESET_SUPPORTED_CLASS": "C1"
+    },
+    "notes": []
+  }
+}

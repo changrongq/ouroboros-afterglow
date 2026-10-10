@@ -2,9 +2,9 @@
 
 For 凌翼 / 睫 / 知微.
 
-> **RC7 is FAILED QUALIFICATION / RETAINED FOR AUDIT** (see README). Any RC7-era hash printed
-> elsewhere is NOT current. The RC8 hash table is regenerated at freeze time; until then treat
-> every "current" hash as provisional.
+> **RC7 and RC8 are FAILED QUALIFICATION / RETAINED FOR AUDIT** (see README). Any RC7/RC8-era
+> hash printed elsewhere is NOT current. RC9 is the current candidate. Authoritative source =
+> the frozen bytes + the detached record, NOT this document.
 
 ---
 
@@ -16,9 +16,9 @@ before). Derive it live:
 
 ```bash
 # MANIFEST (authoritative: also in reports/MANIFEST_v0.1_HASH.txt)
-wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md      # 25165
+wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md      # 26705
 sha256sum reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
-# 61cbfd9f78e545ef5bc8f0bdd87fd10064721dea06d0de879537a2e6ca5a99ed
+# 67dfb5380e8c3a0f6adaaa37372f339cf373202339324062b0aeefd16c7ec7aa
 
 # SPEC (unchanged since b7ec)
 wc -c spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md                  # 36719
@@ -42,13 +42,19 @@ Cross-check: `reports/MANIFEST_v0.1_HASH.txt` must carry the same MANIFEST value
 
 ---
 
-## 1 · Bound-runtime roles (RC8)
+## 1 · Bound-runtime roles (RC9 — single registry, three-way equality)
 
-RC8 has an explicit, non-empty **required runtime role set** (`qualification_binding.py`) with an
-exact role → path → hash map. Preflight FAILS (NON_QUALIFYING) if: any required role is missing,
-or the observed role set ≠ the frozen required set; any role file-hash ≠ frozen; the MANIFEST
-hash ≠ the detached record; the actual SPEC/prereg file hashes ≠ frozen constants; the fixture
-contract identity ≠ frozen set. An **empty** role set must FAIL (no vacuous `all({})=True`).
+`afterglow_harness/qualification_role_registry.py` is the ONE data-only role registry.
+The MANIFEST §十三 carries the role table between `EXECUTION_CRITICAL_ROLE_TABLE_BEGIN/END`.
+Preflight requires EXACT equality (non-empty):
+
+```
+registry EXECUTION_CRITICAL_ROLES  ==  MANIFEST parsed roles  ==  actual required files
+```
+
+FAILS if: any required role missing; role set ≠ frozen; any file-hash ≠ frozen; MANIFEST ≠
+detached record; actual SPEC/prereg hashes ≠ frozen; fixture-contract hash ≠ bound; or any
+BUILD_PROVENANCE role leaks into the execution-critical table. Empty set => FAIL.
 
 ```bash
 python afterglow_harness/run_known_answer_suite.py    # full preflight must print all True
@@ -74,8 +80,9 @@ Raw observations per **member × arm × phase** (S_write / J_after / S_handoff /
 reset_witness); `J = NOT_APPLICABLE` where an arm has no J.
 
 ```bash
-python afterglow_harness/recompute_from_ledger.py --ledger artifacts/RC8/ledgers --out /tmp/recompute
-# must re-derive L1/C1/T_write/pre-C2-C3/J-validity/reset-validity/post-C1-C2-C3/L2 and MATCH the run
+python afterglow_harness/recompute_from_ledger.py --ledger artifacts/RC9/ledgers
+# REQUIRED_SCOPE per fixture; zero checks => FAIL; digest recomputed from raw bytes;
+# must MATCH the recorded run
 ```
 
 ---
@@ -86,19 +93,24 @@ python afterglow_harness/recompute_from_ledger.py --ledger artifacts/RC8/ledgers
 python afterglow_harness/adversarial_regression.py    # expect ADVERSARIAL REGRESSION = PASS
 ```
 
-Covers: bad J timing · storage no-op · constant extra / absent pre-C3 · invalid reset V5f ·
-V4b separability attack · reader that ignores substrate · empty/missing component-set attack ·
-plus all prior known-answer regressions.
+Covers: bad J timing · handoff discontinuity · storage no-op · constant extra / absent pre-C3 ·
+invalid reset V5f · V4b separability attack · reader that ignores substrate · missing member ·
+empty/missing component-set attack · plus all prior known-answer regressions.
 
 ---
 
-## 5 · Re-run everything
+## 5 · Re-run everything (single entry)
 
 ```bash
 cd afterglow_harness
+python qualify_phase_a.py     # THE single PASS entry: suite AND adversarial AND ledger replay
+```
+
+Individual checks:
+
+```bash
 python smoke_components.py
 python smoke_evaluator.py
-python bd52_timing_witness_check.py
 python adversarial_regression.py
 python verify_manifest_binding.py
 python run_known_answer_suite.py     # KNOWN_ANSWER_SUITE = PASS (QUALIFYING) only when frozen

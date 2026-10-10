@@ -6,7 +6,7 @@
 **性质**：**MANIFEST 实例化版。所有 execution-critical 字段已由 `manifest_bind.py` 实测填齐，无残留 `TO_IMPLEMENT`。**
 
 ```text
-STATUS = INSTANTIATED MANIFEST (RC8) / PENDING FREEZE
+STATUS = INSTANTIATED MANIFEST (RC9) / PENDING FREEZE
 EXECUTION_AUTHORIZATION = NONE
 IGNITION = PROHIBITED
 ```
@@ -186,7 +186,7 @@ storage modes:
 ```text
 READ_OPERATOR_ID      = SYNTHETIC_AFFINE_READER_V1
 READ_OPERATOR_VERSION = 1.0
-READ_OPERATOR_HASH    = 83cbc20be47ec96871c830507e5ba9c26fa7e043319258b9e49328af8a867adc
+READ_OPERATOR_HASH    = （= readers.py 文件 hash；唯一真值见 §十三 的 readers.py 行）
 
 行为：读恰好 8 bytes（完整文件长度恰为 8）→ int64 LE → R(q,u)=u+q/2
       内部用整数分子 (2u+q) / 固定分母 2；禁 fallback/repair/clamp/normalization/missing⇒0
@@ -195,7 +195,7 @@ reader 无权限读 literal / 原始 episode / ledger / 模型上下文 / oracle
 
 LITERAL_CONSUMER_ID      = LITERAL_CONSUMER_V1
 LITERAL_CONSUMER_VERSION = 1.0
-LITERAL_CONSUMER_HASH    = 83cbc20be47ec96871c830507e5ba9c26fa7e043319258b9e49328af8a867adc
+LITERAL_CONSUMER_HASH    = （= readers.py 文件 hash；唯一真值见 §十三 的 readers.py 行）
 
 行为：读恰好 16 bytes（完整文件长度恰为 16）+ 中性 u → L(literal,u)=u+SUM(unsigned_byte_i, i=0..15)
       禁 fallback/repair/clamp/normalization；无 q 访问；无 class/ledger/oracle/phase 访问；无写入
@@ -205,7 +205,7 @@ LITERAL_CONSUMER_HASH    = 83cbc20be47ec96871c830507e5ba9c26fa7e043319258b9e4932
   REGISTERED_AFTERGLOW_READ_PATH : substrate.bin → SYNTHETIC_AFFINE_READER_V1 → neutral future computation
 ```
 
-（两条读路径同属 `readers.py`，故共用其文件 hash `83cbc20b…`。）
+（两条读路径同属 `readers.py`，故共用其文件 hash。RC9：此处不再重复写死数值——唯一真值在 §十三。）
 
 **粒度说明（睫 observation①）：** READ_OPERATOR 与 LITERAL_CONSUMER 共用同一文件 hash，
 故无法表达"只改了 reader、literal consumer 未变"。当前为 fail-safe（任一改动 ⇒ 整文件 hash 变 ⇒ 两条路径都 requalify）。
@@ -399,27 +399,33 @@ evaluator 由 `attempted_scope` + 缺失 rule 推导 invalidity，不由 fixture
 
 （即“实现源码/构建产物 hash”；对应提案 §十一 #1 的“实现源码 hash”。）
 
-```text
-harness_constants.py     1.0  9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
-storage.py               1.0  76c376c6a413f47c8c68a6340f67b62d9ab2ba62c6807571600836ca7a59303b
-writers.py               1.0  08f7d968bdb4aa37c206e169cabbb08b9616b0990c0e758e7958c93c6b5b690c
-readers.py               1.0  2180f0d9747a4e1c21178f1d24244723538153ca126138163b0778813231f2b2
-observer.py              1.0  82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
-perturbation_j.py        1.0  28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
-reset.py                 1.0  9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
-evaluator.py             1.0  fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
-fixtures.py              1.0  6c432cf09fea063b19f57755a943bf849674f415f3ab31acaa3d269468c6d658
-fixture_contracts.py     1.0  a913e37cc972cc7b56f765444080cf16c0a715bee3e9e3309d3d488c02316ad0
-gates.py                 1.0  fc7aaaedb7d85c6c3d20a496284092ded327a9b3265d054a6757b4e4569c7047
-qualification_binding.py 1.0  84086eda44476687370f5dcb86c610438084e83eef7b41c10aee2f6de9f17907
-run_known_answer_suite.py    1.0  ea82a4c79fb4c11d7cd852024bd0fea56963bb40c5b509b38aa30a6a55b3fa64
-verify_manifest_binding.py   1.0  cafc29b8c5ade4a944ecd1c3051d639eb2e7e4ea465ad551081c9769aa3a1b37
-adversarial_regression.py    1.0  98a4cdb06a22dd27de7e6841f4629b1c729c29e0be916071089e65a53737ada7
-recompute_from_ledger.py     1.0  6b4e528aede270b33bed1e939e10094f0b335650f2e3fa85740043f9510ac6b3
-```
+**（RC9：本表由单一登记表 `qualification_role_registry.py` 生成；
+`qualification_binding` 与 `manifest_bind` 读取同一登记表。parser 只解析
+BEGIN/END 之间的 EXECUTION_CRITICAL 段，不再吞 BUILD_PROVENANCE。
+三源必须精确相等：registry == MANIFEST == 实际文件。）**
 
-**（RC8：qualification 运行时依赖的全部模块纳入绑定。qualification_binding.py 的
-REQUIRED_RUNTIME_ROLES 与此表一致；缺一即 PREFLIGHT FAIL。manifest_bind.py 不在此列。）**
+```text
+EXECUTION_CRITICAL_ROLE_TABLE_BEGIN
+harness_constants.py 1.0 9c31e92d07cbd933a243448b27a0df4d49ee4113e5de28ce44e38077d1b621d8
+storage.py 1.0 76c376c6a413f47c8c68a6340f67b62d9ab2ba62c6807571600836ca7a59303b
+writers.py 1.0 08f7d968bdb4aa37c206e169cabbb08b9616b0990c0e758e7958c93c6b5b690c
+readers.py 1.0 2180f0d9747a4e1c21178f1d24244723538153ca126138163b0778813231f2b2
+observer.py 1.0 82d244cdc8ecdaa0916c342b9aa266416314f9af7ca5e77be3a224788159d8fd
+perturbation_j.py 1.0 28eeadc8aa77adc6be5ea453e5c5ef1f854877e437f492276cb2e9063bb11b49
+reset.py 1.0 9b57cc3d59286c79f18de78b2467957c387bb4861ded6876106e05a79ddb6f21
+evaluator.py 1.0 fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
+fixtures.py 1.0 b9deed4c130c8550d631372662fd9e9b1824e308ee4c6edb79e8d3aaced85e56
+fixture_contracts.py 1.0 b3137d9988660aa596f639afef5c1962edb525f4ec497dbdcd9f2ad69d86485e
+evidence_bundle.py 1.0 bac900d074c2bfa613c414307e818460b8f5fd45a38a5a33ac69d59d0fe6d055
+qualification_role_registry.py 1.0 57f2ae0822d1ab7943032305718a25fc79f29e7eaee9f8928ef7df92e89a0a43
+qualification_binding.py 1.0 6d624ce1b22fdb33d6ca0e28979899e112b89718082e68ecc67f602b688bcb88
+run_known_answer_suite.py 1.0 ab0ea308966ee9569c08685f4b4af550c8d1a8f15720b06147f5d88bcfcdfa47
+qualify_phase_a.py 1.0 a44fd95636baa40436078cb58a08e74027fc84ecdd7b7fa51ebf69c8ce48f430
+verify_manifest_binding.py 1.0 9448ef8f8eac751eba4b989a7de823921cf02a796b045a8699fae2dfb1fa331d
+adversarial_regression.py 1.0 739d5ad520c5f5ef5df38d1135098ca2f0ba6f659a443664f9714559ab89afcc
+recompute_from_ledger.py 1.0 909210aa247e70431442afec5a79e3e0931b0394f42fcdb54a148ff0594c88b0
+EXECUTION_CRITICAL_ROLE_TABLE_END
+```
 
 **BUILD PROVENANCE（记录但不 execution-critical binding；见 §十五 BUILD_TOOL_HASHES）：**
 
@@ -505,9 +511,21 @@ v0.1-RC8            （本次）凌翼裁定 + 知微 RC7 复核全部 P1：
                      · 绑定集合扩至全部运行时角色（非空、精确相等；空集必 FAIL）
                      · V4b 改为真正不可分离接口；reader 见证读非零 q
                      —— 新 MANIFEST_HASH 见 detached 记录
+v0.1-RC9            （本次）凌翼 R1–R4 + 知微 RC8 复核 §11 全部收口（fail-open → fail-closed）：
+                     · EVIDENCE_BUNDLE（evidence_bundle.py）= 唯一证据对象：member×arm×phase×raw×witness
+                     · 单一公共链：member-set→arms/phases→S_write→PRE→required_pre_class
+                       →J witness→J.S_handoff==RESET accepted handoff（逐字节）→reset
+                       →S_restored→reader/literal witnesses→POST→L2；INVALID 全面支配
+                     · 单一角色登记表 qualification_role_registry.py；§十三 用
+                       EXECUTION_CRITICAL_ROLE_TABLE_BEGIN/END 标记；三源精确相等（registry==MANIFEST==实际文件）
+                     · manifest_bind.py 移出运行时；qualify_phase_a.py = 唯一 PASS 入口
+                     · recompute_from_ledger.py：REQUIRED_SCOPE；零检查 ⇒ FAIL；从原始字节重算 digest
+                     · V4b = CombinedOnlyWriter + external_capability_probe（无公开 Arm/store/mode/selector）
+                     · adversarial_regression.py = 16/16（含 RC9 全部反例）
+                     —— 新 MANIFEST_HASH 见 detached 记录
 ```
 
 ---
 
-**STATUS = INSTANTIATED MANIFEST (RC8) / PENDING FREEZE**
+**STATUS = INSTANTIATED MANIFEST (RC9) / PENDING FREEZE**
 **—— Coder · 2026-10-10**

@@ -26,7 +26,11 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 | 12 | 2026-10-10 | 凌翼 | （裁定，见报告内引用） | R1–R4: one RC8 closure round; remove manifest_bind from runtime; V4b non-separable; retain RC7 |
 | 13 | 2026-10-10 | **知微** | `知微_RC7闭合复核_63539ab.md` + `review_rc7.py` | **second review**: J-timing not gated; failure-default C3; ledger cross-arm; unbound runtime; V4b separable; reader q=0 |
 | 14 | 2026-10-10 | Coder | `给凌翼睫知微_BD57_审阅P1_闭合报告_RC7_Coder_20261010.md` | RC7 per-item closure attempt |
-| 15 | 2026-10-10 | Coder | `给凌翼睫知微_RC8交付报告_Coder_20261010.md` | **RC8 delivery**: two-gate architecture, single oracle, raw ledger, bound runtime, adversarial 15/15 |
+| 15 | 2026-10-10 | Coder | `给凌翼睫知微_RC8交付报告_Coder_20261010.md` | **RC8 delivery**: two-gate architecture, single oracle, raw ledger, bound runtime |
+| 16 | 2026-10-10 | **知微** | `知微_RC8独立复核_e099ddf.md` + `review_rc8.py` / `review_rc8_followup.py` | **third review**: 7 P1 seams (reader not gated, pre-class not enforced, ledger zero-check, J↔reset unlinked, missing-member downgrade, role-set mismatch, V4b public arm) |
+| 17 | 2026-10-10 | Coder | `给凌翼_RC8未闭合简报_Coder_20261010.md` | RC8 declared NOT closed; escalation to 凌翼 |
+| 18 | 2026-10-10 | 凌翼 | （R1–R4 裁定） | one RC9 closure round; single role registry; V4b external probe; retain RC8 |
+| 19 | 2026-10-10 | Coder | **RC9** (this snapshot) | EVIDENCE_BUNDLE; single public chain; single role registry; qualify_phase_a single entry; adversarial 16/16 |
 
 ---
 
@@ -34,15 +38,20 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 
 - `reproduce_review.py` — 知微's first-review reproduction (byte drift + V2/V3 + V5 attacks).
 - `review_rc7.py` — 知微's RC7-closure reproduction.
-- `../../afterglow_harness/adversarial_regression.py` — the RC8 regression (all attacks must be rejected).
-- `../../afterglow_harness/recompute_from_ledger.py` — independent re-derivation from raw ledger.
+- `review_rc8.py` / `review_rc8_followup.py` — 知微's RC8-closure reproduction (7 P1 seams).
+- `../../afterglow_harness/adversarial_regression.py` — the RC9 regression (all attacks must be rejected).
+- `../../afterglow_harness/recompute_from_ledger.py` — independent re-derivation (required-scope) from raw ledger.
+- `../../afterglow_harness/qualify_phase_a.py` — the single Phase-A PASS entry point.
 
 ---
 
 ## Status snapshot
 
 ```text
-RC7 = FAILED QUALIFICATION / RETAINED FOR AUDIT  (this history is the evidence that the
-      adversarial machinery actually caught real errors)
-RC8 = current candidate  (see delivery report)
+RC7 = FAILED QUALIFICATION / RETAINED FOR AUDIT
+RC8 = FAILED QUALIFICATION / RETAINED FOR AUDIT
+RC9 = CURRENT CANDIDATE  (PHASE_A_QUALIFICATION = PASS via qualify_phase_a.py)
 ```
+
+RC7 and RC8 are retained as the evidence that the adversarial machinery actually caught real
+errors. RC9 is the current candidate (see delivery report).

@@ -92,15 +92,40 @@ COMPONENT_FILES = {
     "reset": "reset.py",
     "evaluator": "evaluator.py",
     "fixtures": "fixtures.py",
-    # RC8: qualification-side runtime modules are now bound too.
     "fixture_contracts": "fixture_contracts.py",
-    "gates": "gates.py",
+    "evidence_bundle": "evidence_bundle.py",
+    "qualification_role_registry": "qualification_role_registry.py",
     "qualification_binding": "qualification_binding.py",
     "run_known_answer_suite": "run_known_answer_suite.py",
+    "qualify_phase_a": "qualify_phase_a.py",
     "verify_manifest_binding": "verify_manifest_binding.py",
     "adversarial_regression": "adversarial_regression.py",
     "recompute_from_ledger": "recompute_from_ledger.py",
+    # BUILD_PROVENANCE (recorded, not execution-critical):
+    "manifest_bind": "manifest_bind.py",
+    "freeze_manifest": "freeze_manifest.py",
 }
+
+
+def role_table_lines() -> str:
+    """Emit the EXECUTION_CRITICAL_ROLE_TABLE block from the SINGLE registry, so
+    the MANIFEST table and qualification_binding.REQUIRED_RUNTIME_ROLES are the
+    same object (凌翼 R2)."""
+    from qualification_role_registry import EXECUTION_CRITICAL_ROLES, BUILD_PROVENANCE
+    from pathlib import Path as _P
+
+    here = _P(__file__).resolve().parent
+    out = ["EXECUTION_CRITICAL_ROLE_TABLE_BEGIN"]
+    for role in EXECUTION_CRITICAL_ROLES:
+        p = here / role
+        out.append(f"{role} 1.0 {hash_file(p)}" if p.exists() else f"{role} 1.0 MISSING")
+    out.append("EXECUTION_CRITICAL_ROLE_TABLE_END")
+    out.append("")
+    out.append("# BUILD_PROVENANCE (audit only; NOT execution-critical):")
+    for role in BUILD_PROVENANCE:
+        p = here / role
+        out.append(f"BUILD_PROVENANCE {role} {hash_file(p) if p.exists() else 'MISSING'}")
+    return "\n".join(out)
 
 #: Driven by harness_constants (single source of truth). Imported lazily to
 #: avoid import cycles at module load.
