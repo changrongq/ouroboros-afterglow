@@ -8,28 +8,37 @@ For 凌翼 / 睫 / 知微.
 
 ---
 
-## 0 · Reproduce the frozen hashes (RC8 — fill at freeze)
+## 0 · Reproduce the frozen hashes
+
+**Authoritative source = the frozen bytes + the detached record, NOT this document.**
+This doc deliberately does **not** hand-carry the full component hash table (it drifted
+before). Derive it live:
 
 ```bash
-# MANIFEST (RC8 — value filled at freeze)
-wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
+# MANIFEST (authoritative: also in reports/MANIFEST_v0.1_HASH.txt)
+wc -c reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md      # 25165
 sha256sum reports/AFTERGLOW_IMPLEMENTATION_BINDING_MANIFEST_v0.1.md
+# 61cbfd9f78e545ef5bc8f0bdd87fd10064721dea06d0de879537a2e6ca5a99ed
 
 # SPEC (unchanged since b7ec)
-wc -c spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md          # 36719
+wc -c spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md                  # 36719
 sha256sum spec/AFTERGLOW_IMPLEMENTATION_BINDING_v0.1.md
 # b7ec1fdca957b151aa2dd2323e155867710b8a1f3d39dfd16c75bdfed801fe33
 
 # prereg (FREEZE_CANDIDATE bytes)
-wc -c prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md            # 52129
+wc -c prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md                    # 52129
 sha256sum prereg/AFTERGLOW_MVP_PREREGISTRATION_v0.1.md
 # ad0855b04561147685f41de2c3cf1529e669cf7535345862a5f9c8b30b40d5f4
+
+# Component role→hash table (live, from the actual files — do NOT hand-copy)
+python afterglow_harness/manifest_bind.py table   # BUILD tool; prints components/rules/fixtures
 
 # All .py must be LF (no CR)
 python -c "import glob;print([p for p in glob.glob('afterglow_harness/*.py') if b'\r' in open(p,'rb').read()])"
 ```
 
-Cross-check: `reports/MANIFEST_v0.1_HASH.txt` must carry the same MANIFEST value.
+Cross-check: `reports/MANIFEST_v0.1_HASH.txt` must carry the same MANIFEST value. The
+**bound** role→hash check runs in the qualification preflight (§1), not by hand here.
 
 ---
 
@@ -101,5 +110,5 @@ python run_known_answer_suite.py     # KNOWN_ANSWER_SUITE = PASS (QUALIFYING) on
 
 ```text
 SPEC     : 36719 B, UTF-8, no BOM, LF, exactly one final newline
-MANIFEST : (RC8 byte count set at freeze), UTF-8, no BOM, LF, exactly one final newline
+MANIFEST : 25165 B, UTF-8, no BOM, LF, exactly one final newline
 ```
