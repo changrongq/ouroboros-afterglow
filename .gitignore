@@ -22,3 +22,4 @@ Thumbs.db
 *.gguf
 *.bin
 !afterglow_harness/**/*.bin
+afterglow_harness_artifacts/
