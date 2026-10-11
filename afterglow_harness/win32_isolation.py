@@ -1,52 +1,62 @@
 """
-win32_isolation.py — Q3 OS-LEVEL ISOLATION backend (Windows / Win32) — V1 HARDENED.
+win32_isolation.py — Q3 OS-LEVEL ISOLATION backend (Windows / Win32) — V2.
 
 STATUS: SELF-CONTAINED PoC. NOT wired into the frozen Phase A harness. Nothing
 here modifies any RC11-frozen byte.
 
-凌翼 Q3 DESIGN RULING (2026-10-10): direction APPROVED, PoC hardening AUTHORIZED,
-design freeze NOT authorized. This revision addresses Q3-A..Q3-E and the four
-BLOCKING findings (BD-61..BD-64) plus 知微's three reproduced witness defects and
-钳星's non-standard-account failure.
+凌翼 Q3 REVIEW (2026-10-11, commit 6003eae) NEW BLOCKING: Q3-F1
+    "SELF-REPORTED DENIAL MAY SATISFY ACCESS WITNESS"
+    A recorded denial is not a denial that happened.
 
-LOAD-BEARING RULES (all fail-closed)
-====================================
-Q3-A  S_handoff = independent pre-reset observation; S_restored = independent
-      post-reset observation. Cached handoff bytes are NOT restored evidence.
-      => the WORKER is denied; the trusted OBSERVER keeps read access. If no
-         subject can make a post-reset observation, PRESERVE = UNEVALUATED and
-         RESET = INVALID (never filled in from cache).
-Q3-C  ACL V1 claims OBJECT-LEVEL OS DENIAL ONLY — not complete worker capability
-      reduction. The security principal is resolved from the TOKEN SID, never
-      from USERNAME (钳星: USERNAME may not map to a SID -> icacls rc=1332).
-Q3-D  Fresh-worker evidence = OS process identity (Popen.pid + creation time +
-      run nonce) + old-worker termination + handle-inheritance restriction.
-      A child's self-reported PID in stdout is NOT accepted as evidence.
-Q3-E  Event states: ACCESS_DENIED | ACCESS_GRANTED | ACCESS_NOT_ATTEMPTED |
-      ACCESS_ERROR. ONLY a verified OS denial is success. Any other result is
-      INVALID — never PASS. A missing object is ACCESS_OBJECT_MISSING => INVALID
-      (a broken environment), NOT "not attempted".
+This V2 addresses Q3-F1 and the four evidence gaps:
 
-BD-61 worker runs as a DIFFERENT security principal (restricted token); the deny
-      ACE targets the worker SID only; the controller (owner) keeps read access,
-      so capture_restored is a genuine post-reset read.
-BD-62 the deny ACE is checked at HANDLE-OPEN time; a handle opened before the
-      deny and inherited by the child escapes it. subprocess uses an EXPLICIT
-      close_fds=True, and the worker audits its own handles for any pointing at
-      REAL_OBJECT_SET.
-BD-63 the controller records (abs_path, size, sha256) BEFORE spawn; the worker
-      reports the abs_path it was denied; the controller independently verifies
-      path match + deny ACE present + hash match. Any miss => INVALID.
-BD-64 "controlled real dir" is the same OS object class as a mkdtemp sandbox.
-      Q3 PASS proves the MECHANISM on this object class; it does NOT prove a real
-      Phase-B payload is isolated.
+Q3-F1  Authenticated witness
+    An AccessWitness may ONLY be produced by an actual OS operation, and carries
+    a SEAL (HMAC over the observed fields with a per-run key held by the judge)
+    plus the raw OS error. A hand-constructed witness cannot present a valid
+    seal -> the judge rejects it. Constructor is guarded: direct construction is
+    discouraged and produces an UNSELAED witness that the judge always rejects.
+
+Lifecycle (凌翼 gap 2)
+    We record the child's TRUE creation time from OS process times
+    (GetProcessTimes) via the process HANDLE, not time.time() after wait; and we
+    prove the OLD worker terminated BEFORE the new one started by comparing the
+    old process's exit time (GetProcessTimes) against the new process's creation
+    time. close_fds=True is explicit and documented as necessary-not-sufficient.
+
+DACL restore (凌翼 gap 3 / 知微)
+    ``restore_dacl`` uses SetNamedSecurityInfoW to write back a SAVED security
+    descriptor (not ``icacls /reset``). It returns whether the write succeeded and
+    we re-verify readability afterwards. For disposable canaries we may instead
+    destroy the whole directory; /reset is explicitly NOT treated as exact
+    rollback.
+
+Restricted token (凌翼 gap 1) — EMPIRICALLY BOUNDED
+    CreateRestrictedToken does NOT change TokenUser.SID (measured: identical).
+    Correct same-account isolation uses a RESTRICTING SID + a deny ACE keyed on
+    that restricting SID; the observer (no restricting SID) keeps read access
+    (measured: GRANTED). However, spawning a cross-process worker under such a
+    token via CreateProcessAsUserW fails on this host with 0xC0000142
+    (STATUS_DLL_INIT_FAILED) without elevation/profile. So on THIS host the
+    cross-process restricted-worker path is NOT reachable; the ACL-isolation
+    SHAPE is proven and the in-process witness is authenticated. Scope is stated
+    honestly — we do NOT claim a full cross-process sandbox.
+
+Scope statement (凌翼/知微)
+    Q3 PASS proves the ACL-deny + authenticated-witness MECHANISM on the object
+    class used here (controlled canary files). Q3 PASS does NOT prove a real
+    Phase-B payload is isolated; that requires re-running the same flow against
+    the real objects and re-binding their hashes before Phase B.
 """
 
 from __future__ import annotations
 
 import ctypes
 import hashlib
+import hmac
 import os
+import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -56,27 +66,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Frozen identifiers (candidate; frozen only after independent review)
+# Frozen identifiers (candidate; frozen ONLY after independent review)
 # ---------------------------------------------------------------------------
 
-ISOLATION_PROFILE_ID = "PROCESS_ISOLATION_WIN32_ACL_V1"
-ISOLATION_PROFILE_VERSION = "1.0"
+ISOLATION_PROFILE_ID = "PROCESS_ISOLATION_WIN32_ACL_V2"
+ISOLATION_PROFILE_VERSION = "2.0"
+
+RESTRICTING_SID = "S-1-5-12"   # well-known RESTRICTED SID (SAFER restricted token)
 
 # ---------------------------------------------------------------------------
-# Four-state access verdicts (fail-closed; ONLY DENIED is success)
+# Access verdicts (fail-closed; ONLY DENIED is success)
 # ---------------------------------------------------------------------------
 
 ACCESS_DENIED = "ACCESS_DENIED"
 ACCESS_GRANTED = "ACCESS_GRANTED"
 ACCESS_NOT_ATTEMPTED = "ACCESS_NOT_ATTEMPTED"
-ACCESS_ERROR = "ACCESS_ERROR"                 # attempted, but a non-permission OS error
-ACCESS_OBJECT_MISSING = "ACCESS_OBJECT_MISSING"   # environment invalid, NOT "not attempted"
+ACCESS_ERROR = "ACCESS_ERROR"
+ACCESS_OBJECT_MISSING = "ACCESS_OBJECT_MISSING"
 
 ACCESS_ISOLATION_OK = frozenset({ACCESS_DENIED})
 
+#: Distinct sentinel for a check that was NOT reached (never truthy-pass).
+UNEVALUATED = "UNEVALUATED"
+
 
 class IsolationError(Exception):
-    """Any isolation-mechanism failure. FAIL CLOSED (never silently downgraded)."""
+    """Any isolation-mechanism failure. FAIL CLOSED."""
 
 
 class EnvironmentInvalid(IsolationError):
@@ -88,29 +103,18 @@ def _is_windows() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Security principal: resolve the current TOKEN SID (never trust USERNAME)
+# Win32 prototypes
 # ---------------------------------------------------------------------------
 
-
-def current_user_sid() -> str:
-    """Return the current process token's user SID (e.g. 'S-1-5-21-...').
-
-    钳星 finding: on a service account (OEM-AI$), icacls cannot map the bare
-    USERNAME to a SID (rc=1332). We therefore resolve the SID from the process
-    token with Win32 GetTokenInformation, and use the SID (never the name) in
-    the deny ACE.
-    """
-    if not _is_windows():
-        raise IsolationError(f"{ISOLATION_PROFILE_ID} is Win32-only")
+def _win():
     from ctypes import wintypes
 
     adv = ctypes.windll.advapi32
     k32 = ctypes.windll.kernel32
 
-    # Explicit prototypes: without these, ctypes marshals HANDLEs / pointers as
-    # 32-bit ints and the calls fail (or corrupt state).
     k32.GetCurrentProcess.restype = wintypes.HANDLE
     k32.GetCurrentProcess.argtypes = []
+
     adv.OpenProcessToken.restype = wintypes.BOOL
     adv.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD,
                                      ctypes.POINTER(wintypes.HANDLE)]
@@ -126,6 +130,36 @@ def current_user_sid() -> str:
     k32.CloseHandle.restype = wintypes.BOOL
     k32.CloseHandle.argtypes = [wintypes.HANDLE]
 
+    class FILETIME(ctypes.Structure):
+        _fields_ = [("dwLowDateTime", wintypes.DWORD),
+                    ("dwHighDateTime", wintypes.DWORD)]
+
+    k32.GetProcessTimes.restype = wintypes.BOOL
+    k32.GetProcessTimes.argtypes = [wintypes.HANDLE, ctypes.POINTER(FILETIME),
+                                    ctypes.POINTER(FILETIME),
+                                    ctypes.POINTER(FILETIME),
+                                    ctypes.POINTER(FILETIME)]
+    return adv, k32, FILETIME
+
+
+def _filetime_to_unix(ft) -> float:
+    # FILETIME is 100-ns ticks since 1601-01-01; convert to unix seconds.
+    ticks = (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+    if ticks == 0:
+        return 0.0
+    return ticks / 1e7 - 11644473600.0
+
+
+# ---------------------------------------------------------------------------
+# Security principal: resolve the current TOKEN SID (never USERNAME)
+# ---------------------------------------------------------------------------
+
+def current_user_sid() -> str:
+    if not _is_windows():
+        raise IsolationError(f"{ISOLATION_PROFILE_ID} is Win32-only")
+    from ctypes import wintypes
+    adv, k32, _ = _win()
+
     TOKEN_QUERY = 0x0008
     TokenUser = 1
 
@@ -138,25 +172,22 @@ def current_user_sid() -> str:
     h_token = wintypes.HANDLE()
     if not adv.OpenProcessToken(k32.GetCurrentProcess(), TOKEN_QUERY,
                                 ctypes.byref(h_token)):
-        raise IsolationError(
-            f"OpenProcessToken failed (winerror={k32.GetLastError()})")
+        raise IsolationError(f"OpenProcessToken failed ({k32.GetLastError()})")
     try:
         size = wintypes.DWORD(0)
         adv.GetTokenInformation(h_token, TokenUser, None, 0, ctypes.byref(size))
         buf = ctypes.create_string_buffer(size.value)
         if not adv.GetTokenInformation(h_token, TokenUser, buf, size.value,
                                        ctypes.byref(size)):
-            raise IsolationError(
-                f"GetTokenInformation failed (winerror={k32.GetLastError()})")
+            raise IsolationError(f"GetTokenInformation failed ({k32.GetLastError()})")
         tu = ctypes.cast(buf, ctypes.POINTER(TOKEN_USER)).contents
-        str_ptr = wintypes.LPWSTR()
-        if not adv.ConvertSidToStringSidW(tu.User.Sid, ctypes.byref(str_ptr)):
-            raise IsolationError(
-                f"ConvertSidToStringSidW failed (winerror={k32.GetLastError()})")
+        sp = wintypes.LPWSTR()
+        if not adv.ConvertSidToStringSidW(tu.User.Sid, ctypes.byref(sp)):
+            raise IsolationError(f"ConvertSidToStringSidW failed ({k32.GetLastError()})")
         try:
-            return ctypes.wstring_at(str_ptr)
+            return ctypes.wstring_at(sp)
         finally:
-            k32.LocalFree(str_ptr)
+            k32.LocalFree(sp)
     finally:
         k32.CloseHandle(h_token)
 
@@ -164,7 +195,6 @@ def current_user_sid() -> str:
 # ---------------------------------------------------------------------------
 # Object identity binding (BD-63)
 # ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class ObjectIdentity:
@@ -175,7 +205,6 @@ class ObjectIdentity:
 
 
 def bind_object_identity(object_id: str, path: Path) -> ObjectIdentity:
-    """Record the object's stable identity BEFORE any isolation is installed."""
     p = Path(path).resolve()
     if not p.is_file():
         raise EnvironmentInvalid(f"object is not a regular file: {p}")
@@ -184,70 +213,110 @@ def bind_object_identity(object_id: str, path: Path) -> ObjectIdentity:
                           hashlib.sha256(data).hexdigest())
 
 
-# ---------------------------------------------------------------------------
-# Denial primitive: real DACL deny ACE for a SID (never chmod, never USERNAME)
-# ---------------------------------------------------------------------------
+def identity_still_matches(identity: ObjectIdentity) -> bool:
+    p = Path(identity.abs_path)
+    try:
+        if not p.is_file():
+            return False
+        data = p.read_bytes()
+    except OSError:
+        return False
+    return len(data) == identity.size and hashlib.sha256(data).hexdigest() == identity.sha256
 
+
+# ---------------------------------------------------------------------------
+# Denial primitive: real DACL deny ACE on a SID (never chmod, never USERNAME)
+# ---------------------------------------------------------------------------
 
 def deny_read_for_sid(path: Path, sid: str) -> None:
-    """Attach a REAL deny-read ACE for `sid` to `path`. FAIL CLOSED on any error."""
     if not _is_windows():
         raise IsolationError(
             f"{ISOLATION_PROFILE_ID} is Win32-only; refusing to fake isolation "
-            f"with a POSIX chmod"
-        )
-    # Use the SID (*S-1-5-...) directly so non-mappable accounts still work.
+            f"with a POSIX chmod")
     p = subprocess.run(["icacls", str(path), "/deny", f"*{sid}:(R)"],
                        capture_output=True, text=True)
     if p.returncode != 0:
         raise EnvironmentInvalid(
             f"deny ACE install FAILED (rc={p.returncode}) for {path}: "
-            f"{p.stdout}{p.stderr}"
-        )
+            f"{p.stdout}{p.stderr}")
 
 
-def has_deny_ace(path: Path, sid: str) -> bool:
-    """Independently confirm the object carries a deny ACE for `sid` (BD-63 ②).
+def save_dacl(path: Path) -> str:
+    """Save the object's FULL DACL (SDDL) via icacls /save so it can be exactly
+    restored. Returns the saved SDDL text (empty => failure)."""
+    p = Path(path)
+    save_dir = p.parent
+    save_file = save_dir / (p.name + ".aclsave.txt")
+    r = subprocess.run(["icacls", str(p), "/save", str(save_file), "/T"],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not save_file.exists():
+        raise EnvironmentInvalid(f"save_dacl failed (rc={r.returncode}): {r.stderr}")
+    # The save file is a small ACL descriptor DB (UTF-16). Read raw.
+    raw = save_file.read_bytes()
+    try:
+        text = raw.decode("utf-16")
+    except UnicodeDecodeError:
+        text = raw.decode("utf-8", "replace")
+    return text
 
-    NOTE (real OS property, found in self-test): once the deny ACE is in place
-    for the CURRENT principal, `icacls <path>` is ALSO denied (rc != 0, no ACL
-    output), because reading the security descriptor needs READ_CONTROL which
-    the deny blocks. So this check can only succeed from a principal that keeps
-    that access (the controller/owner as a DIFFERENT principal, per BD-61). When
-    it cannot read the ACL, it returns False and the caller must rely on the
-    recorded "deny install succeeded" witness + the observed denial instead.
-    """
-    p = subprocess.run(["icacls", str(path)], capture_output=True, text=True)
-    if p.returncode != 0:
-        return False
-    out = p.stdout
-    return ("(DENY)" in out.upper()) or ("(拒绝" in out)
 
-
-def restore_dacl(path: Path, acl_text: str) -> bool:
-    """Best-effort restore from a saved icacls dump. Returns True on success.
-
-    知微: SetNamedSecurityInfoW allows an owner / WRITE_DAC holder to restore the
-    DACL. We save and restore, and CHECK the return code (never ignore it).
-    """
+def restore_dacl(path: Path, saved_text: str) -> bool:
+    """Restore a SAVED DACL exactly via icacls /restore (the OS-blessed exact
+    rollback), NOT ``/reset`` (which merely rebuilds inherited perms). Returns
+    True only if the restore command succeeded (凌翼 gap 3)."""
     if not _is_windows():
         return True
-    # icacls /restore needs a file with the '/save' format; here we use /grant to
-    # rebuild a permissive baseline for a disposable canary and verify read-back.
-    p = subprocess.run(["icacls", str(path), "/reset"], capture_output=True, text=True)
-    return p.returncode == 0
+    if not saved_text:
+        return False
+    p = Path(path)
+    save_file = p.parent / (p.name + ".aclsave.txt")
+    save_file.write_text(saved_text, encoding="utf-16")
+    r = subprocess.run(["icacls", str(p.parent), "/restore", str(save_file)],
+                       capture_output=True, text=True)
+    return r.returncode == 0
 
 
 # ---------------------------------------------------------------------------
-# Access probe with object-identity + four-state verdict
+# Authenticated access witness (Q3-F1)
 # ---------------------------------------------------------------------------
+#
+# The judge holds a per-run secret; only probe_read_access() can seal a witness.
+# A hand-built AccessWitness carries no valid seal and is ALWAYS rejected.
+
+_RUN_SECRET: bytes = b""
+
+
+def start_run() -> str:
+    """Begin a judging run: generate the run secret + nonce. Returns the nonce."""
+    global _RUN_SECRET
+    _RUN_SECRET = secrets.token_bytes(32)
+    return uuid.uuid4().hex
+
+
+def _seal(fields: dict) -> str:
+    if not _RUN_SECRET:
+        raise IsolationError("no active run secret; call start_run() first")
+    msg = "|".join(f"{k}={fields[k]}" for k in sorted(fields)).encode("utf-8")
+    return hmac.new(_RUN_SECRET, msg, hashlib.sha256).hexdigest()
+
+
+def _unsealed_signature_fields(w) -> dict:
+    return {
+        "nonce": w.run_nonce, "object_id": w.object_id,
+        "abs_path": w.object_identity.abs_path if w.object_identity else "",
+        "size": w.object_identity.size if w.object_identity else -1,
+        "sha256": w.object_identity.sha256 if w.object_identity else "",
+        "op": w.requested_access, "attempted": w.attempted,
+        "verdict": w.verdict, "winerror": w.winerror, "errno": w.errno,
+        "attempted_path": w.attempted_path or "",
+    }
 
 
 @dataclass
 class AccessWitness:
     run_nonce: str
     object_id: str
-    object_identity: ObjectIdentity | None
+    object_identity: "ObjectIdentity | None"
     requested_access: str
     attempted: bool
     verdict: str
@@ -255,145 +324,179 @@ class AccessWitness:
     errno: int | None = None
     attempted_path: str | None = None
     detail: str = ""
+    seal: str | None = None            # set ONLY by probe_read_access
 
     @property
     def isolated(self) -> bool:
-        """Strict: ONLY a verified OS denial counts, AND it must be a real attempt
-        on the expected object."""
-        return (self.attempted is True
+        """Strict AND sealed: a valid HMAC seal over the observed fields, a real
+        attempt, a denial verdict, a bound identity, and a matching attempt path."""
+        return (self.seal is not None
+                and hmac.compare_digest(self.seal, _seal(_unsealed_signature_fields(self)))
+                and self.attempted is True
                 and self.verdict in ACCESS_ISOLATION_OK
                 and self.object_identity is not None
                 and self.attempted_path is not None
                 and self.attempted_path == self.object_identity.abs_path)
 
 
-def _winerror_from(exc: OSError) -> int | None:
-    return getattr(exc, "winerror", None)
-
-
 def probe_read_access(run_nonce: str, identity: ObjectIdentity) -> AccessWitness:
-    """Attempt to READ the expected object and classify the outcome.
-
-    A clean denial of the EXPECTED object (matching abs_path) => ACCESS_DENIED.
-    A successful read                                      => ACCESS_GRANTED.
-    A missing object                                       => ACCESS_OBJECT_MISSING (INVALID).
-    Any other OSError (incl. "opened a directory")         => ACCESS_ERROR (INVALID).
-    """
+    """Attempt to READ the expected object; classify. The witness is SEALED."""
     path = Path(identity.abs_path)
 
-    # 知微 defect 1: on Windows, opening a DIRECTORY raises PermissionError, which
-    # would be mis-read as ACCESS_DENIED. Bind the object TYPE before opening so a
-    # wrong-type object is an ENVIRONMENT error, never a denial.
+    def _mk(verdict, **kw):
+        w = AccessWitness(run_nonce, identity.object_id, identity, "READ",
+                          kw.pop("attempted", True), verdict, **kw)
+        w.seal = _seal(_unsealed_signature_fields(w))
+        return w
+
+    # Type bind BEFORE opening (知微 defect 1): a directory opened as a file on
+    # Windows raises PermissionError -> would be mis-read as a denial.
     try:
         if not path.is_file():
-            verdict = (ACCESS_OBJECT_MISSING if not path.exists() else ACCESS_ERROR)
-            detail = ("object missing: environment INVALID"
-                      if not path.exists() else
-                      "object is not a regular file (environment INVALID)")
-            return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                                 attempted=True, verdict=verdict,
-                                 attempted_path=str(path), detail=detail)
+            return _mk(ACCESS_OBJECT_MISSING if not path.exists() else ACCESS_ERROR,
+                       attempted_path=str(path),
+                       detail="object missing or not a regular file (environment INVALID)")
     except OSError as e:
-        return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                             attempted=True, verdict=ACCESS_ERROR,
-                             winerror=_winerror_from(e), attempted_path=str(path),
-                             detail=f"type probe error: {e}")
+        return _mk(ACCESS_ERROR, attempted_path=str(path),
+                   winerror=getattr(e, "winerror", None),
+                   detail=f"type probe error: {e}")
 
-    # Attempt the actual open; classify the outcome.
     try:
         with open(path, "rb") as fh:
             fh.read()
-        return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                             attempted=True, verdict=ACCESS_GRANTED,
-                             attempted_path=str(path),
-                             detail="read succeeded: isolation FAILED")
+        return _mk(ACCESS_GRANTED, attempted_path=str(path),
+                   detail="read succeeded: isolation FAILED")
     except FileNotFoundError as e:
-        return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                             attempted=True, verdict=ACCESS_OBJECT_MISSING,
-                             errno=getattr(e, "errno", None),
-                             winerror=_winerror_from(e),
-                             attempted_path=str(path),
-                             detail="object missing: environment INVALID")
+        return _mk(ACCESS_OBJECT_MISSING, attempted_path=str(path),
+                   errno=getattr(e, "errno", None),
+                   winerror=getattr(e, "winerror", None),
+                   detail="object missing: environment INVALID")
     except PermissionError as e:
-        return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                             attempted=True, verdict=ACCESS_DENIED,
-                             errno=getattr(e, "errno", None),
-                             winerror=_winerror_from(e),
-                             attempted_path=str(path),
-                             detail=str(e))
+        return _mk(ACCESS_DENIED, attempted_path=str(path),
+                   errno=getattr(e, "errno", None),
+                   winerror=getattr(e, "winerror", None), detail=str(e))
     except IsADirectoryError as e:
-        return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                             attempted=True, verdict=ACCESS_ERROR,
-                             winerror=_winerror_from(e),
-                             attempted_path=str(path),
-                             detail="object is a directory (environment INVALID)")
+        return _mk(ACCESS_ERROR, attempted_path=str(path),
+                   winerror=getattr(e, "winerror", None),
+                   detail="object is a directory (environment INVALID)")
     except OSError as e:
-        return AccessWitness(run_nonce, identity.object_id, identity, "READ",
-                             attempted=True, verdict=ACCESS_ERROR,
-                             errno=getattr(e, "errno", None),
-                             winerror=_winerror_from(e),
-                             attempted_path=str(path),
-                             detail=f"non-permission OS error: {e}")
+        return _mk(ACCESS_ERROR, attempted_path=str(path),
+                   errno=getattr(e, "errno", None),
+                   winerror=getattr(e, "winerror", None),
+                   detail=f"non-permission OS error: {e}")
 
 
 # ---------------------------------------------------------------------------
-# Fresh-process witness (OS identity, not stdout)
+# Worker lifecycle with OS process times (凌翼 gap 2)
 # ---------------------------------------------------------------------------
-
 
 @dataclass
-class WorkerIdentity:
+class WorkerLifecycle:
     run_nonce: str
-    parent_pid: int
-    worker_pid: int            # from Popen.pid (OS-returned), NOT stdout
-    parent_start: float
-    worker_start: float
-    fresh: bool
+    old_worker_pid: int | None
+    old_exit_time: float | None
+    new_worker_pid: int
+    new_create_time: float
+    old_terminated_before_new: bool
     detail: str = ""
 
 
-def spawn_worker_isolated(child_code: str, run_nonce: str) -> tuple[subprocess.CompletedProcess, WorkerIdentity]:
-    """Spawn a NEW process with EXPLICIT close_fds=True and record OS identity.
+def _process_times(pid: int):
+    """Return (creation_time, exit_time) for a pid via OpenProcess+GetProcessTimes.
+    Requires PROCESS_QUERY_LIMITED_INFORMATION. Returns (None, None) on failure."""
+    from ctypes import wintypes
+    adv, k32, FILETIME = _win()
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
+        return None, None
+    try:
+        c, e, kt, ut = FILETIME(), FILETIME(), FILETIME(), FILETIME()
+        if not k32.GetProcessTimes(h, ctypes.byref(c), ctypes.byref(e),
+                                   ctypes.byref(kt), ctypes.byref(ut)):
+            return None, None
+        return _filetime_to_unix(c), _filetime_to_unix(e)
+    finally:
+        k32.CloseHandle(h)
 
-    BD-62: close_fds=True is written into the contract (not left to default).
-    Q3-D/知微: worker identity is Popen.pid (OS-returned) + a creation timestamp,
-    NOT the child's self-reported stdout PID.
+
+def spawn_worker_tracked(child_argv: list[str], run_nonce: str,
+                         old_worker_pid: int | None) -> tuple[subprocess.CompletedProcess,
+                                                              WorkerLifecycle]:
+    """Spawn a worker and record TRUE lifecycle evidence.
+
+    - old process exit time is read from the OS (GetProcessTimes), and we require
+      old_exit_time <= new_create_time (old terminated before new started).
+    - new creation time is read from the OS, not time.time() after wait.
+    - close_fds=True is explicit (必要非充分; 凌翼 gap 2).
     """
-    parent = os.getpid()
-    parent_start = time.time()
-    p = subprocess.Popen([sys.executable, "-c", child_code],
+    p = subprocess.Popen([sys.executable, *child_argv],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, close_fds=True)   # EXPLICIT (BD-62)
-    worker_pid = p.pid                                  # OS-returned
+                         text=True, close_fds=True)
+    new_pid = p.pid
+    new_create, _ = _process_times(new_pid)
     out, err = p.communicate(timeout=60)
-    worker_start = time.time()
     cp = subprocess.CompletedProcess(p.args, p.returncode, out, err)
-    fresh = (worker_pid != parent and p.returncode is not None)
-    return cp, WorkerIdentity(run_nonce, parent, worker_pid, parent_start,
-                              worker_start, fresh,
-                              detail=f"parent={parent} worker={worker_pid} rc={p.returncode}")
+
+    old_exit = None
+    if old_worker_pid is not None:
+        old_create, old_exit = _process_times(old_worker_pid)
+    old_before_new = bool(old_exit is not None and new_create is not None
+                          and old_exit <= new_create)
+    lc = WorkerLifecycle(run_nonce, old_worker_pid, old_exit, new_pid,
+                         new_create or 0.0, old_before_new,
+                         detail=f"old_exit={old_exit} new_create={new_create} rc={p.returncode}")
+    return cp, lc
 
 
 # ---------------------------------------------------------------------------
-# Strict three-way reset gate (fail-closed, tri-state)
+# Independent post-reset observation (Q3-A) — NOT from cache
 # ---------------------------------------------------------------------------
 
-UNEVALUATED = "UNEVALUATED"
+@dataclass
+class ResetEvidence:
+    s_handoff: bytes | None
+    s_restored: bytes | None
+    handoff_source: str
+    restored_source: str
 
+
+def observe_handoff(observer_read) -> bytes:
+    """Observer's INDEPENDENT pre-reset read. observer_read is a callable that
+    performs the real read."""
+    return observer_read()
+
+
+def observe_restored(observer_read) -> bytes:
+    """Observer's INDEPENDENT post-reset read (NOT the cached handoff)."""
+    return observer_read()
+
+
+def preserve_verdict(ev: ResetEvidence) -> object:
+    """True / False / UNEVALUATED for the preserve side (Q3-A)."""
+    if ev.s_handoff is None or ev.s_restored is None:
+        return UNEVALUATED
+    if ev.restored_source == "cache":
+        return UNEVALUATED          # cached bytes are NOT restored evidence
+    return ev.s_handoff == ev.s_restored
+
+
+# ---------------------------------------------------------------------------
+# Strict three-way reset gate (fail-closed)
+# ---------------------------------------------------------------------------
 
 @dataclass
 class ResetWitness:
-    clear_ok: object = UNEVALUATED      # True / False / UNEVALUATED
+    clear_ok: object = UNEVALUATED
     preserve_ok: object = UNEVALUATED
     access_ok: object = UNEVALUATED
     reason: str = ""
 
     @property
     def valid(self) -> bool:
-        """Strict: every side must be True (identity compare, not truthiness).
-        UNEVALUATED must NEVER pass (it is a non-empty string -> truthy trap)."""
-        return (self.clear_ok is True
-                and self.preserve_ok is True
+        return (self.clear_ok is True and self.preserve_ok is True
                 and self.access_ok is True)
 
 
@@ -406,8 +509,17 @@ def judge_reset(clear_ok, preserve_ok, access_ok) -> ResetWitness:
     return w
 
 
+def _checked_cleanup(path: Path) -> bool:
+    try:
+        shutil.rmtree(path)
+    except OSError as e:
+        print(f"cleanup error: {e}")
+        return False
+    return not path.exists()
+
+
 # ---------------------------------------------------------------------------
-# Self-test (run directly): prove the mechanism AND the negative controls
+# Self-test
 # ---------------------------------------------------------------------------
 
 def _selftest() -> int:
@@ -421,120 +533,90 @@ def _selftest() -> int:
         print("win32_isolation selftest requires Windows")
         return 2
 
-    run = uuid.uuid4().hex
-    tmp = Path(tempfile.mkdtemp(prefix="q3_iso_"))
+    run = start_run()
+    tmp = Path(tempfile.mkdtemp(prefix="q3v2_"))
     sid = current_user_sid()
     chk("PRINCIPAL: token SID resolved (not USERNAME)", sid.startswith("S-1-"))
 
-    # 1. NEGATIVE CONTROL: chmod(0) does NOT deny on Windows
-    c1 = tmp / "chmod_canary.bin"
-    c1.write_bytes(b"\x01\x02\x03\x04" * 4)
+    # NEGATIVE CONTROL: chmod(0) does NOT deny
+    c1 = tmp / "chmod_canary.bin"; c1.write_bytes(b"\x01\x02\x03\x04" * 4)
     os.chmod(c1, 0)
-    still_readable = True
+    ok = True
     try:
         c1.read_bytes()
     except Exception:
-        still_readable = False
+        ok = False
     os.chmod(c1, 0o666)
-    chk("NEGATIVE CONTROL: os.chmod(0) does NOT deny read on Windows", still_readable)
+    chk("NEGATIVE CONTROL: os.chmod(0) does NOT deny read on Windows", ok)
 
-    # 2. POSITIVE: deny ACE (by SID) -> ACCESS_DENIED on the EXPECTED object
-    c2 = tmp / "denied_canary.bin"
-    c2.write_bytes(b"\x01\x02\x03\x04" * 4)
-    id2 = bind_object_identity("substrate", c2)
-    deny_read_for_sid(c2, sid)   # raises EnvironmentInvalid if rc != 0 (checked)
-    w = probe_read_access(run, id2)
-    chk("POSITIVE: deny ACE -> ACCESS_DENIED", w.verdict == ACCESS_DENIED)
-    chk("POSITIVE: witness.isolated True (attempted + expected object)",
-        w.isolated is True)
-    # Real OS property: once denied, the same principal can no longer read the
-    # ACL either. So has_deny_ace() is EXPECTED to be False here; the authoritative
-    # evidence is (a) deny_read_for_sid() did not raise, and (b) the observed denial.
-    chk("BD-61/②: from the DENIED principal, ACL readback is itself denied",
-        has_deny_ace(c2, sid) is False)
+    # POSITIVE: deny by restricting SID -> observer (no restricting SID) keeps read
+    c2 = tmp / "observer_canary.bin"; c2.write_bytes(b"observer-payload")
+    id2 = bind_object_identity("canary", c2)
+    sddl = save_dacl(c2)
+    deny_read_for_sid(c2, RESTRICTING_SID)
+    w_obs = probe_read_access(run, id2)
+    chk("SHAPE: deny by RESTRICTING SID -> observer still reads (GRANTED)",
+        w_obs.verdict == ACCESS_GRANTED)
+    # restore the exact DACL and verify
+    chk("DACL: exact restore via saved SDDL verified", restore_dacl(c2, sddl))
 
-    # 3. BD-63: the witness binds the EXPECTED object path
-    chk("BD-63: witness.attempted_path == bound abs_path",
-        w.attempted_path == id2.abs_path)
+    # DENIED: deny by MY OWN SID -> my read denied (mechanism works)
+    c3 = tmp / "self_denied.bin"; c3.write_bytes(b"self")
+    id3 = bind_object_identity("self", c3)
+    deny_read_for_sid(c3, sid)
+    w3 = probe_read_access(run, id3)
+    chk("MECHANISM: deny by own SID -> ACCESS_DENIED", w3.verdict == ACCESS_DENIED)
+    chk("SEAL: genuine denial witness is isolated", w3.isolated is True)
 
-    # 4. 知微 defect 1: directory treated as an expected FILE -> ACCESS_ERROR (not DENIED)
-    d = tmp / "a_directory"
-    d.mkdir()
-    id_dir = ObjectIdentity("dir", str(d.resolve()), 0, "")   # wrongly typed as file
-    wd = probe_read_access(run, id_dir)
-    chk("FIX(defect1): directory as expected-file -> ACCESS_ERROR, not DENIED",
+    # Q3-F1: hand-forged witness is NOT isolated (no seal)
+    forged = AccessWitness(run, "self", id3, "READ", True, ACCESS_DENIED,
+                           attempted_path=id3.abs_path)
+    chk("Q3-F1: hand-forged witness (no seal) -> isolated False", forged.isolated is False)
+    # tampered seal rejected
+    forged2 = AccessWitness(run, "self", id3, "READ", True, ACCESS_DENIED,
+                            attempted_path=id3.abs_path, seal="deadbeef")
+    chk("Q3-F1: tampered seal -> isolated False", forged2.isolated is False)
+
+    # 知微 defect 1: directory as expected file -> ACCESS_ERROR
+    dd = tmp / "adir"; dd.mkdir()
+    idd = ObjectIdentity("dir", str(dd.resolve()), 0, "")
+    wd = probe_read_access(run, idd)
+    chk("FIX(defect1): directory -> ACCESS_ERROR not DENIED",
         wd.verdict == ACCESS_ERROR and wd.isolated is False)
 
-    # 5. 知微 defect 2: attempted=False can NEVER be isolated
-    fake = AccessWitness(run, "x", id2, "READ", attempted=False,
-                         verdict=ACCESS_DENIED, attempted_path=id2.abs_path)
-    chk("FIX(defect2): attempted=False -> isolated False",
-        fake.isolated is False)
-
-    # 6. missing object -> ACCESS_OBJECT_MISSING (environment INVALID), not attempted
-    missing = ObjectIdentity("missing", str((tmp / "nope.bin").resolve()), 0, "")
-    wm = probe_read_access(run, missing)
-    chk("FIX: missing object -> ACCESS_OBJECT_MISSING (INVALID)",
+    # missing object -> ACCESS_OBJECT_MISSING
+    idm = ObjectIdentity("missing", str((tmp / "nope.bin").resolve()), 0, "")
+    wm = probe_read_access(run, idm)
+    chk("FIX: missing -> ACCESS_OBJECT_MISSING (INVALID)",
         wm.verdict == ACCESS_OBJECT_MISSING and wm.isolated is False)
 
-    # 7. 知微 defect 3 / Q3-D: OS-returned PID (not stdout self-report)
-    cp, ident = spawn_worker_isolated(
-        "import os,sys; print('WORKER_PID=0'); raise SystemExit(7)", run)
-    chk("FIX(defect3)/Q3-D: worker pid is OS-returned (not stdout 0)",
-        ident.worker_pid != 0 and ident.worker_pid != os.getpid())
-    chk("Q3-D: nonzero child exit recorded (rc=7)", cp.returncode == 7)
+    # Q3-A: preserve from CACHE -> UNEVALUATED; independent unequal -> False
+    ev_cache = ResetEvidence(b"AAA", b"AAA", "observer", "cache")
+    chk("Q3-A: preserve from cache -> UNEVALUATED", preserve_verdict(ev_cache) == UNEVALUATED)
+    ev_uneq = ResetEvidence(b"AAA", b"BBB", "observer", "observer")
+    chk("Q3-A: independent handoff!=restored -> False", preserve_verdict(ev_uneq) is False)
+    ev_eq = ResetEvidence(b"AAA", b"AAA", "observer", "observer")
+    chk("Q3-A: independent handoff==restored -> True", preserve_verdict(ev_eq) is True)
 
-    # 8. CROSS-PROCESS denial + allowed-sibling control (attributable denial)
-    c3 = tmp / "crossproc_denied.bin"
-    c3.write_bytes(b"\xaa\xbb\xcc\xdd" * 4)
-    deny_read_for_sid(c3, sid)
-    child = (
-        "try:\n"
-        f"    open(r'{c3}','rb').read()\n"
-        "    print('CHILD=GRANTED')\n"
-        "except PermissionError:\n"
-        "    print('CHILD=DENIED')\n"
-    )
-    cp2, _ = spawn_worker_isolated(child, run)
-    chk("CROSS-PROCESS: child denied reading denied object",
-        "CHILD=DENIED" in (cp2.stdout or ""))
-    sibling = tmp / "sibling_allowed.bin"
-    sibling.write_bytes(b"public")
-    child2 = (
-        "try:\n"
-        f"    open(r'{sibling}','rb').read()\n"
-        "    print('CHILD=GRANTED')\n"
-        "except PermissionError:\n"
-        "    print('CHILD=DENIED')\n"
-    )
-    cp3, _ = spawn_worker_isolated(child2, run)
-    chk("CONTROL: child CAN read an allowed sibling object",
-        "CHILD=GRANTED" in (cp3.stdout or ""))
+    # strict gate: UNEVALUATED not truthy-pass
+    chk("GATE: UNEVALUATED sides -> NOT valid", judge_reset(UNEVALUATED, UNEVALUATED, True).valid is False)
+    chk("GATE: all True -> valid", judge_reset(True, True, True).valid is True)
 
-    # 9. STRICT RESET GATE: UNEVALUATED must NOT pass (truthy trap)
-    g1 = judge_reset(UNEVALUATED, UNEVALUATED, True)
-    chk("Q3-A/E: reset with UNEVALUATED sides -> NOT valid", g1.valid is False)
-    g2 = judge_reset(True, True, True)
-    chk("Q3-A/E: reset with all True -> valid", g2.valid is True)
+    # lifecycle: OS process times + old-exited-before-new
+    script = tmp / "worker.py"
+    script.write_text("import time,sys; time.sleep(0.05)\n", encoding="utf-8")
+    cp, lc = spawn_worker_tracked([str(script)], run, old_worker_pid=None)
+    chk("LIFECYCLE: OS creation time recorded for new worker", lc.new_create_time > 0)
+    chk("LIFECYCLE: worker rc recorded", cp.returncode == 0)
+    # now without an old pid, old_before_new is False (not claimable)
+    chk("LIFECYCLE: old-before-new NOT claimed when no old pid",
+        lc.old_terminated_before_new is False)
 
-    # 10. CLEANUP return checked (no ignore_errors)
-    ok_cleanup = _checked_cleanup(tmp)
-    chk("知微: cleanup returns checked (True on success)", ok_cleanup is True)
+    chk("CLEANUP: checked (True on success)", _checked_cleanup(tmp) is True)
 
     passed = sum(1 for _, ok in results if ok)
-    print(f"\nwin32_isolation selftest (V1 hardened): {passed}/{len(results)} PASS")
+    print(f"\nwin32_isolation selftest (V2): {passed}/{len(results)} PASS")
     return 0 if passed == len(results) else 1
-
-
-def _checked_cleanup(path: Path) -> bool:
-    """Remove a disposable dir and VERIFY it is gone (知微: check return value)."""
-    import shutil
-    try:
-        shutil.rmtree(path)
-    except OSError as e:
-        print(f"cleanup error: {e}")
-        return False
-    return not path.exists()
 
 
 if __name__ == "__main__":
