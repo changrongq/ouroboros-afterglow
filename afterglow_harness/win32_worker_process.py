@@ -31,6 +31,7 @@ Q3 的"眼睛隔离"要求 worker 是**真正不同的安全主体**，这样：
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -172,7 +173,14 @@ def _selftest() -> int:
         print(f"[{'PASS' if cond else 'FAIL'}] {name}")
 
     account = WORKER_ACCOUNT_DEFAULT
-    password = "REDACTED_ROTATED_CREDENTIAL"          # disposable lab account (船长-provided)
+    # CREDENTIALS: NEVER hard-coded. Inject at runtime via environment
+    # (Q3 SECURITY: 凌翼 — published credential = exposure). The caller sets
+    # AFTERGLOW_WORKER_PASSWORD in the environment; we never store it in code.
+    password = os.environ.get("AFTERGLOW_WORKER_PASSWORD")
+    if not password:
+        print("SKIP: set AFTERGLOW_WORKER_PASSWORD in the environment to run "
+              "the cross-process self-test (no stored credential).")
+        return 0
     python_exe = PUBLIC_PYTHON_DEFAULT
 
     if not Path(python_exe).exists():
