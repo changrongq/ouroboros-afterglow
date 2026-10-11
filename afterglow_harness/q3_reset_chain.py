@@ -559,8 +559,7 @@ except Exception:
 
 def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                    protected: Path, run_nonce: str | None = None,
-                   required_clear_targets: list | None = None,
-                   clear_actually_done: bool | None = None,
+                   clear_targets_by_category: dict | None = None,
                    clear_na_declared: bool = False,
                    expected_sid: str | None = None,
                    old_worker_pid: int | None = None,
@@ -573,15 +572,19 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     clear/preserve/access/identity/handle/lifecycle.
 
     BRITTLE GATES (fail-closed):
-      · handle_ok: only HANDLE_AUDIT_CLEAN passes (BD-65).
-      · clear_ok: requires a NON-EMPTY required_clear_targets set AND that they are
-        gone; empty set => INVALID unless clear_na_declared (BD-66).
+      · handle_ok: only HANDLE_AUDIT_CLEAN passes (BD-65). UNRESOLVED/ERROR never
+        pass; they are recorded, not relabelled CLEAN.
+      · clear_ok: REQUIRED categories come from the FROZEN q3_contract; the caller
+        supplies a per-category path mapping covering every required category;
+        each target must be ACTUALLY gone. Empty/missing-category => INVALID
+        unless the contract itself declares N/A (BD-66/BD-68).
       · identity_ok: worker SID differs from controller, matches expected account,
-        create_time>0, wait==OBJECT_0, exit==WORKER_SUCCESS_EXIT, probe hash matches.
+        create_time>0, wait==OBJECT_0, exit==WORKER_SUCCESS_EXIT, probe hash matches,
+        AND the trusted probe code dir is worker-immutable (effective perms).
       · lifecycle_ok: an old worker, if given, must be proven terminated before the
-        new one starts.
+        new one starts (false only for profiles declaring first-start).
     """
-    required_clear_targets = list(required_clear_targets or [])
+    clear_targets_by_category = dict(clear_targets_by_category or {})
     nonce = run_nonce or uuid.uuid4().hex
     out = ResetChainResult()
 
@@ -710,22 +713,35 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     else:
         out.preserve_ok = (out.s_handoff == out.s_restored)
 
-    # 10. BD-66 clear gate: REQUIRED set (non-empty) AND actually removed.
-    #     知微 P2: clear_na_declared must be STRICTLY the bool True (not truthy
-    #     strings/numbers). A non-bool declaration is a malformed contract => INVALID.
+    # 10. BD-66/BD-68 clear gate: the REQUIRED set comes from the FROZEN contract,
+    #     not the caller. The caller supplies concrete paths per category; every
+    #     REQUIRED category must be present (unless the contract declares it N/A),
+    #     and each declared target must be ACTUALLY gone. Empty set is INVALID
+    #     unless the frozen contract permits NOT_APPLICABLE (never post-hoc).
+    from q3_contract import (REQUIRED_CLEAR_CATEGORIES, CONTRACT_NOT_APPLICABLE_ALLOWED)
     if clear_na_declared is not True and clear_na_declared is not False:
         out.clear_ok = False
         out.reason = out.reason or f"CLEAR_NA_NOT_BOOL: {clear_na_declared!r}"
-    elif (clear_na_declared is True) and not required_clear_targets:
-        out.clear_ok = True                       # explicitly N/A by frozen contract
-    elif not required_clear_targets:
-        out.clear_ok = False                      # BD-66: empty set is INVALID
-        out.reason = out.reason or "CLEAR_SET_EMPTY"
+    elif clear_na_declared is True:
+        if set(REQUIRED_CLEAR_CATEGORIES) <= set(CONTRACT_NOT_APPLICABLE_ALLOWED):
+            out.clear_ok = True
+        else:
+            out.clear_ok = False
+            out.reason = out.reason or "CLEAR_NA_NOT_ALLOWED_BY_CONTRACT"
     else:
-        all_gone = all(not Path(t).exists() for t in required_clear_targets)
-        out.clear_ok = bool(all_gone)
-        if not all_gone:
-            out.reason = out.reason or "CLEAR_TARGETS_NOT_REMOVED"
+        mapping = dict(clear_targets_by_category or {})
+        missing = [c for c in REQUIRED_CLEAR_CATEGORIES if c not in mapping]
+        if missing and not mapping:
+            out.clear_ok = False
+            out.reason = out.reason or "CLEAR_SET_EMPTY"
+        elif missing:
+            out.clear_ok = False
+            out.reason = out.reason or f"CLEAR_CATEGORIES_MISSING: {missing}"
+        else:
+            all_gone = all(not Path(str(t)).exists() for t in mapping.values())
+            out.clear_ok = bool(all_gone)
+            if not all_gone:
+                out.reason = out.reason or "CLEAR_TARGETS_NOT_REMOVED"
 
     return out
 
@@ -819,10 +835,14 @@ def _selftest() -> int:
         grant(WORKER_ACCOUNT_DEFAULT, work, "(OI)(CI)(F)")
         grant(WORKER_ACCOUNT_DEFAULT, d, "(OI)(CI)(RX)")
 
-        # a required (non-empty) clear target that we genuinely remove first
-        required_clear = d / "input_canary.txt"
-        required_clear.write_text("counterfeit")
-        required_clear.unlink()   # removed => clear satisfied
+        # a REQUIRED clear mapping covering every frozen contract category
+        from q3_contract import REQUIRED_CLEAR_CATEGORIES
+        clear_paths = {}
+        for cat in REQUIRED_CLEAR_CATEGORIES:
+            p = d / f"clear_{cat}.txt"
+            p.write_text("counterfeit")
+            p.unlink()   # removed => clear satisfied
+            clear_paths[cat] = p
 
         # resolve the worker account's expected SID
         try:
@@ -831,7 +851,7 @@ def _selftest() -> int:
             expected_sid = None
 
         res = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
-                             required_clear_targets=[required_clear],
+                             clear_targets_by_category=clear_paths,
                              expected_sid=expected_sid)
         att = res.attestation
         chk("CHAIN: worker pid recorded", att is not None and att.pid > 0)
@@ -872,22 +892,32 @@ def _selftest() -> int:
             chk(f"BD-65: handle status {st!r} -> not pass", hok is False)
         chk("BD-65: HANDLE_AUDIT_CLEAN -> pass", "HANDLE_AUDIT_CLEAN" in HANDLE_STATUS_PASS)
 
-        # ---- BD-66 negative: empty required clear set => INVALID ----
+        # ---- BD-66/68 negative: empty clear mapping => INVALID ----
         res_empty = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
-                                   required_clear_targets=[],
+                                   clear_targets_by_category={},
                                    expected_sid=expected_sid)
-        chk("BD-66: empty required clear set -> clear_ok False -> invalid",
+        chk("BD-66/68: empty clear mapping -> clear_ok False -> invalid",
             res_empty.clear_ok is False and res_empty.valid is False)
-        # N/A only when explicitly declared
+        # a partial mapping missing a required category => INVALID
+        partial = {k: v for k, v in clear_paths.items() if k != REQUIRED_CLEAR_CATEGORIES[0]}
+        res_partial = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
+                                     clear_targets_by_category=partial,
+                                     expected_sid=expected_sid)
+        chk("BD-68: missing a required clear CATEGORY -> clear_ok False",
+            res_partial.clear_ok is False)
+        # N/A declared but contract does NOT allow it -> INVALID (no post-hoc N/A)
         res_na = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
-                                required_clear_targets=[required_clear],
+                                clear_targets_by_category=clear_paths,
                                 clear_na_declared=True, expected_sid=expected_sid)
-        chk("BD-66: explicit N/A (with contract) allowed", res_na.clear_ok is True)
+        chk("BD-68: N/A declared but contract forbids -> clear_ok False",
+            res_na.clear_ok is False)
 
         # ---- BD-66 negative: required clear target STILL present ----
+        still_map = dict(clear_paths)
         still = d / "still_input.txt"; still.write_text("x")
+        still_map[REQUIRED_CLEAR_CATEGORIES[0]] = still
         res_present = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
-                                     required_clear_targets=[still],
+                                     clear_targets_by_category=still_map,
                                      expected_sid=expected_sid)
         chk("BD-66: present required clear target -> clear_ok False -> invalid",
             res_present.clear_ok is False and res_present.valid is False)
@@ -895,7 +925,7 @@ def _selftest() -> int:
         # ---- P2 negative: non-bool clear_na_declared must be rejected ----
         for bad in ("UNEVALUATED", "False", 1, 0, []):
             r = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
-                               required_clear_targets=[required_clear],
+                               clear_targets_by_category=clear_paths,
                                clear_na_declared=bad, expected_sid=expected_sid)
             chk(f"P2: clear_na_declared={bad!r} (non-bool) -> clear_ok False",
                 r.clear_ok is False)
@@ -911,8 +941,12 @@ def _selftest() -> int:
 
         # use a live pid so OpenProcess succeeds; the no-op terminator leaves it
         # alive but we only assert the HANDOFF/PRESERVE effect here.
+        victim_map = {}
+        for cat in REQUIRED_CLEAR_CATEGORIES:
+            vp = d / f"vclear_{cat}.txt"; vp.write_text("x"); vp.unlink()
+            victim_map[cat] = vp
         res_corrupt = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, victim,
-                                     required_clear_targets=[required_clear],
+                                     clear_targets_by_category=victim_map,
                                      expected_sid=expected_sid,
                                      old_worker_pid=os.getpid(),
                                      terminate_old_worker=_bad_terminator)
