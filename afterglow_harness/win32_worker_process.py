@@ -180,7 +180,7 @@ def _selftest() -> int:
     if not password:
         print("SKIP: set AFTERGLOW_WORKER_PASSWORD in the environment to run "
               "the cross-process self-test (no stored credential).")
-        return 0
+        return 2
     python_exe = PUBLIC_PYTHON_DEFAULT
 
     if not Path(python_exe).exists():

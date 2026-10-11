@@ -634,7 +634,12 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     lockdown_code_dir(account, code_dir)
     grant(account, out_dir, "(OI)(CI)(F)")
     code_immutable_ok = verify_code_dir_immutable(account, code_dir)
-    # expected hash from the frozen template bytes we control
+    # BD-73: probe authority comes from the CONTRACT, not the caller. We validate
+    # the TEMPLATE SOURCE hash against the contract pin. While the pin is unset
+    # this is fail-closed (NOT_EVALUATED, never PASS).
+    from q3_contract import validate_probe_sha256, compute_probe_template_sha256
+    probe_contract_ok = validate_probe_sha256(compute_probe_template_sha256())
+    # the executed probe file must match the rendered template we produced
     probe_sha_expected = hashlib.sha256(probe_bytes).hexdigest()
 
     # 4. spawn attested worker (F2/F3); audit its handles while alive (BD-62)
@@ -653,15 +658,15 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                               expected_sid=expected_sid, on_alive=_on_alive)
     out.attestation = att
 
-    # 5. F3 identity/completion gate (incl. trusted-probe immutability)
-    out.identity_ok = (att.identity_ok and code_immutable_ok)
+    # 5. F3 identity/completion gate (incl. trusted-probe immutability + contract hash)
+    out.identity_ok = (att.identity_ok and code_immutable_ok and probe_contract_ok)
     if not out.identity_ok:
         out.reason = ("IDENTITY_GATE_FAILED: "
                       f"sid_differs={att.sid_differs} "
                       f"sid_matches_expected={att.sid_matches_expected} "
                       f"create_time={att.create_time} wait={hex(att.wait_result)} "
                       f"exit={att.exit_code} sha_match={att.probe_sha_matches} "
-                      f"code_immutable={code_immutable_ok}")
+                      f"code_immutable={code_immutable_ok} probe_contract={probe_contract_ok}")
 
     # 6. BD-65 handle gate — TWO INDEPENDENT pieces of evidence (凌翼):
     #    (a) inheritance_prevention_ok: the CREATE API never inherits handles.
@@ -729,14 +734,16 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
             out.clear_ok = False
             out.reason = out.reason or "CLEAR_NA_NOT_ALLOWED_BY_CONTRACT"
     else:
+        # BD-72: the CONTRACT validates the caller's coverage (not just a docstring).
+        from q3_contract import validate_clear_targets
+        ok_cov, missing_cov = validate_clear_targets(clear_targets_by_category)
         mapping = dict(clear_targets_by_category or {})
-        missing = [c for c in REQUIRED_CLEAR_CATEGORIES if c not in mapping]
-        if missing and not mapping:
+        if not mapping:
             out.clear_ok = False
             out.reason = out.reason or "CLEAR_SET_EMPTY"
-        elif missing:
+        elif not ok_cov:
             out.clear_ok = False
-            out.reason = out.reason or f"CLEAR_CATEGORIES_MISSING: {missing}"
+            out.reason = out.reason or f"CLEAR_CATEGORIES_MISSING: {missing_cov}"
         else:
             all_gone = all(not Path(str(t)).exists() for t in mapping.values())
             out.clear_ok = bool(all_gone)
@@ -821,7 +828,7 @@ def _selftest() -> int:
         print("requires Windows"); return 2
     pw = os.environ.get("AFTERGLOW_WORKER_PASSWORD")
     if not pw:
-        print("SKIP: set AFTERGLOW_WORKER_PASSWORD to run"); return 0
+        print("SKIP: set AFTERGLOW_WORKER_PASSWORD to run"); return 2
     py = PUBLIC_PYTHON_DEFAULT
     if not Path(py).exists():
         print(f"public python missing: {py}"); return 2
@@ -834,6 +841,18 @@ def _selftest() -> int:
         # simulate the REPORTED real condition: caller granted work broad access
         grant(WORKER_ACCOUNT_DEFAULT, work, "(OI)(CI)(F)")
         grant(WORKER_ACCOUNT_DEFAULT, d, "(OI)(CI)(RX)")
+
+        # BD-73: the contract PINS the probe template-source hash. Verify the pin
+        # matches the current template, and that a mismatch / empty pin fails closed.
+        import q3_contract as _qc
+        _pin = _qc.compute_probe_template_sha256()
+        chk("BD-73: contract pin matches current template", _qc.validate_probe_sha256(_pin) is True)
+        chk("BD-73: mismatched hash => validate False", _qc.validate_probe_sha256("deadbeef") is False)
+        _orig_pin = _qc.PROBE_TEMPLATE_SHA256
+        _qc.PROBE_TEMPLATE_SHA256 = ""
+        chk("BD-73: empty pin => validate False (fail-closed)",
+            _qc.validate_probe_sha256(_pin) is False)
+        _qc.PROBE_TEMPLATE_SHA256 = _orig_pin
 
         # a REQUIRED clear mapping covering every frozen contract category
         from q3_contract import REQUIRED_CLEAR_CATEGORIES

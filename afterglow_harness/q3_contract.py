@@ -81,8 +81,26 @@ CONTRACT_NOT_APPLICABLE_ALLOWED = frozenset()
 
 #: The trusted probe TEMPLATE is frozen here (identity = its bytes' SHA-256).
 #: The driver renders parameters into THIS template; it does not accept an
-#: arbitrary probe file. (凌翼 P1-3: bind probe authority to the frozen profile.)
+#: arbitrary probe file. (凌翼 P1-3 / 睫 BD-73: the contract must CONTAIN the
+#: pinned hash, not just a name.)
 PROBE_TEMPLATE_ID = "Q3_BOUND_FORBIDDEN_ACCESS_PROBE_V1"
+
+#: Pinned SHA-256 of the trusted probe TEMPLATE SOURCE (the PROBE_TEMPLATE string
+#: in q3_reset_chain). 睫 BD-73: this value lives HERE; the driver reads it and
+#: does NOT accept probe_sha_expected as a caller parameter. While it is empty the
+#: run MUST be treated as NOT_EVALUATED (never PASS) — fail-closed.
+PROBE_TEMPLATE_SHA256 = "1750b843722366aaf7f95150fd4da32fdfd465fbb3cd9eda94f38e7f142e10f4"
+
+#: Source of the trusted probe template (single frozen module: this is data).
+PROBE_TEMPLATE_SOURCE = "q3_reset_chain.PROBE_TEMPLATE"
+
+
+def compute_probe_template_sha256() -> str:
+    """SHA-256 of the canonical probe template SOURCE text (the code the worker
+    must execute). Computed the same way at freeze time and at run time."""
+    import hashlib
+    from q3_reset_chain import PROBE_TEMPLATE
+    return hashlib.sha256(PROBE_TEMPLATE.encode("utf-8")).hexdigest()
 
 
 def required_clear_categories() -> tuple:
@@ -95,3 +113,27 @@ def active_handle_profile() -> str:
 
 def profile_scope_text(profile: str | None = None) -> str:
     return PROFILE_SCOPE.get(profile or ACTIVE_HANDLE_PROFILE, "<unknown profile>")
+
+
+def validate_clear_targets(provided: dict) -> tuple[bool, list]:
+    """BD-72: the contract itself validates the caller's coverage.
+
+    Returns (ok, missing). `provided` maps category -> path. A category is
+    covered iff present AND mapped to a non-empty path. The driver MUST call
+    this; not calling it (or ignoring `ok`) => INVALID.
+    """
+    if not isinstance(provided, dict):
+        return False, list(REQUIRED_CLEAR_CATEGORIES)
+    missing = []
+    for cat in REQUIRED_CLEAR_CATEGORIES:
+        if cat not in provided or not provided[cat]:
+            missing.append(cat)
+    return (len(missing) == 0), missing
+
+
+def validate_probe_sha256(actual: str) -> bool:
+    """BD-73: the executed probe's template-source hash must equal the pinned
+    hash. False while PROBE_TEMPLATE_SHA256 is unset (fail-closed)."""
+    if not PROBE_TEMPLATE_SHA256:
+        return False
+    return actual == PROBE_TEMPLATE_SHA256

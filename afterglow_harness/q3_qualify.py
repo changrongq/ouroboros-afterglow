@@ -41,25 +41,18 @@ COMPONENT_MODULES = (
 
 
 def _run(script: str) -> tuple[str, str]:
-    """Return (verdict, output) where verdict in {PASS, FAIL, SKIP}."""
+    """Return (verdict, output). Verdict from the EXIT CODE (睫 BD-70):
+      0 => PASS, 2 => SKIP (not-evaluated), anything else => FAIL.
+    No substring guessing on the output text.
+    """
     p = subprocess.run([PY, str(HERE / script)], capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     out = (p.stdout or "") + (p.stderr or "")
-    if "SKIP" in out and "PASS" not in out:
+    if p.returncode == 2:
         return SKIP, out
-    # a script that exits 0 and prints an N/N PASS summary with N==N is a PASS
-    for line in out.splitlines():
-        if "selftest" in line and "PASS" in line:
-            # format: "... selftest (<label>): X/Y PASS"
-            try:
-                frac = line.split(":")[-1].strip().split()[0]   # "X/Y"
-                x, y = frac.split("/")
-                if x != y:
-                    return FAIL, out
-            except Exception:
-                pass
-            return PASS, out
-    return (PASS if p.returncode == 0 else FAIL), out
+    if p.returncode == 0:
+        return PASS, out
+    return FAIL, out
 
 
 def main() -> int:

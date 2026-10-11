@@ -55,10 +55,14 @@ class UNICODE_STRING(ctypes.Structure):
 
 
 class SYSTEM_HANDLE_TABLE_ENTRY_INFO(ctypes.Structure):
-    # x64 layout (empirically verified by byte dump):
-    #   DWORD pid@0, BYTE type@4, BYTE attr@5, USHORT handle@6,
-    #   PVOID object@8, DWORD granted_access@16, padding -> 24 bytes stride
-    _fields_ = [("UniqueProcessId", ctypes.c_ulong),
+    # x64 layout (empirically verified by byte dump), NON-Ex SystemHandleInformation=16:
+    #   USHORT pid@0, USHORT backtrace@2, BYTE type@4,
+    #   BYTE attr@5, USHORT handle@6, PVOID object@8, DWORD access@16  (~24 stride)
+    # 睫: pid MUST be USHORT with an explicit backtrace field; reading pid as a
+    # 4-byte value folds in the backtrace index (nonzero => every pid compare
+    # fails => an EMPTY scan with NO error).
+    _fields_ = [("UniqueProcessId", ctypes.c_ushort),
+                ("CreatorBackTraceIndex", ctypes.c_ushort),
                 ("ObjectTypeIndex", ctypes.c_ubyte),
                 ("HandleAttributes", ctypes.c_ubyte),
                 ("HandleValue", ctypes.c_ushort),
@@ -222,21 +226,63 @@ class HandleAuditResult:
     target_path: str
     matched_names: list = field(default_factory=list)
     file_handles_scanned: int = 0
-    names_unresolved: int = 0
+    names_unresolved: int = 0            # same-type handles we could NOT resolve (fail-closed)
+    skipped_non_file: int = 0            # handles of OTHER types (not counted as unresolved)  BD-71
+    target_type_index: int | None = None
     detail: str = ""
 
     @property
     def clean(self) -> bool:
-        # ONLY an explicit CLEAN is clean; UNRESOLVED is never clean.
+        # ONLY an explicit CLEAN is clean; UNRESOLVED/ERROR are never clean.
         return self.status == HANDLE_AUDIT_CLEAN
+
+
+def _resolve_type_index_of_own_handle(handle_value: int) -> int | None:
+    """Find the object type index of ONE of OUR OWN handles by matching its value
+    against the system handle table (used to learn the FILE type index)."""
+    ntdll, _ = _ntdll()
+    me = os.getpid()
+    for hv, tp, acc in _iter_handles(me):
+        if hv == handle_value:
+            return tp
+    return None
+
+
+def _file_type_index(probe_path) -> int | None:
+    """Open `probe_path` ourselves and read its handle's object type index — this
+    is the canonical 'File' type index on this machine (BD-71)."""
+    from ctypes import wintypes
+    k32 = ctypes.windll.kernel32
+    k32.CreateFileW.restype = ctypes.c_void_p
+    k32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong,
+                                ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+                                ctypes.c_void_p]
+    GENERIC_READ = 0x80000000
+    FILE_SHARE_ALL = 0x7
+    OPEN_EXISTING = 3
+    FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+    h = k32.CreateFileW(str(probe_path), GENERIC_READ, FILE_SHARE_ALL, None,
+                        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, None)
+    if not h or h == -1:
+        return None
+    try:
+        hv = int(h)
+        return _resolve_type_index_of_own_handle(hv)
+    finally:
+        k32.CloseHandle(h)
 
 
 def audit_process_handles_for_target(pid: int, target_path: str) -> HandleAuditResult:
     """Enumerate `pid`'s handles and check none refer to `target_path`.
 
-    Object identity is compared by PHYSICAL FILE IDENTITY (volume serial + file
-    index), so hardlinks / path aliases of the target are detected (知微 hardlink
-    case). A handle whose identity cannot be resolved counts as unresolved.
+    知微 hardlink case: object identity is compared by PHYSICAL FILE IDENTITY
+    (volume serial + file index), so hardlinks / path aliases are detected.
+
+    BD-71 fix: we FIRST determine the FILE object-type index, then only audit
+    handles of THAT type; handles of other types (Event/Key/Section/...) are
+    counted as `skipped_non_file` and do NOT affect the verdict. Only
+    same-type handles we cannot resolve count as `unresolved` (fail-closed).
+    This makes HANDLE_AUDIT_CLEAN actually reachable.
     """
     res = HandleAuditResult(pid=pid, status=HANDLE_AUDIT_UNRESOLVED, target_path=target_path)
     try:
@@ -246,20 +292,31 @@ def audit_process_handles_for_target(pid: int, target_path: str) -> HandleAuditR
             res.detail = "cannot read target file identity"
             return res
 
+        file_type = _file_type_index(target_path)
+        res.target_type_index = file_type
+        if file_type is None:
+            # cannot learn the file type index -> we cannot scope the audit => fail closed
+            res.status = HANDLE_AUDIT_ERROR
+            res.detail = "cannot determine File object-type index"
+            return res
+
         scanned = 0
         unresolved = 0
+        skipped = 0
         matched = []
         _, k32 = _ntdll()
         for hv, tp, acc in _iter_handles(pid):
+            if tp != file_type:
+                skipped += 1        # non-file handle -> NOT unresolved (BD-71)
+                continue
             dup, hproc = duplicate_remote_handle(pid, hv)
             if not dup:
-                unresolved += 1
+                unresolved += 1     # same-type but cannot duplicate -> fail-closed
                 continue
             try:
                 fid = handle_file_identity(dup)
                 if fid is None:
-                    # not a file handle (or no access) -> unresolved
-                    unresolved += 1
+                    unresolved += 1  # same-type but unreadable identity -> fail-closed
                     continue
                 scanned += 1
                 if fid == target_id:
@@ -271,16 +328,20 @@ def audit_process_handles_for_target(pid: int, target_path: str) -> HandleAuditR
 
         res.file_handles_scanned = scanned
         res.names_unresolved = unresolved
+        res.skipped_non_file = skipped
         res.matched_names = matched
         if matched:
             res.status = HANDLE_AUDIT_FOUND_TARGET
-            res.detail = f"worker holds handle(s) to target by file identity: {matched}"
+            res.detail = (f"worker holds handle(s) to target by file identity: {matched} "
+                          f"(skipped_non_file={skipped})")
         elif unresolved > 0:
             res.status = HANDLE_AUDIT_UNRESOLVED
-            res.detail = f"{unresolved} handles could not be resolved (fail-closed)"
+            res.detail = (f"{unresolved} FILE handles could not be resolved (fail-closed); "
+                          f"skipped_non_file={skipped}")
         else:
             res.status = HANDLE_AUDIT_CLEAN
-            res.detail = f"scanned {scanned} file handles; none to target"
+            res.detail = (f"scanned {scanned} file handles; none to target; "
+                          f"skipped_non_file={skipped}")
     except Exception as e:
         res.status = HANDLE_AUDIT_ERROR
         res.detail = f"{type(e).__name__}: {e}"
@@ -291,10 +352,16 @@ def _selftest() -> int:
     if not sys.platform.startswith("win"):
         print("requires Windows"); return 2
     results = []
+    skipped = 0
 
     def chk(name, cond):
         results.append((name, bool(cond)))
         print(f"[{'PASS' if cond else 'FAIL'}] {name}")
+
+    def skip(name, why):
+        nonlocal skipped
+        skipped += 1
+        print(f"[SKIP] {name} ({why})")
 
     d = Path(tempfile.mkdtemp(prefix="q3_handles_"))
     try:
@@ -305,31 +372,40 @@ def _selftest() -> int:
         chk("STRICT positive: our own open handle -> FOUND_TARGET",
             r.status == HANDLE_AUDIT_FOUND_TARGET)
         print(f"  audit detail: {r.status} | {r.detail} | scanned={r.file_handles_scanned} "
-              f"unresolved={r.names_unresolved}")
+              f"unresolved={r.names_unresolved} skipped_non_file={r.skipped_non_file}")
         fh.close()
+
+        # BD-71: non-file handles must be counted as skipped_non_file, not unresolved
+        chk("BD-71: skipped_non_file > 0 for a real process", r.skipped_non_file > 0)
+        chk("BD-71: FOUND_TARGET despite non-file handles present",
+            r.status == HANDLE_AUDIT_FOUND_TARGET)
 
         # hardlink/alias positive control: open via alias -> MUST find it
         alias = d / "alias.bin"
         try:
             os.link(f, alias)
+        except OSError as e:
+            skip("hardlink positive", f"cannot create hardlink: {e}")
+        else:
             fh2 = open(alias, "rb")
             r2 = audit_process_handles_for_target(os.getpid(), str(f))
             chk("hardlink positive: open via alias -> FOUND_TARGET (file identity)",
                 r2.status == HANDLE_AUDIT_FOUND_TARGET)
             print(f"  hardlink detail: {r2.status} | {r2.detail}")
             fh2.close()
-        except OSError as e:
-            chk(f"hardlink positive skipped ({e})", True)
 
-        # negative control: nothing open -> CLEAN (or UNRESOLVED if other handles exist)
+        # negative control: target not held -> NOT FOUND_TARGET
         r3 = audit_process_handles_for_target(os.getpid(), str(f))
         chk("negative: target not held -> NOT FOUND_TARGET",
             r3.status != HANDLE_AUDIT_FOUND_TARGET)
     finally:
         import shutil; shutil.rmtree(d, ignore_errors=True)
     passed = sum(1 for _, ok in results if ok)
-    print(f"\nq3_handle_audit selftest: {passed}/{len(results)} PASS")
-    return 0 if passed == len(results) else 1
+    print(f"\nq3_handle_audit selftest: {passed}/{len(results)} PASS"
+          + (f" ({skipped} skipped)" if skipped else ""))
+    if passed != len(results):
+        return 1
+    return 2 if skipped else 0
 
 
 if __name__ == "__main__":
