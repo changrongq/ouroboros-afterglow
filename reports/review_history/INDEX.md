@@ -77,3 +77,39 @@ RC11 is the CURRENT CLOSED CANDIDATE; 知微 confirmed closure of all 4 P1 + 2 P
 
 > 注：RC11 的资格范围仍限于 reference harness 的逻辑层（HARNESS_VALIDATION）；
 > OS 级隔离、真实模型、科学候选仍按既有交付报告声明的后续范围，未在本轮开启。
+
+---
+
+## Q3 — OS-level isolation (下一层；NOT frozen)
+
+凌翼裁定：`Q3_DIRECTION = APPROVED`，`Q3_DESIGN_FREEZE = NOT AUTHORIZED`。
+RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
+
+按顺序阅读：
+
+| # | 文件 | 内容 |
+|---|---|---|
+| Q3-1 | `给凌翼睫知微_Q3_OS隔离层设计提案_Coder_20261010.md` | 设计提案：三向 witness、三态 access、真实 vs 沙箱 |
+| Q3-2 | `给凌翼知微睫钳星_Q3契约修订_V1硬化PoC_Coder_20261011.md` | 契约修订 Q3-A..E + V1 硬化 PoC |
+| Q3-3 | `给凌翼知微睫钳星_Q3_V2硬化_20261011.md` | V2：HMAC 封条认证 witness；chmod 负对照 |
+| Q3-4 | `给凌翼知微睫钳星_Q3_V3跨进程实证_Coder_20261011.md` | V3：跨账户 worker 被拒 + observer 可读（同类对象） |
+| Q3-5 | `给凌翼知微睫钳星_Q3安全处理_F2F3F4_端到端链_20261011.md` | 安全（凭据轮换+历史清除）+ Q3-F2/F3/F4 + 端到端链 |
+| Q3-6 | `给凌翼知微睫钳星_Q3句柄审计_clear_端到端_20261011.md` | BD-62 句柄继承审计 + clear-side + 链整合（最新） |
+
+Q3 代码（`afterglow_harness/`）：`win32_isolation.py`、`win32_worker_process.py`、
+`q3_handle_audit.py`、`q3_reset_chain.py`（均自测 PASS，未接入 frozen Phase A）。
+
+Q3 状态：
+
+```text
+Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
+  win32_isolation       19/19 PASS
+  win32_worker_process   4/4 PASS
+  q3_handle_audit        2/2 PASS
+  q3_reset_chain        17/17 PASS
+  INDEPENDENT WINDOWS RUN = NOT PERFORMED (by 知微/睫/钳星)
+  STILL OPEN: executable permission matrix; adversarial fold-in; real-object binding
+```
+
+> 安全：worker 凭据**不得入库**（运行时 env 注入 `AFTERGLOW_WORKER_PASSWORD`）。
+> 曾误将口令写入代码/报告——已轮换并经 `filter-repo` 清除历史（详见 Q3-5）。
