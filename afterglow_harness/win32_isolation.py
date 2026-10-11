@@ -33,20 +33,22 @@ DACL restore (凌翼 gap 3 / 知微)
 
 Restricted token (凌翼 gap 1) — EMPIRICALLY BOUNDED
     CreateRestrictedToken does NOT change TokenUser.SID (measured: identical).
-    Correct same-account isolation uses a RESTRICTING SID + a deny ACE keyed on
-    that restricting SID; the observer (no restricting SID) keeps read access
-    (measured: GRANTED). However, spawning a cross-process worker under such a
-    token via CreateProcessAsUserW fails on this host with 0xC0000142
-    (STATUS_DLL_INIT_FAILED) without elevation/profile. So on THIS host the
-    cross-process restricted-worker path is NOT reachable; the ACL-isolation
-    SHAPE is proven and the in-process witness is authenticated. Scope is stated
-    honestly — we do NOT claim a full cross-process sandbox.
+    Same-account isolation needs a RESTRICTING SID + a deny ACE keyed on that
+    restricting SID; the observer (no restricting SID) keeps read access
+    (measured: GRANTED). Spawning a cross-process worker under a restricted token
+    via CreateProcessAsUserW fails on this host with 0xC0000142
+    (STATUS_DLL_INIT_FAILED, window-station access). The REACHABLE cross-process
+    path is a genuinely DIFFERENT local account via CreateProcessWithLogonW — see
+    win32_worker_process.py, where worker DENIED + observer GRANTED was proven on
+    the same object (2026-10-11). This module keeps the in-process authenticated
+    witness mechanism; the cross-process sandbox lives in win32_worker_process.py.
 
 Scope statement (凌翼/知微)
-    Q3 PASS proves the ACL-deny + authenticated-witness MECHANISM on the object
-    class used here (controlled canary files). Q3 PASS does NOT prove a real
-    Phase-B payload is isolated; that requires re-running the same flow against
-    the real objects and re-binding their hashes before Phase B.
+    Q3 PASS proves the ACL-deny + authenticated-witness + cross-process
+    different-account sandbox MECHANISM on the object class used here
+    (controlled canary files). Q3 PASS does NOT prove a real Phase-B payload is
+    isolated; that requires re-running the same flow against the real objects and
+    re-binding their hashes before Phase B.
 """
 
 from __future__ import annotations
