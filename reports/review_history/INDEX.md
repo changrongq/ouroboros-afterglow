@@ -95,7 +95,8 @@ RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 | Q3-4 | `给凌翼知微睫钳星_Q3_V3跨进程实证_Coder_20261011.md` | V3：跨账户 worker 被拒 + observer 可读（同类对象） |
 | Q3-5 | `给凌翼知微睫钳星_Q3安全处理_F2F3F4_端到端链_20261011.md` | 安全（凭据轮换+历史清除）+ Q3-F2/F3/F4 + 端到端链 |
 | Q3-6 | `给凌翼知微睫钳星_Q3句柄审计_clear_端到端_20261011.md` | BD-62 句柄继承审计 + clear-side + 链整合 |
-| Q3-7 | `给凌翼知微_Q3_BD65_BD66_F2F3F4门禁_20261011.md` | **BD-65/BD-66 封堵 + F2/F3/F4 纳入唯一门禁（最新）** |
+| Q3-7 | `给凌翼知微_Q3_BD65_BD66_F2F3F4门禁_20261011.md` | BD-65/BD-66 封堵 + F2/F3/F4 纳入唯一门禁 |
+| Q3-8 | `给凌翼知微_Q3_四缺口修复_P1时序_P1生命周期_P1probe_P2_20261011.md` | **P1-1 时序 / P1-2 生命周期 / P1-3 probe 身份 / P2 布尔（最新）** |
 
 Q3 代码（`afterglow_harness/`）：`win32_isolation.py`、`win32_worker_process.py`、
 `q3_handle_audit.py`、`q3_reset_chain.py`（均自测 PASS，未接入 frozen Phase A）。
@@ -107,10 +108,11 @@ Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
   win32_isolation       19/19 PASS
   win32_worker_process   4/4 PASS
   q3_handle_audit        3/3 PASS   (file-identity hardlink + strict positive control)
-  q3_reset_chain        34/34 PASS  (BD-65/BD-66 sealed; F2/F3/F4 gate validity)
+  q3_reset_chain        43/43 PASS  (BD-65/66 + F2/F3/F4 + P1-1/P1-2/P1-3/P2 negatives)
   INDEPENDENT WINDOWS RUN = NOT PERFORMED (by 知微/睫/钳星)
-  STILL OPEN: executable permission matrix; single Q3 regression driver; cleanup/DACL verify;
-              post-history-rewrite provenance; PASS/FAIL/SKIP entry; real-object binding
+  STILL OPEN: BD-66 contract binding; complete VALID success path; unified driver (SKIP!=PASS);
+              cleanup/DACL verify; post-rewrite provenance; executable permission matrix;
+              real-object binding; independent Windows replay
 ```
 
 > 安全：worker 凭据**不得入库**（运行时 env 注入 `AFTERGLOW_WORKER_PASSWORD`）。
