@@ -112,6 +112,60 @@ def _iter_handles(pid: int):
             yield (e.HandleValue, e.ObjectTypeIndex, e.GrantedAccess)
 
 
+class BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+    _fields_ = [("dwFileAttributes", ctypes.c_ulong),
+                ("ftCreationTime", ctypes.c_ulong * 2),
+                ("ftLastAccessTime", ctypes.c_ulong * 2),
+                ("ftLastWriteTime", ctypes.c_ulong * 2),
+                ("dwVolumeSerialNumber", ctypes.c_ulong),
+                ("nFileSizeHigh", ctypes.c_ulong),
+                ("nFileSizeLow", ctypes.c_ulong),
+                ("nNumberOfLinks", ctypes.c_ulong),
+                ("nFileIndexHigh", ctypes.c_ulong),
+                ("nFileIndexLow", ctypes.c_ulong)]
+
+
+def file_identity(path) -> tuple | None:
+    """Return (volume_serial, file_index_high, file_index_low) for a path — the
+    OS physical identity that matches across hardlinks / path aliases."""
+    k32 = ctypes.windll.kernel32
+    k32.CreateFileW.restype = ctypes.c_void_p
+    k32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong,
+                                ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+                                ctypes.c_void_p]
+    k32.GetFileInformationByHandle.restype = ctypes.c_int
+    k32.GetFileInformationByHandle.argtypes = [ctypes.c_void_p,
+                                               ctypes.POINTER(BY_HANDLE_FILE_INFORMATION)]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    GENERIC_READ = 0x80000000
+    FILE_SHARE_ALL = 0x7
+    OPEN_EXISTING = 3
+    FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+    h = k32.CreateFileW(str(path), GENERIC_READ, FILE_SHARE_ALL, None, OPEN_EXISTING,
+                        FILE_FLAG_BACKUP_SEMANTICS, None)
+    if not h or h == -1:
+        return None
+    try:
+        info = BY_HANDLE_FILE_INFORMATION()
+        if not k32.GetFileInformationByHandle(h, ctypes.byref(info)):
+            return None
+        return (info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow)
+    finally:
+        k32.CloseHandle(h)
+
+
+def handle_file_identity(dup_handle) -> tuple | None:
+    """File identity of an (already duplicated, owned) handle (c_void_p)."""
+    k32 = ctypes.windll.kernel32
+    k32.GetFileInformationByHandle.restype = ctypes.c_int
+    k32.GetFileInformationByHandle.argtypes = [ctypes.c_void_p,
+                                               ctypes.POINTER(BY_HANDLE_FILE_INFORMATION)]
+    info = BY_HANDLE_FILE_INFORMATION()
+    if not k32.GetFileInformationByHandle(dup_handle, ctypes.byref(info)):
+        return None
+    return (info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow)
+
+
 def _name_of_remote_handle(target_pid: int, handle_value: int) -> str | None:
     """Duplicate the target's handle into us and resolve its object name."""
     ntdll, k32 = _ntdll()
@@ -143,6 +197,24 @@ def _name_of_remote_handle(target_pid: int, handle_value: int) -> str | None:
     return None
 
 
+def duplicate_remote_handle(target_pid: int, handle_value: int):
+    """Duplicate a remote handle into us and return the local handle (or None)."""
+    ntdll, k32 = _ntdll()
+    PROCESS_DUP_HANDLE = 0x0040
+    DUPLICATE_SAME_ACCESS = 0x00000002
+    me = k32.GetCurrentProcess()
+    hproc = k32.OpenProcess(PROCESS_DUP_HANDLE, False, target_pid)
+    if not hproc:
+        return None, None
+    dup = ctypes.c_void_p()
+    ok = k32.DuplicateHandle(hproc, ctypes.c_void_p(handle_value), me,
+                             ctypes.byref(dup), 0, False, DUPLICATE_SAME_ACCESS)
+    if not ok:
+        k32.CloseHandle(hproc)
+        return None, None
+    return dup, hproc
+
+
 @dataclass
 class HandleAuditResult:
     pid: int
@@ -160,34 +232,49 @@ class HandleAuditResult:
 
 
 def audit_process_handles_for_target(pid: int, target_path: str) -> HandleAuditResult:
-    """Enumerate `pid`'s file handles and check none resolve to `target_path`."""
-    import os.path
-    target_norm = os.path.normcase(os.path.abspath(target_path))
+    """Enumerate `pid`'s handles and check none refer to `target_path`.
+
+    Object identity is compared by PHYSICAL FILE IDENTITY (volume serial + file
+    index), so hardlinks / path aliases of the target are detected (知微 hardlink
+    case). A handle whose identity cannot be resolved counts as unresolved.
+    """
     res = HandleAuditResult(pid=pid, status=HANDLE_AUDIT_UNRESOLVED, target_path=target_path)
     try:
-        FILE_TYPE_INDEX = None  # discover file type index by sampling
+        target_id = file_identity(target_path)
+        if target_id is None:
+            res.status = HANDLE_AUDIT_ERROR
+            res.detail = "cannot read target file identity"
+            return res
+
         scanned = 0
         unresolved = 0
         matched = []
+        _, k32 = _ntdll()
         for hv, tp, acc in _iter_handles(pid):
-            # heuristic: attempt name resolution on all handles; those that name a
-            # file path (\Device\...) are the file handles.
-            nm = _name_of_remote_handle(pid, hv)
-            if nm is None:
+            dup, hproc = duplicate_remote_handle(pid, hv)
+            if not dup:
                 unresolved += 1
                 continue
-            if nm.startswith("\\Device\\") or "\\" in nm:
+            try:
+                fid = handle_file_identity(dup)
+                if fid is None:
+                    # not a file handle (or no access) -> unresolved
+                    unresolved += 1
+                    continue
                 scanned += 1
-                # normalize: compare tail filename (Device paths differ from win paths)
-                tail = os.path.basename(nm)
-                if tail and os.path.normcase(tail) == os.path.basename(target_norm):
-                    matched.append(nm)
+                if fid == target_id:
+                    matched.append(f"{hv:#x}:{fid}")
+            finally:
+                k32.CloseHandle(dup)
+                if hproc:
+                    k32.CloseHandle(hproc)
+
         res.file_handles_scanned = scanned
         res.names_unresolved = unresolved
         res.matched_names = matched
         if matched:
             res.status = HANDLE_AUDIT_FOUND_TARGET
-            res.detail = f"worker holds handle(s) to target: {matched}"
+            res.detail = f"worker holds handle(s) to target by file identity: {matched}"
         elif unresolved > 0:
             res.status = HANDLE_AUDIT_UNRESOLVED
             res.detail = f"{unresolved} handles could not be resolved (fail-closed)"
@@ -212,18 +299,32 @@ def _selftest() -> int:
     d = Path(tempfile.mkdtemp(prefix="q3_handles_"))
     try:
         f = d / "target.bin"; f.write_bytes(b"abc")
-        # positive control: WE hold a handle -> audit of our own pid must FIND it
+        # STRICT positive control: we hold the open handle -> audit MUST find it.
         fh = open(f, "rb")
         r = audit_process_handles_for_target(os.getpid(), str(f))
-        chk("sanity: audit runs (status set)", r.status in (
-            HANDLE_AUDIT_CLEAN, HANDLE_AUDIT_FOUND_TARGET, HANDLE_AUDIT_UNRESOLVED,
-            HANDLE_AUDIT_ERROR))
-        chk("positive: our own open handle IS detectable "
-            "(FOUND_TARGET or UNRESOLVED fail-closed)",
-            r.status in (HANDLE_AUDIT_FOUND_TARGET, HANDLE_AUDIT_UNRESOLVED))
-        fh.close()
+        chk("STRICT positive: our own open handle -> FOUND_TARGET",
+            r.status == HANDLE_AUDIT_FOUND_TARGET)
         print(f"  audit detail: {r.status} | {r.detail} | scanned={r.file_handles_scanned} "
               f"unresolved={r.names_unresolved}")
+        fh.close()
+
+        # hardlink/alias positive control: open via alias -> MUST find it
+        alias = d / "alias.bin"
+        try:
+            os.link(f, alias)
+            fh2 = open(alias, "rb")
+            r2 = audit_process_handles_for_target(os.getpid(), str(f))
+            chk("hardlink positive: open via alias -> FOUND_TARGET (file identity)",
+                r2.status == HANDLE_AUDIT_FOUND_TARGET)
+            print(f"  hardlink detail: {r2.status} | {r2.detail}")
+            fh2.close()
+        except OSError as e:
+            chk(f"hardlink positive skipped ({e})", True)
+
+        # negative control: nothing open -> CLEAN (or UNRESOLVED if other handles exist)
+        r3 = audit_process_handles_for_target(os.getpid(), str(f))
+        chk("negative: target not held -> NOT FOUND_TARGET",
+            r3.status != HANDLE_AUDIT_FOUND_TARGET)
     finally:
         import shutil; shutil.rmtree(d, ignore_errors=True)
     passed = sum(1 for _, ok in results if ok)
