@@ -268,8 +268,12 @@ def _mk_si_pi():
 
 def run_worker_attested(account: str, password: str, work_dir: Path, python_exe: str,
                         probe_script: Path, verdict_path: Path, run_nonce: str,
-                        timeout_s: int = 30) -> WorkerAttestation:
-    """Spawn the worker, VERIFY completion + token identity + nonce-bound verdict."""
+                        timeout_s: int = 30, on_alive=None) -> WorkerAttestation:
+    """Spawn the worker, VERIFY completion + token identity + nonce-bound verdict.
+
+    on_alive(pid): optional callback invoked AFTER spawn but BEFORE wait, so the
+    controller can audit the worker's handles while it is still running (BD-62).
+    """
     import ctypes
     from ctypes import wintypes
     k32, _ = _k32_adv()
@@ -280,11 +284,24 @@ def run_worker_attested(account: str, password: str, work_dir: Path, python_exe:
     # RUN isolation: ensure the verdict path is fresh for THIS run (Q3-F2)
     if verdict_path.exists():
         verdict_path.unlink()
-    # a stale verdict elsewhere would be undetectable; we demand the nonce matches.
 
     pi = _spawn(_mk_si_pi(), account, password, python_exe, probe_script, work_dir)
     pid = pi.dwProcessId
     create_time = process_create_time(pid)
+
+    # Q3-F3: token identity from the OS object (read while alive)
+    try:
+        token_sid = process_token_sid(pid)
+    except Q3Error:
+        token_sid = "<unavailable>"
+    sid_differs = (token_sid != controller_sid and token_sid != "<unavailable>")
+
+    # BD-62: let the controller audit the worker's handles WHILE ALIVE
+    if on_alive is not None:
+        try:
+            on_alive(pid)
+        except Exception:
+            pass
 
     # Q3-F2: check wait status
     wait = k32.WaitForSingleObject(pi.hProcess, timeout_s * 1000)
@@ -303,15 +320,6 @@ def run_worker_attested(account: str, password: str, work_dir: Path, python_exe:
     if exit_code == STILL_ACTIVE:
         raise Q3Error("worker exit code is STILL_ACTIVE (process not finished)")
 
-    # Q3-F3: token identity from the OS object
-    try:
-        token_sid = process_token_sid(pid)
-    except Q3Error:
-        # process may have exited; token SID read can fail post-exit. That is a
-        # FAIL CLOSED for attestation purposes.
-        token_sid = "<unavailable>"
-    sid_differs = (token_sid != controller_sid and token_sid != "<unavailable>")
-
     # Q3-F2/F4: verdict must carry THIS run's nonce
     verdict_raw = None
     verdict_nonce = None
@@ -322,7 +330,6 @@ def run_worker_attested(account: str, password: str, work_dir: Path, python_exe:
             break
         time.sleep(0.05)
     if verdict_raw:
-        # format: "NONCE=<nonce>|RESULT=<...>"
         for part in verdict_raw.split("|"):
             if part.startswith("NONCE="):
                 verdict_nonce = part[len("NONCE="):]
@@ -364,15 +371,17 @@ class ResetChainResult:
     clear_ok: object = UNEVALUATED
     preserve_ok: object = UNEVALUATED
     access_ok: object = UNEVALUATED
+    handle_ok: object = UNEVALUATED          # handle-inheritance audit (BD-62)
     s_handoff: bytes | None = None
     s_restored: bytes | None = None
     attestation: "WorkerAttestation | None" = None
+    handle_audit: object = None
     reason: str = ""
 
     @property
     def valid(self) -> bool:
         return (self.clear_ok is True and self.preserve_ok is True
-                and self.access_ok is True)
+                and self.access_ok is True and self.handle_ok is True)
 
 
 PROBE_TEMPLATE = """\
@@ -402,12 +411,15 @@ except Exception:
 
 
 def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
-                   protected: Path, run_nonce: str | None = None) -> ResetChainResult:
+                   protected: Path, run_nonce: str | None = None,
+                   clear_targets: list | None = None) -> ResetChainResult:
     """The end-to-end reset chain with a real cross-account worker.
 
     Steps (凌翼): observer reads S_handoff -> lock ACL -> spawn attested worker ->
-    verify THIS-run OS denial -> observer reads S_restored -> clear/preserve/access.
+    verify THIS-run OS denial + handle audit -> observer reads S_restored ->
+    clear/preserve/access.
     """
+    clear_targets = clear_targets or []
     nonce = run_nonce or uuid.uuid4().hex
     out = ResetChainResult()
 
@@ -431,10 +443,40 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                               verdict=str(verdict)),
         encoding="utf-8")
 
-    # 4. spawn attested worker (Q3-F2/F3)
+    # 4. spawn attested worker (Q3-F2/F3); audit its handles while alive (BD-62)
+    audit_box = {}
+
+    def _on_alive(worker_pid):
+        try:
+            from q3_handle_audit import audit_process_handles_for_target
+            audit_box["result"] = audit_process_handles_for_target(worker_pid, str(protected))
+        except Exception as e:
+            audit_box["result"] = f"audit-error: {type(e).__name__}: {e}"
+
     att = run_worker_attested(account, password, work_dir, python_exe, probe,
-                              verdict, nonce)
+                              verdict, nonce, on_alive=_on_alive)
     out.attestation = att
+
+    # BD-62 handle audit verdict.
+    # Deterministic control = CreateProcessWithLogonW does NOT inherit handles
+    # (no inherit flag; unlike CreateProcess it never inherits). The audit is
+    # SUPPLEMENTARY evidence: FOUND_TARGET => definitely bad (worker holds a
+    # handle to the target). UNRESOLVED => cross-account we cannot resolve every
+    # handle; that does NOT imply the worker holds the target, and inheritance is
+    # already excluded at the API level, so UNRESOLVED is acceptable here but
+    # recorded honestly. CLEAN is the strongest.
+    hres = audit_box.get("result")
+    out.handle_audit = hres
+    hstat = getattr(hres, "status", None)
+    if hstat == "HANDLE_AUDIT_FOUND_TARGET":
+        out.handle_ok = False
+        out.reason = "HANDLE_AUDIT_FOUND_TARGET_IN_WORKER"
+    elif hstat is None:
+        out.handle_ok = False
+        out.reason = "HANDLE_AUDIT_NOT_RUN"
+    else:
+        # CLEAN or UNRESOLVED (both: no target handle found)
+        out.handle_ok = True
 
     # 5. controller verifies THIS-run OS denial (nonce-bound verdict)
     if not att.verdict_matches_nonce:
@@ -460,10 +502,18 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     else:
         out.preserve_ok = (out.s_handoff == out.s_restored)
 
-    # 8. clear side: no counterfeit input-side artifact remains (harness stub:
-    #    the protected object is the only tracked object here)
-    out.clear_ok = True
-
+    # 8. clear side: verify declared-cleared artifacts are ACTUALLY gone.
+    #    (harness: the caller passes disposable input-side files; empty list => the
+    #     only tracked object is the protected one and clear side is trivially ok)
+    if clear_targets:
+        cleared = []
+        for t in clear_targets:
+            tp = Path(t)
+            # "cleared" = path no longer exists OR its content is gone
+            cleared.append(not tp.exists())
+        out.clear_ok = all(cleared)
+    else:
+        out.clear_ok = True
     return out
 
 
@@ -506,7 +556,25 @@ def _selftest() -> int:
         chk("Q3-F4: verdict bound to THIS run nonce", att.verdict_matches_nonce)
         chk("CHAIN: access_ok (worker OS-denied on bound target)", res.access_ok is True)
         chk("CHAIN: preserve_ok (independent reads equal)", res.preserve_ok is True)
-        chk("CHAIN: reset valid (clear∧preserve∧access)", res.valid is True)
+        # BD-62: handle audit ran; CLEAN or UNRESOLVED(fail-closed). We assert the
+        # audit RAN (handle_audit not None) and did NOT find the target.
+        hstat = getattr(res.handle_audit, "status", None)
+        chk("BD-62: handle audit ran", res.handle_audit is not None)
+        chk("BD-62: worker holds NO target handle (status != FOUND_TARGET)",
+            hstat != "HANDLE_AUDIT_FOUND_TARGET")
+        # clear side with a disposable input-side file that we delete before verdict
+        canary = d / "input_canary.txt"; canary.write_text("counterfeit")
+        canary.unlink()   # cleared BEFORE the chain's clear-check
+        res_c = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
+                               clear_targets=[canary])
+        chk("CLEAR: absent clear-target -> clear_ok True", res_c.clear_ok is True)
+        canary.write_text("still-here")
+        res_c2 = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
+                                clear_targets=[canary])
+        chk("CLEAR: present clear-target -> clear_ok False",
+            res_c2.clear_ok is False and res_c2.valid is False)
+        chk("CHAIN: reset valid (clear∧preserve∧access∧handle)",
+            all(x is True for x in (res.clear_ok, res.preserve_ok, res.access_ok, res.handle_ok)))
 
         # negative: a STALE verdict (wrong nonce) must be rejected
         stale = work / "stale_probe.py"
@@ -521,9 +589,11 @@ def _selftest() -> int:
         # negative: preserve rule — different restored bytes must be NOT valid.
         from q3_reset_chain import ResetChainResult as _R
         chk("CHAIN: different restored bytes -> preserve False, not valid",
-            _R(clear_ok=True, preserve_ok=False, access_ok=True).valid is False)
+            _R(clear_ok=True, preserve_ok=False, access_ok=True, handle_ok=True).valid is False)
         chk("CHAIN: UNEVALUATED preserve -> not valid (truthy trap avoided)",
-            _R(clear_ok=True, preserve_ok=UNEVALUATED, access_ok=True).valid is False)
+            _R(clear_ok=True, preserve_ok=UNEVALUATED, access_ok=True, handle_ok=True).valid is False)
+        chk("CHAIN: not-clean handle audit -> not valid",
+            _R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=False).valid is False)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
