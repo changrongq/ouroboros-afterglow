@@ -427,21 +427,75 @@ def grant(account: str, path: Path, perm: str = "(OI)(CI)(F)") -> None:
 
 
 def lockdown_code_dir(account: str, code_dir: Path) -> None:
-    """Make `code_dir` READ+EXECUTE (no write) for the worker account.
+    """Make `code_dir` READ+EXECUTE (no write/append/delete) for the worker account.
 
-    知微 P1-3: trusted probe code must be worker-immutable. We grant RX and
-    explicitly DENY write/append/delete for the worker account on the dir and
-    its contents (deny wins)."""
-    # grant read+execute (inherit to files)
+    知微 P1: denying only (WD) is insufficient — WD is write-data/add-file, which
+    is distinct from AD (append), DE (delete), and DC (delete child). And a worker
+    with write/delete on the PARENT can rename/replace the whole code dir. We
+    therefore:
+      · REMOVE any inherited broad grants for the worker on code_dir (so a parent
+        (OI)(CI)(F) cannot silently re-grant write), then
+      · GRANT RX, then
+      · DENY (WD)(AD)(DE)(DC) — write-data, append, delete, delete-child, and
+      · DENY write/delete on the PARENT for the worker when the parent's grant to
+        the worker would otherwise let it rename/replace code_dir.
+    """
+    # 1. BREAK inheritance so a parent (OI)(CI)(F) can no longer silently grant
+    #    write to the code dir. /inheritance:r removes inherited ACEs; we then
+    #    re-grant the CONTROLLER full control (so the controller can manage its
+    #    own code dir across runs) and the worker RX only.
+    subprocess.run(["icacls", str(code_dir), "/inheritance:r"],
+                   capture_output=True, text=True)
+    subprocess.run(["icacls", str(code_dir), "/remove:g", account],
+                   capture_output=True, text=True)
+    # re-grant the CONTROLLER (current user) full control on the code dir
+    cur = os.environ.get("USERNAME")
+    if cur:
+        subprocess.run(["icacls", str(code_dir), "/grant", f"{cur}:(OI)(CI)(F)"],
+                       capture_output=True, text=True)
+    # 2. grant read+execute to the worker
     p = subprocess.run(["icacls", str(code_dir), "/grant", f"{account}:(OI)(CI)(RX)"],
                        capture_output=True, text=True)
     if p.returncode != 0:
         raise Q3Error(f"code-dir RX grant failed: {p.stdout}{p.stderr}")
-    # deny write/append/delete (W = write data/append, D = delete; use (W,D))
-    p = subprocess.run(["icacls", str(code_dir), "/deny", f"{account}:(OI)(CI)(WD)"],
+    # 3. deny write-data / append / delete / delete-child on the dir AND contents
+    p = subprocess.run(["icacls", str(code_dir), "/deny", f"{account}:(OI)(CI)(WD,AD,DE,DC)"],
                        capture_output=True, text=True)
     if p.returncode != 0:
-        raise Q3Error(f"code-dir WD deny failed: {p.stdout}{p.stderr}")
+        raise Q3Error(f"code-dir deny failed: {p.stdout}{p.stderr}")
+    # 4. the PARENT must not let the worker rename/replace the code dir itself.
+    subprocess.run(["icacls", str(code_dir.parent), "/deny", f"{account}:(DE,DC,WD,AD)"],
+                   capture_output=True, text=True)
+
+
+def verify_code_dir_immutable(account: str, code_dir: Path) -> bool:
+    """Verify the code dir is worker-immutable in EFFECTIVE terms.
+
+    We inspect `icacls <code_dir>` output. For the worker account we require that
+    NO GRANT line gives it write/append/delete/broad rights, AND at least one
+    DENY line covering write/append/delete exists. (We do not trust a single
+    deny token by itself.)
+    """
+    r = subprocess.run(["icacls", str(code_dir)], capture_output=True, text=True)
+    if r.returncode != 0:
+        return False
+    acct = account.upper()
+    saw_deny_for_acct = False
+    for line in r.stdout.splitlines():
+        u = line.upper()
+        if acct not in u:
+            continue
+        is_deny = ("DENY" in u) or ("拒绝" in u)
+        if is_deny:
+            saw_deny_for_acct = True
+            continue
+        # a non-deny line mentioning the account must not grant broad rights
+        # allowed: R, RX, GR, GE, and inheritance markers (OI)(CI)(I)
+        grant_tokens = u.split(acct, 1)[1]
+        for bad in ("(F)", "(M)", "(W)", "(D)", "(WD)", "(AD)", "(DE)", "(DC)"):
+            if bad in grant_tokens:
+                return False
+    return saw_deny_for_acct
 
 
 # ---------------------------------------------------------------------------
@@ -572,9 +626,11 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         nonce=nonce, target=str(protected), expected_sha=target_sha,
         out=str(out_dir / "probe_out.txt"), verdict=str(verdict)).encode("utf-8")
     probe.write_bytes(probe_bytes)
-    # lockdown: worker may READ/EXECUTE code_dir but NOT write; may write out_dir.
+    # lockdown: worker may READ/EXECUTE code_dir but NOT write/append/delete;
+    # may write out_dir. VERIFY the effective permission (知微 P1).
     lockdown_code_dir(account, code_dir)
     grant(account, out_dir, "(OI)(CI)(F)")
+    code_immutable_ok = verify_code_dir_immutable(account, code_dir)
     # expected hash from the frozen template bytes we control
     probe_sha_expected = hashlib.sha256(probe_bytes).hexdigest()
 
@@ -594,14 +650,15 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                               expected_sid=expected_sid, on_alive=_on_alive)
     out.attestation = att
 
-    # 5. F3 identity/completion gate
-    out.identity_ok = att.identity_ok
+    # 5. F3 identity/completion gate (incl. trusted-probe immutability)
+    out.identity_ok = (att.identity_ok and code_immutable_ok)
     if not out.identity_ok:
         out.reason = ("IDENTITY_GATE_FAILED: "
                       f"sid_differs={att.sid_differs} "
                       f"sid_matches_expected={att.sid_matches_expected} "
                       f"create_time={att.create_time} wait={hex(att.wait_result)} "
-                      f"exit={att.exit_code} sha_match={att.probe_sha_matches}")
+                      f"exit={att.exit_code} sha_match={att.probe_sha_matches} "
+                      f"code_immutable={code_immutable_ok}")
 
     # 6. BD-65 handle gate — TWO INDEPENDENT pieces of evidence (凌翼):
     #    (a) inheritance_prevention_ok: the CREATE API never inherits handles.
@@ -758,7 +815,8 @@ def _selftest() -> int:
         work = d / "work"; work.mkdir()
         protected = d / "real_substrate.bin"
         protected.write_bytes(b"TOP-SECRET-PAYLOAD")
-        grant(WORKER_ACCOUNT_DEFAULT, work, "(OI)(CI)(RX)")   # traverse into code/out
+        # simulate the REPORTED real condition: caller granted work broad access
+        grant(WORKER_ACCOUNT_DEFAULT, work, "(OI)(CI)(F)")
         grant(WORKER_ACCOUNT_DEFAULT, d, "(OI)(CI)(RX)")
 
         # a required (non-empty) clear target that we genuinely remove first
@@ -872,27 +930,36 @@ def _selftest() -> int:
             _terminate_and_confirm(os.getpid(), lambda p: None) is False)
 
         # ---- F4 positive control: probe code dir is worker-immutable ----
-        # (verified live: worker write attempt to code/probe.py is DENIED)
+        # (知微 P1: overwrite AND append AND rename/replace must all be blocked;
+        #  effective permission verified, not inferred from a single deny token)
         code_dir = work / "code"
         if code_dir.exists():
-            # set up worker-writable out + a script that tries to overwrite probe
             outd = work / "out"; outd.mkdir(exist_ok=True)
             grant(WORKER_ACCOUNT_DEFAULT, outd, "(OI)(CI)(F)")
+            chk("F4/P1: code dir effective permission verified immutable",
+                verify_code_dir_immutable(WORKER_ACCOUNT_DEFAULT, code_dir) is True)
             probe_file = code_dir / "probe.py"
-            lock_script = outd / "lock_probe.py"
-            res_file = outd / "lock_res.txt"
-            lock_script.write_text(
-                "try:\n"
-                f"    open(r'{probe_file}','w').write('tamper')\n"
-                f"    open(r'{res_file}','w').write('WROTE')\n"
-                "except PermissionError:\n"
-                f"    open(r'{res_file}','w').write('DENIED')\n"
-                "except Exception as e:\n"
-                f"    open(r'{res_file}','w').write('ERR:'+type(e).__name__)\n",
+            attack = outd / "attack.py"
+            ares = outd / "attack_res.txt"
+            attack.write_text(
+                "r=[]\n"
+                f"try:\n    open(r'{probe_file}','w').write('x'); r.append('OVERWRITE=OK')\n"
+                "except Exception as e:\n    r.append('OVERWRITE='+type(e).__name__)\n"
+                f"try:\n    open(r'{probe_file}','a').write('x'); r.append('APPEND=OK')\n"
+                "except Exception as e:\n    r.append('APPEND='+type(e).__name__)\n"
+                f"import os\ntry:\n    os.rename(r'{code_dir}', r'{work}/code2'); r.append('RENAME=OK')\n"
+                "except Exception as e:\n    r.append('RENAME='+type(e).__name__)\n"
+                f"try:\n    os.remove(r'{probe_file}'); r.append('DELETE=OK')\n"
+                "except Exception as e:\n    r.append('DELETE='+type(e).__name__)\n"
+                f"open(r'{ares}','w').write('; '.join(r))\n",
                 encoding="utf-8")
-            _spawn_as_worker(pw, outd, lock_script)
-            verdict_txt = res_file.read_text(encoding="utf-8") if res_file.exists() else "MISSING"
-            chk("F4: worker CANNOT write the trusted probe (DENIED)", verdict_txt == "DENIED")
+            _spawn_as_worker(pw, outd, attack)
+            atk = ares.read_text(encoding="utf-8") if ares.exists() else "MISSING"
+            print(f"  worker ACL attack: {atk}")
+            chk("F4/P1: worker CANNOT overwrite probe (denied)", "OVERWRITE=OK" not in atk)
+            chk("F4/P1: worker CANNOT append to probe (denied)", "APPEND=OK" not in atk)
+            chk("F4/P1: worker CANNOT rename/replace code dir (denied)", "RENAME=OK" not in atk)
+            chk("F4/P1: worker CANNOT delete probe (denied)", "DELETE=OK" not in atk)
 
         # ---- F4 negative: substring attack must NOT pass strict parse ----
         evil = "NONCE=%s|RESULT=READ=GRANTED|NOTE=READ=DENIED" % res.attestation.run_nonce

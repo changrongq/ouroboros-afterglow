@@ -91,6 +91,9 @@ ACCESS_ISOLATION_OK = frozenset({ACCESS_DENIED})
 #: Distinct sentinel for a check that was NOT reached (never truthy-pass).
 UNEVALUATED = "UNEVALUATED"
 
+#: WaitForSingleObject signal value (WAIT_OBJECT_0).
+WAIT_OBJECT_0 = 0x00000000
+
 
 class IsolationError(Exception):
     """Any isolation-mechanism failure. FAIL CLOSED."""
@@ -464,8 +467,14 @@ def spawn_worker_tracked(child_argv: list[str], run_nonce: str,
 def _process_is_gone(pid: int) -> bool:
     """True iff the process handle signals (the process has terminated)."""
     from ctypes import wintypes
-    k32, _ = _k32_adv()
+    adv, k32, _ = _win()   # correct module-local Win32 factory
     SYNCHRONIZE = 0x00100000
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.WaitForSingleObject.restype = wintypes.DWORD
+    k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.CloseHandle.restype = wintypes.BOOL
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
     h = k32.OpenProcess(SYNCHRONIZE, False, pid)
     if not h:
         # cannot open => no observation; treat as NOT gone (fail-closed)
@@ -636,6 +645,19 @@ def _selftest() -> int:
     # now without an old pid, old_before_new is False (not claimable)
     chk("LIFECYCLE: old-before-new NOT claimed when no old pid",
         lc.old_terminated_before_new is False)
+
+    # 知微: live old pid must NOT be judged as already-exited (was 0.0 <= new)
+    cp_live, lc_live = spawn_worker_tracked([str(script)], run, old_worker_pid=os.getpid())
+    chk("LIFECYCLE: LIVE old worker -> old-before-new NOT claimed (fail-closed)",
+        lc_live.old_terminated_before_new is False)
+    # a truly-exited old process -> old_exit>0 and gone -> claimable
+    probe_script = tmp / "quick.py"
+    probe_script.write_text("pass\n", encoding="utf-8")
+    quick = subprocess.Popen([sys.executable, str(probe_script)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    quick.wait()
+    gone = _process_is_gone(quick.pid)
+    chk("LIFECYCLE: exited process -> _process_is_gone True", gone is True)
 
     chk("CLEANUP: checked (True on success)", _checked_cleanup(tmp) is True)
 
