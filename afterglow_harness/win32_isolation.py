@@ -429,8 +429,11 @@ def spawn_worker_tracked(child_argv: list[str], run_nonce: str,
                                                               WorkerLifecycle]:
     """Spawn a worker and record TRUE lifecycle evidence.
 
-    - old process exit time is read from the OS (GetProcessTimes), and we require
-      old_exit_time <= new_create_time (old terminated before new started).
+    - old process exit time is read from the OS (GetProcessTimes). 知微 P1-2:
+      a still-alive process reports an UNDEFINED exit time (we read it as 0.0),
+      so `0.0 <= new_create` would WRONGLY claim the old worker exited first.
+      We therefore require old_exit > 0 AND that the old process is actually
+      GONE (OpenProcess fails / wait signals) before claiming old-before-new.
     - new creation time is read from the OS, not time.time() after wait.
     - close_fds=True is explicit (必要非充分; 凌翼 gap 2).
     """
@@ -443,14 +446,34 @@ def spawn_worker_tracked(child_argv: list[str], run_nonce: str,
     cp = subprocess.CompletedProcess(p.args, p.returncode, out, err)
 
     old_exit = None
+    old_is_gone = False
     if old_worker_pid is not None:
         old_create, old_exit = _process_times(old_worker_pid)
-    old_before_new = bool(old_exit is not None and new_create is not None
+        old_is_gone = _process_is_gone(old_worker_pid)
+    # require BOTH a non-zero exit time AND the process actually gone
+    old_before_new = bool(old_exit is not None and old_exit > 0.0
+                          and old_is_gone and new_create is not None
                           and old_exit <= new_create)
     lc = WorkerLifecycle(run_nonce, old_worker_pid, old_exit, new_pid,
                          new_create or 0.0, old_before_new,
-                         detail=f"old_exit={old_exit} new_create={new_create} rc={p.returncode}")
+                         detail=f"old_exit={old_exit} old_gone={old_is_gone} "
+                                f"new_create={new_create} rc={p.returncode}")
     return cp, lc
+
+
+def _process_is_gone(pid: int) -> bool:
+    """True iff the process handle signals (the process has terminated)."""
+    from ctypes import wintypes
+    k32, _ = _k32_adv()
+    SYNCHRONIZE = 0x00100000
+    h = k32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not h:
+        # cannot open => no observation; treat as NOT gone (fail-closed)
+        return False
+    try:
+        return k32.WaitForSingleObject(h, 0) == WAIT_OBJECT_0
+    finally:
+        k32.CloseHandle(h)
 
 
 # ---------------------------------------------------------------------------

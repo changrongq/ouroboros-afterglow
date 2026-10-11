@@ -426,6 +426,24 @@ def grant(account: str, path: Path, perm: str = "(OI)(CI)(F)") -> None:
         raise Q3Error(f"grant failed for {path}: {p.stdout}{p.stderr}")
 
 
+def lockdown_code_dir(account: str, code_dir: Path) -> None:
+    """Make `code_dir` READ+EXECUTE (no write) for the worker account.
+
+    知微 P1-3: trusted probe code must be worker-immutable. We grant RX and
+    explicitly DENY write/append/delete for the worker account on the dir and
+    its contents (deny wins)."""
+    # grant read+execute (inherit to files)
+    p = subprocess.run(["icacls", str(code_dir), "/grant", f"{account}:(OI)(CI)(RX)"],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise Q3Error(f"code-dir RX grant failed: {p.stdout}{p.stderr}")
+    # deny write/append/delete (W = write data/append, D = delete; use (W,D))
+    p = subprocess.run(["icacls", str(code_dir), "/deny", f"{account}:(OI)(CI)(WD)"],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise Q3Error(f"code-dir WD deny failed: {p.stdout}{p.stderr}")
+
+
 # ---------------------------------------------------------------------------
 # The end-to-end reset chain
 # ---------------------------------------------------------------------------
@@ -517,7 +535,14 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         out.reason = "PROTECTED_NOT_A_FILE"
         return out
 
-    # 0. lifecycle: prove the OLD worker terminated BEFORE we spawn the new one
+    # 1. observer reads S_handoff FIRST — BEFORE any reset step that could change
+    #    the preserved state (知微 P1-1: sampling after terminate misses corruption
+    #    during termination). The handoff is the frozen baseline for preserve.
+    out.s_handoff = protected.read_bytes()
+
+    # 2. lifecycle: prove the OLD worker terminated BEFORE we spawn the new one.
+    #    This runs AFTER the handoff snapshot so the snapshot covers the whole
+    #    termination window.
     if old_worker_pid is not None:
         if terminate_old_worker is None:
             out.lifecycle_ok = False
@@ -527,23 +552,31 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     else:
         out.lifecycle_ok = True   # no prior worker to replace (documented N/A)
 
-    # 1. observer reads S_handoff (independent pre-reset observation)
-    out.s_handoff = protected.read_bytes()
-
-    # 2. lock: deny the worker account (worker denied; observer still reads)
+    # 3. lock: deny the worker account (worker denied; observer still reads)
     deny_read(account, protected)
 
-    # 3. bound probe (F4: fixed code, target sha bound, strict verdict schema)
-    probe = work_dir / "probe.py"
-    verdict = work_dir / "verdict.txt"
+    # 4. bound probe (F4: fixed code, target sha bound, strict verdict schema).
+    #    知微 P1-3: the probe is TRUSTED CODE; the worker must not be able to
+    #    modify it. We place it in a dedicated CODE dir that the worker gets
+    #    READ+EXECUTE only (no write), and keep the worker's OUTPUT dir separate
+    #    and writable. The expected hash is captured from the frozen template
+    #    bytes we just wrote (and re-verified before spawn).
+    code_dir = work_dir / "code"
+    out_dir = work_dir / "out"
+    code_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(exist_ok=True)
+    probe = code_dir / "probe.py"
+    verdict = out_dir / "verdict.txt"
     target_sha = hashlib.sha256(out.s_handoff).hexdigest()
-    probe.write_text(
-        PROBE_TEMPLATE.format(nonce=nonce, target=str(protected),
-                              expected_sha=target_sha,
-                              out=str(work_dir / "probe_out.txt"),
-                              verdict=str(verdict)),
-        encoding="utf-8")
-    probe_sha_expected = hashlib.sha256(probe.read_bytes()).hexdigest()
+    probe_bytes = PROBE_TEMPLATE.format(
+        nonce=nonce, target=str(protected), expected_sha=target_sha,
+        out=str(out_dir / "probe_out.txt"), verdict=str(verdict)).encode("utf-8")
+    probe.write_bytes(probe_bytes)
+    # lockdown: worker may READ/EXECUTE code_dir but NOT write; may write out_dir.
+    lockdown_code_dir(account, code_dir)
+    grant(account, out_dir, "(OI)(CI)(F)")
+    # expected hash from the frozen template bytes we control
+    probe_sha_expected = hashlib.sha256(probe_bytes).hexdigest()
 
     # 4. spawn attested worker (F2/F3); audit its handles while alive (BD-62)
     audit_box = {}
@@ -621,7 +654,12 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         out.preserve_ok = (out.s_handoff == out.s_restored)
 
     # 10. BD-66 clear gate: REQUIRED set (non-empty) AND actually removed.
-    if clear_na_declared and not required_clear_targets:
+    #     知微 P2: clear_na_declared must be STRICTLY the bool True (not truthy
+    #     strings/numbers). A non-bool declaration is a malformed contract => INVALID.
+    if clear_na_declared is not True and clear_na_declared is not False:
+        out.clear_ok = False
+        out.reason = out.reason or f"CLEAR_NA_NOT_BOOL: {clear_na_declared!r}"
+    elif (clear_na_declared is True) and not required_clear_targets:
         out.clear_ok = True                       # explicitly N/A by frozen contract
     elif not required_clear_targets:
         out.clear_ok = False                      # BD-66: empty set is INVALID
@@ -635,25 +673,62 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     return out
 
 
+def _spawn_as_worker(password: str, cwd: Path, script: Path) -> None:
+    """Helper for the selftest: run `script` as the worker account (best-effort)."""
+    import ctypes
+    from ctypes import wintypes
+    k32, adv = _k32_adv()
+    adv.CreateProcessWithLogonW.restype = wintypes.BOOL
+    adv.CreateProcessWithLogonW.argtypes = [
+        wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+        wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD, ctypes.c_void_p,
+        wintypes.LPCWSTR, ctypes.c_void_p, ctypes.c_void_p]
+    si, pi = _mk_si_pi()
+    cmd = ctypes.create_unicode_buffer(f'"{PUBLIC_PYTHON_DEFAULT}" "{script}"')
+    adv.CreateProcessWithLogonW(WORKER_ACCOUNT_DEFAULT, ".", password, 0x1, None, cmd,
+                                0x08000000, None, str(cwd), ctypes.byref(si), ctypes.byref(pi))
+    k32.WaitForSingleObject(pi.hProcess, 15000)
+    k32.CloseHandle(pi.hThread)
+    k32.CloseHandle(pi.hProcess)
+
+
 def _terminate_and_confirm(old_pid: int, terminator) -> bool:
-    """Terminate the old worker via `terminator(pid)` and CONFIRM it is gone by
-    waiting on a handle until WAIT_OBJECT_0."""
+    """Terminate the old worker and CONFIRM termination on a HELD handle.
+
+    知微 P1-2: opening the process AFTER terminating, or treating a failed
+    OpenProcess as "assume gone", is NOT an exit witness. We open the handle
+    FIRST (while we can still bind identity), terminate, then wait on the SAME
+    handle until it signals. Any failure to observe termination => False
+    (fail-closed), never True.
+    """
     import ctypes
     from ctypes import wintypes
     k32, _ = _k32_adv()
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     SYNCHRONIZE = 0x00100000
-    try:
-        terminator(old_pid)
-    except Exception:
-        return False
-    h = k32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, old_pid)
+    PROCESS_TERMINATE = 0x0001
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+    # 1. bind the handle FIRST (identity + termination + synchronize rights)
+    h = k32.OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE |
+                        PROCESS_QUERY_LIMITED_INFORMATION, False, old_pid)
     if not h:
-        # cannot open -> assume gone (best-effort); caller may tighten
-        return True
+        # cannot even bind the process => we have NO exit witness => fail closed
+        return False
     try:
+        # 2. if it is already gone, the wait below returns immediately.
+        try:
+            terminator(old_pid)
+        except Exception:
+            return False
+        # 3. wait on the SAME handle
         wr = k32.WaitForSingleObject(h, 10000)
-        return wr == WAIT_OBJECT_0
+        if wr != WAIT_OBJECT_0:
+            return False
+        # 4. confirm the exit code is a real exit (not STILL_ACTIVE)
+        rc = wintypes.DWORD(STILL_ACTIVE)
+        if not k32.GetExitCodeProcess(h, ctypes.byref(rc)):
+            return False
+        return rc.value != STILL_ACTIVE
     finally:
         k32.CloseHandle(h)
 
@@ -683,7 +758,7 @@ def _selftest() -> int:
         work = d / "work"; work.mkdir()
         protected = d / "real_substrate.bin"
         protected.write_bytes(b"TOP-SECRET-PAYLOAD")
-        grant(WORKER_ACCOUNT_DEFAULT, work, "(OI)(CI)(F)")
+        grant(WORKER_ACCOUNT_DEFAULT, work, "(OI)(CI)(RX)")   # traverse into code/out
         grant(WORKER_ACCOUNT_DEFAULT, d, "(OI)(CI)(RX)")
 
         # a required (non-empty) clear target that we genuinely remove first
@@ -758,6 +833,66 @@ def _selftest() -> int:
                                      expected_sid=expected_sid)
         chk("BD-66: present required clear target -> clear_ok False -> invalid",
             res_present.clear_ok is False and res_present.valid is False)
+
+        # ---- P2 negative: non-bool clear_na_declared must be rejected ----
+        for bad in ("UNEVALUATED", "False", 1, 0, []):
+            r = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
+                               required_clear_targets=[required_clear],
+                               clear_na_declared=bad, expected_sid=expected_sid)
+            chk(f"P2: clear_na_declared={bad!r} (non-bool) -> clear_ok False",
+                r.clear_ok is False)
+
+        # ---- P1-1 negative: terminator corrupts protected AFTER handoff ----
+        # With the fixed ordering the handoff is sampled BEFORE terminate, so a
+        # terminator that corrupts the object must produce preserve=False.
+        victim = d / "victim.bin"
+        victim.write_bytes(b"canary-before")
+
+        def _bad_terminator(pid):
+            victim.write_bytes(b"destroyed-during-reset")   # corrupt during reset
+
+        # use a live pid so OpenProcess succeeds; the no-op terminator leaves it
+        # alive but we only assert the HANDOFF/PRESERVE effect here.
+        res_corrupt = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, victim,
+                                     required_clear_targets=[required_clear],
+                                     expected_sid=expected_sid,
+                                     old_worker_pid=os.getpid(),
+                                     terminate_old_worker=_bad_terminator)
+        chk("P1-1: handoff sampled BEFORE terminate -> corruption seen (preserve False)",
+            res_corrupt.s_handoff == b"canary-before"
+            and res_corrupt.preserve_ok is False
+            and res_corrupt.valid is False)
+
+        # ---- P1-2 negative: unobservable old worker must NOT be 'terminated' ----
+        # open a pid that cannot be opened (bogus) -> must be False, not 'assume gone'
+        chk("P1-2: unobservable old pid -> lifecycle False (not assume-gone)",
+            _terminate_and_confirm(0x7FFFFFF0, lambda p: None) is False)
+        # a live process with a no-op terminator must NOT be confirmed terminated
+        chk("P1-2: live old worker + no-op terminator -> False",
+            _terminate_and_confirm(os.getpid(), lambda p: None) is False)
+
+        # ---- F4 positive control: probe code dir is worker-immutable ----
+        # (verified live: worker write attempt to code/probe.py is DENIED)
+        code_dir = work / "code"
+        if code_dir.exists():
+            # set up worker-writable out + a script that tries to overwrite probe
+            outd = work / "out"; outd.mkdir(exist_ok=True)
+            grant(WORKER_ACCOUNT_DEFAULT, outd, "(OI)(CI)(F)")
+            probe_file = code_dir / "probe.py"
+            lock_script = outd / "lock_probe.py"
+            res_file = outd / "lock_res.txt"
+            lock_script.write_text(
+                "try:\n"
+                f"    open(r'{probe_file}','w').write('tamper')\n"
+                f"    open(r'{res_file}','w').write('WROTE')\n"
+                "except PermissionError:\n"
+                f"    open(r'{res_file}','w').write('DENIED')\n"
+                "except Exception as e:\n"
+                f"    open(r'{res_file}','w').write('ERR:'+type(e).__name__)\n",
+                encoding="utf-8")
+            _spawn_as_worker(pw, outd, lock_script)
+            verdict_txt = res_file.read_text(encoding="utf-8") if res_file.exists() else "MISSING"
+            chk("F4: worker CANNOT write the trusted probe (DENIED)", verdict_txt == "DENIED")
 
         # ---- F4 negative: substring attack must NOT pass strict parse ----
         evil = "NONCE=%s|RESULT=READ=GRANTED|NOTE=READ=DENIED" % res.attestation.run_nonce
