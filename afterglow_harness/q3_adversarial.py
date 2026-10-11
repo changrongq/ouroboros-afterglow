@@ -1,0 +1,184 @@
+"""
+q3_adversarial.py — Q3 ADVERSARIAL REGRESSION suite.
+
+凌翼 Q3 step 5 (EXECUTION ORDER): "Unified driver + adversarial regressions".
+
+Purpose
+-------
+The Q3 disease across rounds 4-8 was "evidence exists but the judgement does not
+consume it". A happy-path selftest cannot catch that: it only shows the gates
+PASS when everything is right. This suite deliberately INJECTS defects into the
+Q3 gates and REQUIRES each to be rejected. If an injected defect is NOT rejected,
+the harness has regressed (a green run would be meaningless).
+
+Each case is a pure in-process mutation of a gate / data object; no OS privilege
+is required, so this suite runs everywhere (Windows or not).
+
+Cases
+-----
+  A1  access-matrix defect (unknown witness)        -> validate_access_matrix False
+  A2  access-matrix defect (missing observer grant) -> validate_access_matrix False
+  A3  access-matrix defect (worker granted read)    -> validate_access_matrix False
+  A4  ResetChainResult matrix_ok False              -> .valid False
+  A5  ResetChainResult dacl_restore_ok False        -> .valid False
+  A6  ResetChainResult handle_ok False              -> .valid False
+  A7  ResetChainResult identity_ok UNEVALUATED      -> .valid False
+  A8  ResetChainResult all True but clear_ok False  -> .valid False
+  A9  contract clear coverage: empty mapping        -> validate_clear_targets False
+  A10 contract clear coverage: missing category     -> validate_clear_targets False
+  A11 contract probe pin: mismatched hash           -> validate_probe_sha256 False
+  A12 contract probe pin: empty pin (fail-closed)   -> validate_probe_sha256 False
+  A13 clear_na_declared non-bool                    -> chain clear_ok False
+  A14 FOUND_TARGET under Profile B                  -> .valid False (handle gate)
+  A15 strict verdict substring attack               -> parse_verdict_strict None
+  A16 worker-heard handle status UNRESOLVED, A     -> handle gate rejects
+  A17 DACL SDDL compare: differing ACE set          -> _sddl_equal False
+  A18 checked_rmtree residual on locked file        -> ok False, residuals>0
+
+Exit codes: 0 all rejected (regression PASS); 1 one or more NOT rejected (FAIL).
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def _selftest() -> int:
+    results = []
+
+    def chk(name, cond):
+        results.append((name, bool(cond)))
+        print(f"[{'PASS' if cond else 'FAIL'}] {name}")
+
+    # --- access matrix ------------------------------------------------------
+    import q3_access_matrix as qam
+    orig_matrix = qam.ACCESS_MATRIX
+
+    # A1 unknown witness
+    qam.ACCESS_MATRIX = tuple(
+        dict(r, witness="vibes") if r["id"] == orig_matrix[0]["id"] else r
+        for r in orig_matrix)
+    ok, why = qam.validate_access_matrix()
+    chk("A1 matrix unknown witness rejected", ok is False and any("UNKNOWN_WITNESS" in w for w in why))
+
+    # A2 missing observer grant
+    qam.ACCESS_MATRIX = tuple(r for r in orig_matrix if r["id"] != "O-READ-PROTECTED-POST")
+    ok, why = qam.validate_access_matrix()
+    chk("A2 matrix missing observer grant rejected", ok is False and any("OBSERVER" in w for w in why))
+
+    # A3 worker granted substrate read
+    qam.ACCESS_MATRIX = tuple(
+        dict(r, expected="GRANTED") if r["id"] == "W-READ-PROTECTED-POST" else r
+        for r in orig_matrix)
+    ok, why = qam.validate_access_matrix()
+    chk("A3 matrix worker-granted read rejected", ok is False and any("WORKER_GRANTED" in w for w in why))
+    qam.ACCESS_MATRIX = orig_matrix
+    chk("A3b matrix restored validates", qam.validate_access_matrix()[0] is True)
+
+    # --- ResetChainResult gates --------------------------------------------
+    from q3_reset_chain import ResetChainResult
+
+    def _full_valid(**over):
+        base = dict(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+                    identity_ok=True, lifecycle_ok=True,
+                    matrix_ok=True, dacl_restore_ok=True)
+        base.update(over)
+        return ResetChainResult(**base)
+
+    chk("A4 matrix_ok False -> invalid", _full_valid(matrix_ok=False).valid is False)
+    chk("A5 dacl_restore_ok False -> invalid", _full_valid(dacl_restore_ok=False).valid is False)
+    chk("A6 handle_ok False -> invalid", _full_valid(handle_ok=False).valid is False)
+    chk("A7 identity_ok UNEVALUATED -> invalid", _full_valid(identity_ok="UNEVALUATED").valid is False)
+    chk("A8 clear_ok False -> invalid", _full_valid(clear_ok=False).valid is False)
+    chk("A8b baseline all-True -> valid", _full_valid().valid is True)
+
+    # --- contract clear coverage -------------------------------------------
+    from q3_contract import (validate_clear_targets, validate_probe_sha256,
+                             REQUIRED_CLEAR_CATEGORIES, PROBE_TEMPLATE_SHA256,
+                             compute_probe_template_sha256)
+    ok, missing = validate_clear_targets({})
+    chk("A9 empty clear mapping rejected", ok is False and set(missing) == set(REQUIRED_CLEAR_CATEGORIES))
+    partial = {c: Path("x") for c in REQUIRED_CLEAR_CATEGORIES[1:]}
+    ok, missing = validate_clear_targets(partial)
+    chk("A10 missing category rejected", ok is False and REQUIRED_CLEAR_CATEGORIES[0] in missing)
+
+    # --- contract probe pin -------------------------------------------------
+    chk("A11 mismatched probe hash rejected", validate_probe_sha256("deadbeef") is False)
+    _pin = PROBE_TEMPLATE_SHA256
+    import q3_contract as qc
+    qc.PROBE_TEMPLATE_SHA256 = ""
+    chk("A12 empty probe pin rejected (fail-closed)", validate_probe_sha256(compute_probe_template_sha256()) is False)
+    qc.PROBE_TEMPLATE_SHA256 = _pin
+    chk("A12b pinned hash validates", validate_probe_sha256(compute_probe_template_sha256()) is True)
+
+    # --- strict verdict parser ---------------------------------------------
+    from q3_reset_chain import parse_verdict_strict
+    evil1 = "NONCE=n|RESULT=READ=GRANTED|NOTE=READ=DENIED"
+    evil2 = "READ=DENIED"
+    chk("A15 substring/short verdict rejected", parse_verdict_strict(evil1) is None and parse_verdict_strict(evil2) is None)
+    good = "NONCE=n|OP=READ|TARGET=abc|RESULT=READ=DENIED"
+    chk("A15b exact verdict parsed", parse_verdict_strict(good) is not None)
+
+    # --- handle gate logic (profile-aware) ---------------------------------
+    from q3_reset_chain import HANDLE_STATUS_PASS
+    chk("A16 UNRESOLVED not in PASS set (Profile A)", "HANDLE_AUDIT_UNRESOLVED" not in HANDLE_STATUS_PASS)
+    chk("A16b CLEAN in PASS set", "HANDLE_AUDIT_CLEAN" in HANDLE_STATUS_PASS)
+
+    # A14: FOUND_TARGET always invalidates — the chain maps it to handle_audit_ok
+    # False for ANY profile. Assert the mapping table directly.
+    from q3_contract import PROFILE_REQUIRES_CLEAN, HANDLE_PROFILE_API_NO_INHERIT, HANDLE_PROFILE_RUNTIME
+    # Profile B allows UNRESOLVED (recorded), Profile A does not.
+    def _gate(status, profile):
+        if status == "HANDLE_AUDIT_FOUND_TARGET":
+            return False
+        if status in HANDLE_STATUS_PASS:
+            return True
+        if PROFILE_REQUIRES_CLEAN.get(profile, True):
+            return False
+        if status in (None, "HANDLE_AUDIT_ERROR"):
+            return False
+        return True
+    chk("A14 FOUND_TARGET invalid under B", _gate("HANDLE_AUDIT_FOUND_TARGET", HANDLE_PROFILE_API_NO_INHERIT) is False)
+    chk("A14b FOUND_TARGET invalid under A", _gate("HANDLE_AUDIT_FOUND_TARGET", HANDLE_PROFILE_RUNTIME) is False)
+    chk("A16c UNRESOLVED rejected under A", _gate("HANDLE_AUDIT_UNRESOLVED", HANDLE_PROFILE_RUNTIME) is False)
+    chk("A16d UNRESOLVED accepted (recorded) under B", _gate("HANDLE_AUDIT_UNRESOLVED", HANDLE_PROFILE_API_NO_INHERIT) is True)
+    chk("A16e ERROR rejected under B", _gate("HANDLE_AUDIT_ERROR", HANDLE_PROFILE_API_NO_INHERIT) is False)
+
+    # --- DACL SDDL compare --------------------------------------------------
+    from q3_dacl import _sddl_equal
+    s1 = "D:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+    s2 = "D:(A;OICI;FA;;;SY)"            # different ACE set
+    chk("A17 differing ACE set not equal", _sddl_equal(s1, s2) is False)
+    chk("A17b AI control-bit tolerated (same ACE set)",
+        _sddl_equal("D:P(A;OICI;FA;;;SY)", "D:PAI(A;OICI;FA;;;SY)") is True)
+
+    # --- checked cleanup residual ------------------------------------------
+    import tempfile
+    from q3_dacl import checked_rmtree
+    lk = Path(tempfile.mkdtemp(prefix="q3_adv_"))
+    try:
+        sub = lk / "locked"; sub.mkdir()
+        f = sub / "hold.txt"; f.write_text("h")
+        fh = open(f, "r")
+        try:
+            ok, res = checked_rmtree(sub)
+            chk("A18 locked tree -> failure with residuals", ok is False and len(res) > 0)
+        finally:
+            fh.close()
+        checked_rmtree(lk)
+    finally:
+        import shutil
+        shutil.rmtree(lk, ignore_errors=True)
+
+    passed = sum(1 for _, ok in results if ok)
+    print(f"\nq3_adversarial selftest: {passed}/{len(results)} PASS")
+    return 0 if passed == len(results) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(_selftest())

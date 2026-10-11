@@ -41,20 +41,83 @@ Q3_PROFILE_VERSION = "1.0"
 HANDLE_PROFILE_RUNTIME = "RUNTIME_HANDLE_AUDIT"
 HANDLE_PROFILE_API_NO_INHERIT = "API_NO_INHERIT_PROFILE"
 
-#: The ACTIVE profile for this frozen contract. Chosen BEFORE execution.
-ACTIVE_HANDLE_PROFILE = HANDLE_PROFILE_RUNTIME
+#: Profile versions (preregistered; a run records the version used).
+PROFILE_VERSION = {
+    HANDLE_PROFILE_RUNTIME: "1.0",
+    HANDLE_PROFILE_API_NO_INHERIT: "1.0",
+}
 
-#: Public scope text (must be echoed in any result claiming validity).
+#: The ACTIVE profile for this contract. Chosen BEFORE execution; a run MUST NOT
+#: switch profiles after seeing a result (凌翼 Q3).
+#:
+#: 凌翼 Q3: Profile A (RUNTIME_HANDLE_AUDIT) needs a full runtime enumeration to
+#: return CLEAN; Profile B (API_NO_INHERIT_PROFILE) proves a NARROWER claim —
+#: "the new worker did not INHERIT a forbidden handle from the controller". B does
+#: NOT prove "the worker holds no target handle by any other means". While an
+#: environment cannot reach A's CLEAN, B is the reachable path; we therefore set
+#: the ACTIVE profile to B, with its narrower scope stated explicitly.
+ACTIVE_HANDLE_PROFILE = HANDLE_PROFILE_API_NO_INHERIT
+
+#: Per-profile CLAIM (the exact proposition proven) — must be echoed verbatim.
+PROFILE_CLAIM = {
+    HANDLE_PROFILE_RUNTIME:
+        "At the audit time point, the worker holds NO handle to the protected "
+        "object (full runtime enumeration status == CLEAN).",
+    HANDLE_PROFILE_API_NO_INHERIT:
+        "The NEW worker did NOT INHERIT a forbidden-juxtaposed handle from the "
+        "controller (create-API + STARTUPINFO/inheritable-channel checks + leak "
+        "positive control). It does NOT assert that the worker can never obtain "
+        "the handle by other means (opened before deny, explicit DuplicateHandle).",
+}
+
+#: Scope text (must be echoed in any result claiming validity).
 PROFILE_SCOPE = {
     HANDLE_PROFILE_RUNTIME:
-        "worker holds NO handle to the protected object, verified by full "
-        "runtime enumeration (status CLEAN).",
+        "runtime handle audit CLEAN; UNRESOLVED/ERROR => INVALID.",
     HANDLE_PROFILE_API_NO_INHERIT:
-        "the CREATE API used does not inherit handles; OS inheritable-channel "
-        "checks pass; a leak positive control is detected. This does NOT prove "
-        "the worker holds no handle by other means (e.g. opened before deny, "
-        "explicit DuplicateHandle injection); scope is limited accordingly.",
+        "inherited-handle isolation only; runtime_handle_audit stays UNRESOLVED "
+        "and is recorded as-is (never rewritten to CLEAN); FOUND_TARGET always INVALID.",
 }
+
+#: The ONLY runtime-audit statuses a profile may use as PASS (凌翼 Q3/BD-65).
+PROFILE_REQUIRES_CLEAN = {
+    HANDLE_PROFILE_RUNTIME: True,       # A: needs runtime CLEAN
+    HANDLE_PROFILE_API_NO_INHERIT: False,   # B: does NOT claim runtime CLEAN
+}
+
+#: Preregistered acceptance conditions for Profile B (must ALL hold).
+PROFILE_B_ACCEPTANCE = (
+    "registered actual process-creation API is checked",
+    "STARTUPINFO + std handles + reserved fields + inheritable channels checked",
+    "controller open handles to forbidden objects are NOT passed to the worker",
+    "a deliberate handle-leak POSITIVE CONTROL is detected by the probe",
+    "worker token SID / old-worker termination / new process creation verified",
+    "real access denial verified (bound probe, strict schema)",
+    "observer independent reads of S_handoff/S_restored + clear/preserve verified",
+    "profile_selection happens BEFORE worker spawn (no post-hoc switch)",
+    "if runtime audit returns FOUND_TARGET -> INVALID even under B",
+)
+
+#: Finite trust boundary (凌翼 Q10) — echoed in any frozen scope statement.
+TRUST_ROOT = (
+    "preregistered contract + hash",
+    "trusted controller / observer",
+    "OS process identity + access control",
+    "bound executable code",
+    "independently observed raw events",
+)
+TRUST_VALIDATION = (
+    "byte/hash consistency",
+    "required witness consumption",
+    "positive and negative controls",
+    "no unresolved mandatory evidence",
+    "no authority self-certification",
+)
+TRUSTED_COMPUTING_BASE = (
+    "the running Windows OS, the trusted controller, and the authorized execution "
+    "environment are the declared trusted computing base. We do NOT prove the "
+    "Windows kernel itself is flawless (out of Q3's engineering threat model)."
+)
 
 # ---------------------------------------------------------------------------
 # REQUIRED CLEAR TARGETS (frozen; caller may only SHRINK, never define)

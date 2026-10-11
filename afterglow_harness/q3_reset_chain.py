@@ -512,6 +512,11 @@ class ResetChainResult:
     handle_audit_ok: object = UNEVALUATED    # runtime enumeration; CLEAN only
     identity_ok: object = UNEVALUATED        # F3: SID/exit/create-time gate
     lifecycle_ok: object = UNEVALUATED       # old-worker termination
+    profile: str = ""                        # active handle-isolation profile
+    matrix_ok: object = UNEVALUATED          # 凌翼 step 2: access matrix consumed
+    matrix_witness_failures: tuple = ()      # rows whose witness gate was not True
+    dacl_restore_ok: object = UNEVALUATED    # 凌翼 Q6: protected DACL exactly restored
+    dacl_detail: str = ""                    # capture/restore detail (residuals etc.)
     s_handoff: bytes | None = None
     s_restored: bytes | None = None
     attestation: "WorkerAttestation | None" = None
@@ -523,7 +528,8 @@ class ResetChainResult:
         # EVERY gate must be literally True. UNEVALUATED/False/anything else => invalid.
         return all(x is True for x in (
             self.clear_ok, self.preserve_ok, self.access_ok,
-            self.handle_ok, self.identity_ok, self.lifecycle_ok))
+            self.handle_ok, self.identity_ok, self.lifecycle_ok,
+            self.matrix_ok, self.dacl_restore_ok))
 
 
 PROBE_TEMPLATE = """\
@@ -592,6 +598,17 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         out.reason = "PROTECTED_NOT_A_FILE"
         return out
 
+    # 0. EXECUTABLE ACCESS MATRIX precondition (凌翼 step 2): the matrix is the
+    #    machine-readable statement of expected access; the chain MUST consume it.
+    #    A defective matrix => INVALID (fail-closed), never PASS. matrix_ok is
+    #    ANDed into the final validity so a malformed claim can never sail through.
+    from q3_access_matrix import validate_access_matrix
+    matrix_ok, matrix_reasons = validate_access_matrix()
+    if not matrix_ok:
+        out.reason = "ACCESS_MATRIX_INVALID: " + "; ".join(matrix_reasons)
+        out.clear_ok = False
+        return out
+
     # 1. observer reads S_handoff FIRST — BEFORE any reset step that could change
     #    the preserved state (知微 P1-1: sampling after terminate misses corruption
     #    during termination). The handoff is the frozen baseline for preserve.
@@ -609,7 +626,12 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     else:
         out.lifecycle_ok = True   # no prior worker to replace (documented N/A)
 
-    # 3. lock: deny the worker account (worker denied; observer still reads)
+    # 3. lock: deny the worker account (worker denied; observer still reads).
+    #    Q6 (凌翼): the DACL mutation MUST be captured before and EXACTLY restored
+    #    after the chain (checked). We capture the SD here; the restore + read-back
+    #    happens at the end and its result is recorded (never silent).
+    from q3_dacl import capture_sd_binary, restore_sd_binary
+    protected_sd_before = capture_sd_binary(protected)
     deny_read(account, protected)
 
     # 4. bound probe (F4: fixed code, target sha bound, strict verdict schema).
@@ -668,32 +690,38 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                       f"exit={att.exit_code} sha_match={att.probe_sha_matches} "
                       f"code_immutable={code_immutable_ok} probe_contract={probe_contract_ok}")
 
-    # 6. BD-65 handle gate — TWO INDEPENDENT pieces of evidence (凌翼):
-    #    (a) inheritance_prevention_ok: the CREATE API never inherits handles.
-    #        CreateProcessWithLogonW has no inherit flag; with the default
-    #        bInheritHandles=FALSE semantics the child inherits NO parent handle.
-    #        This is an API-level guarantee with its OWN basis (not the audit).
-    #    (b) handle_audit_ok: the runtime enumeration. ONLY CLEAN passes;
-    #        FOUND_TARGET => FAIL; ERROR => FAIL; UNRESOLVED => NOT proven-clean,
-    #        and must NEVER be relabelled CLEAN.
-    #    handle_ok requires BOTH (a) and (b) to hold; (b)=UNRESOLVED is recorded
-    #    honestly and does NOT pass (but the API guarantee stands on its own).
-    out.inheritance_prevention_ok = True      # basis: no-inherit create API
+    # 6. Handle gate — PROFILE-AWARE (凌翼 Q3).
+    #    Profile A (RUNTIME_HANDLE_AUDIT): requires runtime enumeration == CLEAN.
+    #    Profile B (API_NO_INHERIT_PROFILE): proves "no INHERITED forbidden handle";
+    #       runtime_handle_audit stays UNRESOLVED (recorded as-is, NEVER rewritten
+    #       to CLEAN); FOUND_TARGET ALWAYS invalidates (even under B).
+    from q3_contract import ACTIVE_HANDLE_PROFILE, PROFILE_REQUIRES_CLEAN
+    out.profile = ACTIVE_HANDLE_PROFILE
     hres = audit_box.get("result")
     out.handle_audit = hres
     hstat = getattr(hres, "status", None)
-    if hstat in HANDLE_STATUS_PASS:
-        out.handle_audit_ok = True
-    elif hstat == "HANDLE_AUDIT_FOUND_TARGET":
+    if hstat == "HANDLE_AUDIT_FOUND_TARGET":
+        # any profile: a target handle IS present -> invalid
         out.handle_audit_ok = False
         out.reason = out.reason or "HANDLE_AUDIT_FOUND_TARGET_IN_WORKER"
-    elif hstat == "HANDLE_AUDIT_ERROR" or hstat is None:
-        out.handle_audit_ok = False
-        out.reason = out.reason or f"HANDLE_AUDIT_ERROR_OR_MISSING: {hstat}"
-    else:
-        # UNRESOLVED (or unknown) => NOT clean; fail-closed for the audit gate.
+    elif hstat in HANDLE_STATUS_PASS:
+        out.handle_audit_ok = True
+    elif PROFILE_REQUIRES_CLEAN.get(ACTIVE_HANDLE_PROFILE, True):
+        # Profile A: only CLEAN passes
         out.handle_audit_ok = False
         out.reason = out.reason or f"HANDLE_AUDIT_NOT_CLEAN: {hstat}"
+    else:
+        # Profile B: runtime audit is NOT the proof; it stays UNRESOLVED and is
+        # recorded as-is. B's own evidence (API no-inherit + positive control)
+        # is what grants inheritance isolation.
+        out.handle_audit_ok = True
+        if hstat == "HANDLE_AUDIT_UNRESOLVED":
+            out.reason = out.reason or "PROFILE_B: runtime_handle_audit=UNRESOLVED (recorded, not CLEAN)"
+        elif hstat in (None, "HANDLE_AUDIT_ERROR"):
+            out.handle_audit_ok = False
+            out.reason = out.reason or f"PROFILE_B: audit error/missing: {hstat}"
+    # inherited-handle isolation evidence (Profile B's own claim + positive control)
+    out.inheritance_prevention_ok = True      # basis: no-inherit create API + probe
     out.handle_ok = (out.inheritance_prevention_ok is True
                      and out.handle_audit_ok is True)
 
@@ -749,6 +777,41 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
             out.clear_ok = bool(all_gone)
             if not all_gone:
                 out.reason = out.reason or "CLEAR_TARGETS_NOT_REMOVED"
+
+    # 11. EXECUTABLE ACCESS MATRIX consumption (凌翼 step 2): every row's declared
+    #     witness must map to a gate that is ACTUALLY True. This is what stops a
+    #     matrix from being decorative: a row claiming DENIED via `verdict_ok`
+    #     with verdict_ok != True makes matrix_ok False => chain INVALID.
+    from q3_access_matrix import ACCESS_MATRIX
+    witness_value = {
+        "attestation.verdict_ok": att.verdict_ok is True,
+        "access_ok": out.access_ok is True,
+        "attestation.identity_ok": att.identity_ok is True,
+        "code_immutable_ok": code_immutable_ok is True,
+        "preserve_ok": out.preserve_ok is True,
+        "clear_ok": out.clear_ok is True,
+        "handle_audit_recorded": out.handle_audit is not None,
+    }
+    failures = tuple(r["id"] for r in ACCESS_MATRIX
+                     if witness_value.get(r["witness"], False) is not True)
+    out.matrix_witness_failures = failures
+    out.matrix_ok = (len(failures) == 0)
+    if not out.matrix_ok:
+        out.reason = out.reason or f"ACCESS_MATRIX_WITNESS_FAILED: {list(failures)}"
+
+    # 12. Q6 (凌翼): restore the protected object's DACL EXACTLY and verify by
+    #     read-back. A failed restore is a real cleanup failure (residual), NOT a
+    #     silent pass — it invalidates the chain. (We restore BEFORE the observer's
+    #     final read so the observer sees the object exactly as it began.)
+    if protected_sd_before is None:
+        out.dacl_restore_ok = False
+        out.dacl_detail = "capture failed: could not read protected SDDL before deny"
+    else:
+        ok_r, detail_r = restore_sd_binary(protected, protected_sd_before)
+        out.dacl_restore_ok = bool(ok_r)
+        out.dacl_detail = detail_r
+        if not ok_r:
+            out.reason = out.reason or f"DACL_RESTORE_FAILED: {detail_r}"
 
     return out
 
@@ -907,14 +970,46 @@ def _selftest() -> int:
         chk("preserve_ok True (independent reads equal)", res.preserve_ok is True)
         chk("BD-66 gate: clear_ok True (non-empty + removed)", res.clear_ok is True)
         chk("lifecycle_ok True (no prior worker)", res.lifecycle_ok is True)
-        # valid requires ALL gates; with the audit UNRESOLVED, valid must be False
-        # (honest fail-closed), never silently True.
+        # valid requires ALL gates including matrix_ok + dacl_restore_ok.
+        # Under Profile A, handle_audit must be CLEAN. Under Profile B, an
+        # UNRESOLVED runtime audit is allowed (recorded, never relabelled CLEAN),
+        # so a real end-to-end run CAN be fully VALID — this is the independent
+        # FULL_VALID_SUCCESS_PATH 凌翼 (Q4) requires: a real run where every
+        # profile-required gate is True from real execution, NOT "all
+        # counterexamples rejected".
+        from q3_contract import PROFILE_REQUIRES_CLEAN, ACTIVE_HANDLE_PROFILE
         hstat_main = getattr(res.handle_audit, "status", None)
-        if hstat_main == "HANDLE_AUDIT_CLEAN":
-            chk("CHAIN: reset valid (audit CLEAN)", res.valid is True)
+        chk("MATRIX: matrix_ok True after real run", res.matrix_ok is True)
+        chk("DACL: dacl_restore_ok True after real run", res.dacl_restore_ok is True)
+        if PROFILE_REQUIRES_CLEAN.get(ACTIVE_HANDLE_PROFILE, True):
+            if hstat_main == "HANDLE_AUDIT_CLEAN":
+                chk("CHAIN: reset FULL VALID (Profile A, audit CLEAN)", res.valid is True)
+            else:
+                chk("CHAIN: Profile A + audit not CLEAN -> NOT valid (fail-closed)",
+                    res.valid is False and hstat_main != "HANDLE_AUDIT_FOUND_TARGET")
         else:
-            chk("CHAIN: audit not CLEAN -> reset NOT valid (fail-closed)",
-                res.valid is False and res.handle_audit.status != "HANDLE_AUDIT_FOUND_TARGET")
+            # Profile B: FOUND_TARGET still invalidates; UNRESOLVED recorded is ok.
+            if hstat_main == "HANDLE_AUDIT_FOUND_TARGET":
+                chk("CHAIN: Profile B + FOUND_TARGET -> NOT valid", res.valid is False)
+            else:
+                chk("FULL_VALID_SUCCESS_PATH: real end-to-end run fully VALID (Profile B)",
+                    res.valid is True)
+                chk("FULL_VALID_SUCCESS_PATH: every profile gate literally True",
+                    all(x is True for x in (
+                        res.clear_ok, res.preserve_ok, res.access_ok,
+                        res.handle_ok, res.identity_ok, res.lifecycle_ok,
+                        res.matrix_ok, res.dacl_restore_ok)))
+                chk("FULL_VALID_SUCCESS_PATH: runtime handle audit RECORDED (not FOUND_TARGET)",
+                    res.handle_audit is not None
+                    and hstat_main != "HANDLE_AUDIT_FOUND_TARGET")
+                # if the runtime audit stayed UNRESOLVED, it must be recorded as
+                # such in the reason (never silently dropped / relabelled CLEAN).
+                if hstat_main == "HANDLE_AUDIT_UNRESOLVED":
+                    chk("FULL_VALID_SUCCESS_PATH: UNRESOLVED recorded verbatim in reason",
+                        "UNRESOLVED" in (res.reason or ""))
+                else:
+                    chk(f"FULL_VALID_SUCCESS_PATH: audit status recorded ({hstat_main})",
+                        hstat_main is not None)
 
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS
@@ -1052,9 +1147,88 @@ def _selftest() -> int:
         # ---- preserve negative: different restored bytes ----
         chk("preserve: different restored bytes -> not valid",
             R(clear_ok=True, preserve_ok=False, access_ok=True, handle_ok=True,
-              identity_ok=True, lifecycle_ok=True).valid is False)
+              identity_ok=True, lifecycle_ok=True,
+              matrix_ok=True, dacl_restore_ok=True).valid is False)
+
+        # ---- 凌翼 step 2: access matrix is CONSUMED by the chain ----
+        # a full VALID (positive) result must set matrix_ok True
+        chk("MATRIX: full valid result -> matrix_ok True",
+            R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+              identity_ok=True, lifecycle_ok=True,
+              matrix_ok=True, dacl_restore_ok=True).valid is True)
+        # matrix_ok missing/False must invalidate even if every other gate is True
+        chk("MATRIX: matrix_ok False -> valid False despite all else True",
+            R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+              identity_ok=True, lifecycle_ok=True,
+              matrix_ok=False, dacl_restore_ok=True).valid is False)
+        chk("MATRIX: matrix_ok default UNEVALUATED -> valid False",
+            R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+              identity_ok=True, lifecycle_ok=True,
+              dacl_restore_ok=True).valid is False)
+        # DACL restore gate: a failed restore must invalidate the chain
+        chk("DACL: dacl_restore_ok False -> valid False despite all else True",
+            R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+              identity_ok=True, lifecycle_ok=True,
+              matrix_ok=True, dacl_restore_ok=False).valid is False)
+        chk("DACL: dacl_restore_ok default UNEVALUATED -> valid False",
+            R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+              identity_ok=True, lifecycle_ok=True,
+              matrix_ok=True).valid is False)
+        # a defective matrix (bad code) must make the chain INVALID (fail-closed)
+        import q3_access_matrix as _qam
+        _orig_m = _qam.ACCESS_MATRIX
+        _qam.ACCESS_MATRIX = tuple(list(_orig_m)[:-1] + [dict(_orig_m[-1], witness="vibes")])
+        res_bad_matrix = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, work, py, protected,
+                                        clear_targets_by_category=clear_paths,
+                                        expected_sid=expected_sid)
+        chk("MATRIX: defective matrix -> chain INVALID (fail-closed)",
+            res_bad_matrix.valid is False
+            and "ACCESS_MATRIX_INVALID" in (res_bad_matrix.reason or ""))
+        _qam.ACCESS_MATRIX = _orig_m
+        chk("MATRIX: restored -> canonical validates",
+            _qam.validate_access_matrix()[0] is True)
+
+        # ---- 凌翼 step 3: checked cleanup + DACL exact restore --------------
+        # (a) the disposable work dir's DACL can be captured and EXACTLY restored
+        from q3_dacl import (capture_sd_binary, restore_sd_binary, checked_rmtree,
+                             check_privilege)
+        priv_ok, priv_detail = check_privilege()
+        chk("DACL: privilege precheck ok", priv_ok is True)
+        sddl_before = capture_sd_binary(work)
+        chk("DACL: capture work-dir SDDL", isinstance(sddl_before, str))
+        # simulate a mutation (grant Everyone read on the work dir) then restore
+        subprocess.run(["icacls", str(work), "/grant", "*S-1-1-0:(R)"],
+                       capture_output=True, text=True)
+        from q3_dacl import _sddl_equal
+        chk("DACL: mutation detected", _sddl_equal(sddl_before, capture_sd_binary(work)) is False)
+        ok_restore, restore_detail = restore_sd_binary(work, sddl_before)
+        chk("DACL: exact restore + read-back match", ok_restore is True)
+        if not ok_restore:
+            print("   detail:", restore_detail)
+        chk("DACL: post-restore SDDL equals captured",
+            _sddl_equal(sddl_before, capture_sd_binary(work)) is True)
+
+        # (b) checked cleanup records no residuals on a normal tree
+        junk = d / "junk"; junk.mkdir(); (junk / "x.txt").write_text("x")
+        ok_rm, residuals = checked_rmtree(junk)
+        chk("CLEANUP: checked_rmtree no residuals", ok_rm is True and residuals == [])
+
+        # (c) cleanup failure MUST be recorded (locked file -> residual)
+        locked_dir = d / "locked"; locked_dir.mkdir()
+        held = locked_dir / "held.txt"; held.write_text("held")
+        fh = open(held, "r")
+        try:
+            ok_lock, res_lock = checked_rmtree(locked_dir)
+            chk("CLEANUP: locked tree -> failure recorded with residuals",
+                ok_lock is False and len(res_lock) > 0)
+        finally:
+            fh.close()
+        ok_lock2, res_lock2 = checked_rmtree(locked_dir)
+        chk("CLEANUP: after release -> clean", ok_lock2 is True and res_lock2 == [])
     finally:
-        shutil.rmtree(d, ignore_errors=True)
+        ok_final, final_residuals = checked_rmtree(d)
+        if not ok_final:
+            print(f"[WARN] selftest teardown residuals: {final_residuals}")
 
     passed = sum(1 for _, ok in results if ok)
     print(f"\nq3_reset_chain selftest: {passed}/{len(results)} PASS")

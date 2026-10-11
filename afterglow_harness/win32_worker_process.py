@@ -77,6 +77,8 @@ def _adv_k32():
 
 LOGON_WITH_PROFILE = 0x00000001
 CREATE_NO_WINDOW = 0x08000000
+WAIT_OBJECT_0 = 0x00000000
+WAIT_TIMEOUT = 0x00000102
 
 
 def _startupinfo():
@@ -163,27 +165,41 @@ def run_cross_process_worker(account: str, password: str, work_dir: Path,
 def check_spawn_prerequisite(account: str, password: str, python_exe: str) -> tuple[bool, str]:
     """Preflight: can THIS process spawn `account` via CreateProcessWithLogonW?
 
-    Returns (ok, detail). A False with 'err=5' means an environment precondition
-    (caller-context) failure — callers should report NOT_APPLICABLE, not FAIL.
-    Runs a trivial child (python -c "pass") and waits.
+    Returns (ok, detail). 凌翼 Q1: a preflight is only trustworthy if it WAITS for
+    completion and requires a SUCCESS exit code — not merely that the process was
+    created. A False with 'err=5' means an environment precondition (caller
+    context) failure -> NOT_APPLICABLE (never a security result).
+
+    Classification (凌翼 Q1: do NOT treat every err=5 identically):
+      err=5      -> probably the CALLER lacks the required logon capability
+                    (e.g. nt authority\\system / LocalSystem cannot call this API).
+      other err  -> a genuine API/credentials problem -> NOT_EVALUATED, not PASS.
     """
     import ctypes
     from ctypes import wintypes
     adv, k32 = _adv_k32()
     si, pi = _startupinfo()
-    cmd = ctypes.create_unicode_buffer(f'"{python_exe}" -c "pass"')
+    cmd = ctypes.create_unicode_buffer(f'"{python_exe}" -c "raise SystemExit(0)"')
     ok = adv.CreateProcessWithLogonW(account, ".", password, LOGON_WITH_PROFILE,
                                      None, cmd, CREATE_NO_WINDOW, None,
                                      str(Path.cwd()), ctypes.byref(si), ctypes.byref(pi))
     if not ok:
         err = k32.GetLastError()
-        return False, f"CreateProcessWithLogonW preflight failed: err={err}"
-    k32.WaitForSingleObject(pi.hProcess, 15000)
+        kind = "likely caller-context (logon capability)" if err == 5 else "api/credentials"
+        return False, f"CreateProcessWithLogonW preflight failed: err={err} ({kind})"
+    # WAIT for completion (not just creation)
+    wr = k32.WaitForSingleObject(pi.hProcess, 15000)
     rc = wintypes.DWORD()
-    k32.GetExitCodeProcess(pi.hProcess, ctypes.byref(rc))
+    got_rc = bool(k32.GetExitCodeProcess(pi.hProcess, ctypes.byref(rc)))
     k32.CloseHandle(pi.hThread)
     k32.CloseHandle(pi.hProcess)
-    return True, f"preflight ok (rc={rc.value})"
+    if wr != WAIT_OBJECT_0:
+        return False, f"preflight: child did not exit (wait={hex(wr)})"
+    if not got_rc:
+        return False, "preflight: GetExitCodeProcess failed"
+    if rc.value != 0:
+        return False, f"preflight: child exit code {rc.value} != 0 (environment invalid)"
+    return True, f"preflight ok (child exited 0)"
 
 
 # ---------------------------------------------------------------------------

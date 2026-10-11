@@ -8,6 +8,11 @@ permission matrix + clear/preserve/access + cleanup + DACL) must run in ONE entr
 with PASS / FAIL / **SKIP** distinguished. A SKIP (e.g. no credential) MUST NOT be
 counted as PASS (exit code 0 alone must not imply success).
 
+凌翼 Q3 step 5: the unified driver also runs the ADVERSARIAL REGRESSION suite
+(q3_adversarial.py) — injected defects must be rejected, else the green run is
+meaningless. The EXECUTABLE ACCESS MATRIX (q3_access_matrix.py) and DACL/cleanup
+(q3_dacl.py) are consumed as first-class checks (凌翼 Q3 steps 2-3).
+
 Exit codes:
   0  => ALL checks ran and passed (no SKIP counted as PASS).
   1  => at least one FAIL.
@@ -33,6 +38,10 @@ SKIP = "SKIP"
 
 # Modules that emit a "<name> selftest: N/N PASS" line. Suffix unknown until run.
 COMPONENT_MODULES = (
+    "q3_access_matrix.py",
+    "q3_dacl.py",
+    "q3_adversarial.py",
+    "q3_provenance.py",
     "win32_isolation.py",
     "win32_worker_process.py",
     "q3_handle_audit.py",

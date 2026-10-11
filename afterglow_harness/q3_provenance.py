@@ -1,0 +1,204 @@
+"""
+q3_provenance.py — Q3 new-lineage provenance + INDEPENDENT recompute of the RC11
+20 execution-critical role hashes (凌翼 Q7 / EXECUTION ORDER step 6).
+
+Why a SEPARATE module
+---------------------
+凌翼 Q7: "new-lineage provenance + independent recompute of RC11's 20
+execution-critical source hashes." The RC11 hashes are anchored inside the FROZEN
+RC11 MANIFEST (78bdb90f...), which MUST NOT be touched. Q3 is a NEW lineage, so it
+carries its OWN provenance:
+
+  · Q3_EXECUTION_CRITICAL  — the Q3 modules whose bytes can change a Q3 decision
+                             (contract, matrix, dacl, handle audit, reset chain,
+                             worker/isolation, driver, adversarial).
+  · RC11_ROLE_RECOMPUTE    — an INDEPENDENT re-hash of the 20 RC11 roles, so we can
+                             prove the frozen bytes still match their RC11 digests
+                             without trusting the MANIFEST (defence against a
+                             changed-on-disk-but-manifest-not-updated drift).
+
+This module performs no OS calls beyond reading bytes; it is safe everywhere.
+
+Canonical hashing
+-----------------
+Role bytes are hashed AS-ON-DISK after LF-normalisation is NOT applied here (the
+frozen objects are hashed by raw bytes). We report the RAW SHA-256 (exactly what
+qualification_binding.sha256_file computes) so the recompute is comparable.
+
+A Q3 lineup is frozen by writing a DETACHED record (q3_provenance_detached.txt)
+that lists every role + raw sha256; a later run recomputes and compares.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+Q3_LINEAGE_ID = "Q3_OS_ISOLATION_LINEAGE_V1"
+
+# Q3 modules whose bytes can change a Q3 qualification decision.
+Q3_EXECUTION_CRITICAL = (
+    "q3_contract.py",
+    "q3_access_matrix.py",
+    "q3_dacl.py",
+    "q3_handle_audit.py",
+    "q3_reset_chain.py",
+    "win32_isolation.py",
+    "win32_worker_process.py",
+    "q3_qualify.py",
+    "q3_adversarial.py",
+    "q3_provenance.py",
+)
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def role_hashes(harness_dir: Path, roles) -> tuple[dict, list]:
+    """Hash each role in `roles` under `harness_dir`.
+
+    Returns (hashes, missing). A missing role is NOT silently skipped; it is
+    reported so a caller can fail closed.
+    """
+    hashes = {}
+    missing = []
+    for r in roles:
+        p = Path(harness_dir) / r
+        if p.exists():
+            hashes[r] = sha256_file(p)
+        else:
+            missing.append(r)
+    return hashes, missing
+
+
+def recompute_rc11_roles(harness_dir: Path) -> tuple[dict, list]:
+    """Independently re-hash the RC11 20 execution-critical roles.
+
+    We import the frozen RC11 registry to know WHICH roles; but the HASHES come
+    from our own byte read, independent of the MANIFEST.
+    """
+    from qualification_role_registry import EXECUTION_CRITICAL_ROLES
+    return role_hashes(harness_dir, EXECUTION_CRITICAL_ROLES)
+
+
+def recompute_q3_roles(harness_dir: Path) -> tuple[dict, list]:
+    return role_hashes(harness_dir, Q3_EXECUTION_CRITICAL)
+
+
+def q3_lineage_digest(harness_dir: Path) -> tuple[str, list]:
+    """A single canonical digest over ALL Q3 execution-critical role hashes.
+
+    Deterministic: roles sorted, joined as '<role> <sha256>\\n', then SHA-256.
+    Returns (digest, missing).
+    """
+    hashes, missing = recompute_q3_roles(harness_dir)
+    if missing:
+        return "", missing
+    payload = "".join(f"{r} {hashes[r]}\n" for r in sorted(hashes))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest(), []
+
+
+def write_detached_record(harness_dir: Path, out_path: Path) -> str:
+    """Write a DETACHED provenance record (roles + raw hashes + lineage digest).
+
+    Returns the lineage digest. The record is OUTSIDE the frozen objects (it is
+    metadata), so it can be regenerated; it never edits any role file.
+    """
+    q3_hashes, q3_missing = recompute_q3_roles(harness_dir)
+    rc11_hashes, rc11_missing = recompute_rc11_roles(harness_dir)
+    digest, _ = q3_lineage_digest(harness_dir)
+    lines = [f"Q3_LINEAGE_ID {Q3_LINEAGE_ID}"]
+    lines.append(f"Q3_LINEAGE_DIGEST {digest}")
+    lines.append("# Q3 execution-critical roles (raw sha256)")
+    for r in sorted(q3_hashes):
+        lines.append(f"{r} {q3_hashes[r]}")
+    lines.append("# RC11 recompute (independent re-hash of the 20 roles)")
+    for r in sorted(rc11_hashes):
+        lines.append(f"{r} {rc11_hashes[r]}")
+    if q3_missing:
+        lines.append("# MISSING_Q3_ROLES " + " ".join(sorted(q3_missing)))
+    if rc11_missing:
+        lines.append("# MISSING_RC11_ROLES " + " ".join(sorted(rc11_missing)))
+    Path(out_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return digest
+
+
+def verify_against_record(harness_dir: Path, record_path: Path) -> tuple[bool, list]:
+    """Recompute and compare against a detached record. Returns (ok, diffs)."""
+    if not Path(record_path).exists():
+        return False, ["record missing"]
+    rec = {}
+    for line in Path(record_path).read_text(encoding="utf-8").splitlines():
+        if line.startswith("#") or not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) == 2 and parts[0].endswith(".py"):
+            rec[parts[0]] = parts[1]
+    current, _ = recompute_q3_roles(harness_dir)
+    current.update(recompute_rc11_roles(harness_dir)[0])
+    diffs = []
+    for r, h in rec.items():
+        if r not in current:
+            diffs.append(f"MISSING {r}")
+        elif current[r] != h:
+            diffs.append(f"CHANGED {r}: {h} -> {current[r]}")
+    return (len(diffs) == 0), diffs
+
+
+# ---------------------------------------------------------------------------
+# Selftest
+# ---------------------------------------------------------------------------
+
+def _selftest() -> int:
+    import tempfile
+    results = []
+
+    def chk(name, cond):
+        results.append(bool(cond))
+        print(f"[{'PASS' if cond else 'FAIL'}] {name}")
+
+    harness = Path(__file__).resolve().parent
+
+    q3, q3_missing = recompute_q3_roles(harness)
+    chk("Q3 roles all present", q3_missing == [])
+    chk("Q3 roles non-empty", len(q3) == len(Q3_EXECUTION_CRITICAL))
+
+    rc11, rc11_missing = recompute_rc11_roles(harness)
+    chk("RC11 roles all present (no drift)", rc11_missing == [])
+    chk("RC11 recompute covers 20 roles", len(rc11) == 20)
+
+    d1, m1 = q3_lineage_digest(harness)
+    d2, m2 = q3_lineage_digest(harness)
+    chk("lineage digest deterministic", d1 == d2 and len(d1) == 64 and m1 == [])
+
+    # detached record round-trip
+    tmp = Path(tempfile.mkdtemp(prefix="q3_prov_"))
+    try:
+        rec = tmp / "q3_provenance_detached.txt"
+        dig = write_detached_record(harness, rec)
+        chk("record written + digest matches", rec.exists() and dig == d1)
+        ok, diffs = verify_against_record(harness, rec)
+        chk("verify against fresh record -> ok", ok is True and diffs == [])
+
+        # mutate the record to simulate drift -> must be detected
+        text = rec.read_text(encoding="utf-8")
+        rec.write_text(text.replace("q3_contract.py ", "q3_contract.py 0", 1), encoding="utf-8")
+        ok2, diffs2 = verify_against_record(harness, rec)
+        chk("tampered record detected as CHANGED", ok2 is False and any("CHANGED" in x for x in diffs2))
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    passed = sum(1 for r in results if r)
+    print(f"\nq3_provenance selftest: {passed}/{len(results)} PASS")
+    return 0 if passed == len(results) else 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(_selftest())
