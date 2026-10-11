@@ -132,18 +132,20 @@ def restore_sd_binary(path: Path, sddl: str) -> tuple[bool, str]:
 
 
 def _sddl_equal(a: str | None, b: str | None) -> bool:
-    """Compare two SDDL DACL strings for EXACT ACE-set equality.
+    """Compare two SDDL DACL strings for EXACT semantics.
 
-    SDDL form:  D:<controlfl>ags(A;flags;rights;;;sid)...
-    The DACL control field may carry OS-managed bookkeeping bits that do NOT
-    change effective access:
-      · P  (SE_DACL_PROTECTED)   — inheritance is blocked; honoured.
-      · AI (SE_DACL_AUTO_INHERITED) — set by the OS when it materializes
-        inherited ACEs; SetNamedSecurityInfo adds it even when the input lacked
-        it. It is a bookkeeping bit, not a grant.
-    We therefore compare the normalised ACE SET exactly, and require the P bit to
-    match, but tolerate a differing AI bit (documented OS behaviour). Both None
-    never equal.
+    凌翼 Q3 STEP 4 (P1): ACE ORDER can affect access evaluation, so we DO NOT sort
+    the ACE set. We compare:
+      · the DACL control field, with ONLY provably-harmless OS-bookkeeping bits
+        normalised: the SE_DACL_AUTO_INHERITED ('AI') bit is an OS materialisation
+        flag that does not change the ACE list; the P (PROTECTED) bit is honoured.
+        Any OTHER control-bit difference => NOT equal.
+      · the ACE list IN ORDER, with ONLY the ACE-inheritance qualifier flags that
+        the OS materialises ('ID' vs 'I') normalised per-ACE. Everything else
+        (type, rights, object/inherit GUIDs, SID, order) must match exactly.
+
+    Both None never equal. A sequence of ACEs that differs ONLY by reordering is
+    NOT equal (order matters).
     """
     if a is None or b is None:
         return False
@@ -155,27 +157,27 @@ def _sddl_equal(a: str | None, b: str | None) -> bool:
         body = s[2:]
         i = body.find("(")
         ctrl = body[:i] if i >= 0 else body
-        aces = body[i:] if i >= 0 else ""
-        # normalise ACE flags: the "ID" vs "I" inherited-ACE qualifier can also be
-        # materialised by the OS; strip the ACE-flag differences that are pure
-        # inheritance bookkeeping so only the *grant set* is compared.
+        aces_text = body[i:] if i >= 0 else ""
+        # Normalise ONLY the auto-inherited bookkeeping bit out of the control
+        # field; keep P and everything else.
+        ctrl_norm = "".join(sorted(set(ctrl) - {"A", "I"}))
         import re
         norm_aces = []
-        for ace in re.findall(r"\([^)]*\)", aces):
+        for ace in re.findall(r"\([^)]*\)", aces_text):
             parts = ace[1:-1].split(";")
             if len(parts) >= 6:
-                # parts: type;aceflags;rights;objectguid;inheritguid;sid
+                # strip the ACE-flag inheritance-materialisation qualifiers (I/D)
+                # only; keep ObjectInherit/ContainerInherit (OI/CI) and others.
                 parts[1] = "".join(sorted(set(parts[1]) - set("ID")))
                 norm_aces.append("(" + ";".join(parts) + ")")
             else:
                 norm_aces.append(ace)
-        norm_aces.sort()
-        protected = "P" in ctrl
-        return protected, tuple(norm_aces)
+        # DO NOT sort: ACE order is significant.
+        return ctrl_norm, tuple(norm_aces)
 
-    pa, aces_a = parse(a) or (None, ())
-    pb, aces_b = parse(b) or (None, ())
-    return pa is not None and pb is not None and pa == pb and aces_a == aces_b
+    pa = parse(a)
+    pb = parse(b)
+    return pa is not None and pb is not None and pa == pb
 
 
 def capture_sd(path: Path) -> str | None:

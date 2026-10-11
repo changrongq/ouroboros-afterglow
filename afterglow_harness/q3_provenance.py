@@ -128,8 +128,21 @@ def write_detached_record(harness_dir: Path, out_path: Path) -> str:
     return digest
 
 
+def required_role_set() -> frozenset:
+    """凌翼 Q3 STEP 6: the FROZEN union of roles a valid record MUST contain —
+    all Q3 execution-critical roles AND all RC11 execution-critical roles."""
+    from qualification_role_registry import EXECUTION_CRITICAL_ROLES
+    return frozenset(set(Q3_EXECUTION_CRITICAL) | set(EXECUTION_CRITICAL_ROLES))
+
+
 def verify_against_record(harness_dir: Path, record_path: Path) -> tuple[bool, list]:
-    """Recompute and compare against a detached record. Returns (ok, diffs)."""
+    """Recompute and compare against a detached record. Returns (ok, diffs).
+
+    凌翼 Q3 STEP 6 (P1): a record that OMITS a required role must FAIL — comparing
+    only the entries that happen to be present lets a deletion attack pass. We
+    therefore require EXACT role-set equality against the frozen required set,
+    THEN compare each hash.
+    """
     if not Path(record_path).exists():
         return False, ["record missing"]
     rec = {}
@@ -142,11 +155,21 @@ def verify_against_record(harness_dir: Path, record_path: Path) -> tuple[bool, l
     current, _ = recompute_q3_roles(harness_dir)
     current.update(recompute_rc11_roles(harness_dir)[0])
     diffs = []
-    for r, h in rec.items():
+    # 1. EXACT role-set equality (deletion / addition attack).
+    required = required_role_set()
+    recorded = set(rec.keys())
+    missing_roles = sorted(required - recorded)
+    extra_roles = sorted(recorded - required)
+    if missing_roles:
+        diffs.append(f"RECORD_MISSING_REQUIRED_ROLES: {missing_roles}")
+    if extra_roles:
+        diffs.append(f"RECORD_HAS_UNEXPECTED_ROLES: {extra_roles}")
+    # 2. per-role hash comparison (for roles present on both sides).
+    for r in sorted(required & recorded):
         if r not in current:
-            diffs.append(f"MISSING {r}")
-        elif current[r] != h:
-            diffs.append(f"CHANGED {r}: {h} -> {current[r]}")
+            diffs.append(f"MISSING_FILE {r}")
+        elif current[r] != rec[r]:
+            diffs.append(f"CHANGED {r}: {rec[r]} -> {current[r]}")
     return (len(diffs) == 0), diffs
 
 
@@ -190,6 +213,20 @@ def _selftest() -> int:
         rec.write_text(text.replace("q3_contract.py ", "q3_contract.py 0", 1), encoding="utf-8")
         ok2, diffs2 = verify_against_record(harness, rec)
         chk("tampered record detected as CHANGED", ok2 is False and any("CHANGED" in x for x in diffs2))
+
+        # 凌翼 STEP 6: DELETING a role line from the record must FAIL (exact set)
+        rec.write_text(text, encoding="utf-8")
+        lines = [l for l in text.splitlines() if not l.startswith("q3_dacl.py ")]
+        rec.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        ok_del, diffs_del = verify_against_record(harness, rec)
+        chk("record with a DELETED role line detected (missing required)",
+            ok_del is False and any("RECORD_MISSING_REQUIRED_ROLES" in x for x in diffs_del))
+
+        # adding an unexpected role line must also FAIL
+        rec.write_text(text + "totally_fake_role.py " + "0" * 64 + "\n", encoding="utf-8")
+        ok_add, diffs_add = verify_against_record(harness, rec)
+        chk("record with an UNEXPECTED role detected",
+            ok_add is False and any("RECORD_HAS_UNEXPECTED_ROLES" in x for x in diffs_add))
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)

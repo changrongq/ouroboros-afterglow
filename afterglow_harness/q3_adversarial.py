@@ -156,6 +156,58 @@ def _selftest() -> int:
     chk("A17 differing ACE set not equal", _sddl_equal(s1, s2) is False)
     chk("A17b AI control-bit tolerated (same ACE set)",
         _sddl_equal("D:P(A;OICI;FA;;;SY)", "D:PAI(A;OICI;FA;;;SY)") is True)
+    # 凌翼 STEP 4: ACE ORDER matters — reordered ACEs must NOT be equal.
+    chk("A17c reordered ACEs NOT equal (order significant)",
+        _sddl_equal("D:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)",
+                    "D:(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)") is False)
+    # a different control flag (P present vs absent) must NOT be equal
+    chk("A17d differing control flag NOT equal",
+        _sddl_equal("D:P(A;OICI;FA;;;SY)", "D:(A;OICI;FA;;;SY)") is False)
+
+    # 凌翼 STEP 1: the Profile B proof must reject ANY single-field failure.
+    from q3_contract import evaluate_profile_b_proof, PROFILE_B_PROOF_FIELDS
+    _gp = {f: True for f in PROFILE_B_PROOF_FIELDS}
+    chk("A19 Profile B all-True proof accepted", evaluate_profile_b_proof(_gp)[0] is True)
+    chk("A19b Profile B empty proof rejected", evaluate_profile_b_proof({})[0] is False)
+    chk("A19c Profile B non-dict proof rejected", evaluate_profile_b_proof(None)[0] is False)
+    _gp_bad = dict(_gp); _gp_bad[PROFILE_B_PROOF_FIELDS[0]] = False
+    chk("A19d Profile B single False field rejected", evaluate_profile_b_proof(_gp_bad)[0] is False)
+
+    # 凌翼 STEP 2: required matrix rows + phase binding.
+    import q3_access_matrix as _qm
+    _orig_m = _qm.ACCESS_MATRIX
+    _no_row = tuple(r for r in _orig_m if r["id"] != "W-READ-PROTECTED-POST")
+    _qm.ACCESS_MATRIX = _no_row
+    chk("A20 matrix missing REQUIRED row rejected",
+        _qm.validate_access_matrix()[0] is False)
+    _reuse = tuple(dict(r, witness="attestation.verdict_ok")
+                   if r["id"] == "W-READ-PROTECTED-PRE" else r for r in _orig_m)
+    _qm.ACCESS_MATRIX = _reuse
+    chk("A21 matrix post-reset witness reused for pre-reset rejected",
+        _qm.validate_access_matrix()[0] is False)
+    _qm.ACCESS_MATRIX = _orig_m
+    chk("A21b matrix restored validates", _qm.validate_access_matrix()[0] is True)
+
+    # 凌翼 STEP 6: provenance record deletion / addition attacks.
+    from q3_provenance import verify_against_record, write_detached_record, required_role_set
+    import tempfile as _tf
+    _tmp = Path(_tf.mkdtemp(prefix="q3_adv_prov_"))
+    try:
+        _rec = _tmp / "rec.txt"
+        write_detached_record(Path(__file__).resolve().parent, _rec)
+        _text = _rec.read_text(encoding="utf-8")
+        _del = "\n".join(l for l in _text.splitlines() if not l.startswith("q3_dacl.py "))
+        _rec.write_text(_del + "\n", encoding="utf-8")
+        _okd, _dd = verify_against_record(Path(__file__).resolve().parent, _rec)
+        chk("A22 provenance deleted role line rejected",
+            _okd is False and any("RECORD_MISSING_REQUIRED_ROLES" in x for x in _dd))
+        _rec.write_text(_text + "fake_role.py " + "0" * 64 + "\n", encoding="utf-8")
+        _oka, _da = verify_against_record(Path(__file__).resolve().parent, _rec)
+        chk("A23 provenance unexpected role line rejected",
+            _oka is False and any("RECORD_HAS_UNEXPECTED_ROLES" in x for x in _da))
+    finally:
+        import shutil as _sh
+        _sh.rmtree(_tmp, ignore_errors=True)
 
     # --- checked cleanup residual ------------------------------------------
     import tempfile

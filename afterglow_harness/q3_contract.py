@@ -98,6 +98,49 @@ PROFILE_B_ACCEPTANCE = (
     "if runtime audit returns FOUND_TARGET -> INVALID even under B",
 )
 
+#: 凌翼 Q3 STEP 1 re-review (P1 · Blocking): the nine acceptance items must be
+#: INDIVIDUALLY computed from real evidence and ANDed into `.valid`. A single
+#: hard-coded `inheritance_prevention_ok = True` proves only that a known create
+#: API was chosen — NOT that the nine runtime proofs were established.
+#:
+#: These are the machine-checkable FIELD NAMES a Profile B proof object must
+#: expose (each MUST be literally True; anything else => not proven).
+PROFILE_B_PROOF_FIELDS = (
+    # 1. the registered process-creation API is the one actually used
+    "registered_creation_api_ok",
+    # 2. STARTUPINFO + std handles + reserved fields are explicitly set/checked
+    "startupinfo_checked",
+    # 3. inheritable channels (inheritable handle list) are checked
+    "inheritable_channels_checked",
+    # 4. the controller does NOT pass forbidden handles to the worker (bInheritHandles=FALSE)
+    "forbidden_handle_noninheritance_proven",
+    # 5. a deliberate handle-leak POSITIVE CONTROL is detected by the probe
+    "leak_positive_control_detected",
+    # 6. no known forbidden handle is present in the new worker at audit time
+    "no_known_forbidden_handle_present",
+)
+
+
+def evaluate_profile_b_proof(proof: dict) -> tuple[bool, list]:
+    """凌翼 Q3 STEP 1: compute the Profile B gate from REAL evidence fields.
+
+    `proof` maps each name in PROFILE_B_PROOF_FIELDS -> an observed bool.
+    Returns (ok, missing_or_false). ok iff EVERY field is literally True.
+
+    Fail-closed: a missing field, a None, a string, or a non-bool => not proven.
+    This is the single authority for `profile_b_ok`; the chain MUST consume it.
+    """
+    if not isinstance(proof, dict):
+        return False, list(PROFILE_B_PROOF_FIELDS)
+    bad = []
+    for f in PROFILE_B_PROOF_FIELDS:
+        if f not in proof:
+            bad.append(f"{f}=MISSING")
+        elif proof[f] is not True:
+            bad.append(f"{f}={proof[f]!r}")
+    return (len(bad) == 0), bad
+
+
 #: Finite trust boundary (凌翼 Q10) — echoed in any frozen scope statement.
 TRUST_ROOT = (
     "preregistered contract + hash",

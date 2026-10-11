@@ -50,13 +50,14 @@ MATRIX_VERSION = "q3_access_matrix/1.0"
 # Witnesses are the concrete evidence fields the adjudicator already computes.
 # A matrix row is only meaningful if its witness is one of these.
 WITNESS_FIELDS = (
-    "attestation.verdict_ok",       # strict-schema probe verdict (access gate)
+    "attestation.verdict_ok",       # strict-schema PROBE verdict (post-reset access)
     "attestation.identity_ok",      # SID/exit/create-time/hash identity gate
     "code_immutable_ok",            # code-dir effective-permission immutability
     "preserve_ok",                  # S_handoff == S_restored (observer reads)
     "clear_ok",                     # required clear categories actually gone
     "handle_audit_recorded",        # runtime handle audit status recorded verbatim
     "access_ok",                    # F4 strict verdict gate (alias of verdict_ok)
+    "pre_reset_verdict_ok",         # 凌翼 STEP 2: a DISTINCT pre-reset access witness
 )
 
 # Expectations.
@@ -67,11 +68,17 @@ GRANTED = "GRANTED"
 # isolation claim: the worker is blind to the protected substrate in BOTH
 # phases; the observer can still read it after the reset; the code dir is
 # immutable to the worker.
+#
+# 凌翼 Q3 STEP 2 (P1·Blocking): the matrix must define the FROZEN REQUIRED row
+# set, each row must bind its OWN (subject, phase, object, operation) witness,
+# and a single post-reset probe MUST NOT be reused as the pre-reset witness.
 ACCESS_MATRIX = (
     # --- worker is blinded to the protected substrate (both phases) ----------
+    # 凌翼 STEP 2: pre-reset the worker CAN still read (the deny is what blinds
+    # it); post-reset it MUST be denied. Two DISTINCT phase-bound witnesses.
     dict(id="W-READ-PROTECTED-PRE", subject="worker", phase="pre_reset",
          object="protected_substrate", operation="read",
-         expected=DENIED, witness="attestation.verdict_ok"),
+         expected=GRANTED, witness="pre_reset_verdict_ok"),
     dict(id="W-READ-PROTECTED-POST", subject="worker", phase="post_reset",
          object="protected_substrate", operation="read",
          expected=DENIED, witness="attestation.verdict_ok"),
@@ -101,6 +108,30 @@ ACCESS_MATRIX = (
          object="probe", operation="read",
          expected=DENIED, witness="handle_audit_recorded"),
 )
+
+#: 凌翼 Q3 STEP 2: the FROZEN set of rows that MUST be present. This is what
+#: stops "九行不能只是当前恰好有九行" — removing a required row must FAIL.
+REQUIRED_MATRIX_IDS = (
+    "W-READ-PROTECTED-PRE",
+    "W-READ-PROTECTED-POST",
+    "W-WRITE-PROBE",
+    "W-APPEND-PROBE",
+    "W-RENAME-CODDIR",
+    "W-DELETE-PROBE",
+    "O-READ-PROTECTED-POST",
+    "CLEAR-REQUIRED",
+    "HANDLE-AUDIT-RECORDED",
+)
+
+#: 凌翼 Q3 STEP 2: which witnesses are PHASE-SPECIFIC. A row's witness must be
+#: consistent with the row's phase — a post-reset probe witness may not serve a
+#: pre-reset row (and vice versa).
+PHASE_ALLOWED_WITNESSES = {
+    "pre_reset": frozenset({"pre_reset_verdict_ok", "attestation.identity_ok"}),
+    "post_reset": frozenset({"attestation.verdict_ok", "access_ok",
+                             "code_immutable_ok", "preserve_ok", "clear_ok",
+                             "handle_audit_recorded", "attestation.identity_ok"}),
+}
 
 
 def matrix_ids() -> tuple:
@@ -153,7 +184,32 @@ def validate_access_matrix() -> tuple:
     if not any(r.get("witness") == "handle_audit_recorded" for r in ACCESS_MATRIX):
         reasons.append("HANDLE_AUDIT_NOT_REQUIRED_RECORDED")
 
+    # 6. 凌翼 STEP 2: the FROZEN required row set MUST all be present.
+    #    (Removing a required row — e.g. a worker DENY-read row — must FAIL.)
+    present_ids = set(ids)
+    missing_required = [i for i in REQUIRED_MATRIX_IDS if i not in present_ids]
+    if missing_required:
+        reasons.append(f"REQUIRED_MATRIX_ROWS_MISSING: {missing_required}")
+
+    # 7. 凌翼 STEP 2: every row's witness must be consistent with the row's PHASE.
+    #    A post-reset probe witness may NOT serve a pre-reset row (no reuse).
+    for r in ACCESS_MATRIX:
+        phase = r.get("phase")
+        allowed = PHASE_ALLOWED_WITNESSES.get(phase)
+        if allowed is None:
+            reasons.append(f"UNKNOWN_PHASE[{r.get('id')}]: {phase!r}")
+            continue
+        if r.get("witness") not in allowed:
+            reasons.append(
+                f"WITNESS_PHASE_MISMATCH[{r.get('id')}]: witness {r.get('witness')!r} "
+                f"not allowed for phase {phase!r}")
+
     return (len(reasons) == 0, reasons)
+
+
+def required_matrix_ids() -> tuple:
+    """The frozen required row set (凌翼 STEP 2)."""
+    return REQUIRED_MATRIX_IDS
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +278,21 @@ def _selftest() -> int:
     ok_gr, why_gr = validate_access_matrix()
     chk("negative: worker-granted substrate read detected", ok_gr is False
         and any("WORKER_GRANTED_FORBIDDEN" in w for w in why_gr))
+
+    # 凌翼 STEP 2 negative: removing a REQUIRED worker DENY-read row must FAIL
+    no_pre = tuple(r for r in _orig if r.get("id") != "W-READ-PROTECTED-PRE")
+    ACCESS_MATRIX = no_pre
+    ok_np, why_np = validate_access_matrix()
+    chk("negative: missing required worker DENY-read (pre) row detected",
+        ok_np is False and any("REQUIRED_MATRIX_ROWS_MISSING" in w for w in why_np))
+
+    # 凌翼 STEP 2 negative: reusing a post-reset witness for a pre-reset row FAILS
+    reuse = tuple(dict(r, witness="attestation.verdict_ok")
+                  if r.get("id") == "W-READ-PROTECTED-PRE" else r for r in _orig)
+    ACCESS_MATRIX = reuse
+    ok_re, why_re = validate_access_matrix()
+    chk("negative: post-reset witness reused for pre-reset row detected",
+        ok_re is False and any("WITNESS_PHASE_MISMATCH" in w for w in why_re))
 
     ACCESS_MATRIX = _orig
     ok_restore, _ = validate_access_matrix()

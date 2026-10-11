@@ -89,11 +89,20 @@ def main() -> int:
     any_skip = any(v == SKIP for _, v, _ in results)
     for name, v, tail in results:
         print(f"[{v}] {name}  {tail}")
+
+    # 凌翼 Q3 STEP 3 (P1·Blocking): the driver MUST consume a SEPARATE FULL_VALID
+    # result. "All component selftests exit 0" does NOT imply the real valid path
+    # passed (a selftest that only asserts correct REJECTIONS also exits 0).
+    full_valid_verdict, full_valid_detail = _consume_full_valid(has_cred)
+    print(f"[{full_valid_verdict}] FULL_VALID_SUCCESS_PATH  {full_valid_detail}")
     print("=" * 72)
+    if full_valid_verdict == FAIL:
+        print("Q3_QUALIFICATION = FAIL (FULL_VALID_SUCCESS_PATH not achieved)")
+        return 1
     if any_fail:
         print("Q3_QUALIFICATION = FAIL")
         return 1
-    if any_skip:
+    if any_skip or full_valid_verdict == SKIP:
         print("Q3_QUALIFICATION = NOT_EVALUATED (SKIP present; NOT a pass)")
         print("  A SKIP here usually means an ENVIRONMENT PRECONDITION was not met")
         print("  (no credential, or the calling account cannot CreateProcessWithLogonW")
@@ -101,6 +110,32 @@ def main() -> int:
         return 2
     print("Q3_QUALIFICATION = PASS")
     return 0
+
+
+def _consume_full_valid(has_cred: bool) -> tuple[str, str]:
+    """凌翼 Q3 STEP 3: independently consume the FULL_VALID_SUCCESS_PATH artifact.
+
+    Reads q3_full_valid_result.json (emitted by the reset-chain selftest ONLY when a
+    REAL end-to-end run reached valid=True with all required gates). Returns
+    (verdict, detail). Missing artifact or a non-PASS status => FAIL when a
+    credential was present (the path was expected to run); SKIP without credential.
+    """
+    import json
+    art = HERE / "q3_full_valid_result.json"
+    if not has_cred:
+        return SKIP, "no credential (valid path not exercised)"
+    if not art.exists():
+        return FAIL, "artifact missing (valid path did not run)"
+    try:
+        d = json.loads(art.read_text(encoding="utf-8"))
+    except Exception as e:
+        return FAIL, f"artifact unreadable: {type(e).__name__}: {e}"
+    if d.get("FULL_VALID_SUCCESS_PATH") != "PASS":
+        return FAIL, f"status={d.get('FULL_VALID_SUCCESS_PATH')!r}"
+    gates = d.get("gates", {})
+    if not all(gates.values()):
+        return FAIL, f"not all gates True: {gates}"
+    return PASS, f"profile={d.get('profile')} audit={d.get('runtime_handle_audit_status')}"
 
 
 if __name__ == "__main__":

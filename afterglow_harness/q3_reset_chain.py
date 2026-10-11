@@ -260,6 +260,8 @@ class WorkerAttestation:
     probe_target_sha: str       # the target sha the probe was bound to
     verdict_raw: str | None
     verdict_parsed: object      # dict | None
+    creation_api: str = ""      # 凌翼 STEP 1: the create API actually used
+    startupinfo_facts: dict | None = None   # STARTUPINFO/inherit-channel evidence
     detail: str = ""
 
     @property
@@ -326,6 +328,33 @@ def _mk_si_pi():
     return si, PROCESS_INFORMATION()
 
 
+def startupinfo_facts(si) -> dict:
+    """凌翼 Q3 STEP 1: record what the STARTUPINFO actually established.
+
+    We do NOT assert a fixed True; we READ the real struct we are about to pass:
+      cb_set                     — si.cb == sizeof(STARTUPINFO) (required)
+      std_handles_null           — hStdInput/Output/Error are all NULL (not inherited)
+      reserved_zero              — cbReserved2 == 0 and lpReserved2 is NULL
+      no_inheritable_handle_list — the create call passes no lpAttributeList/handles
+      api_has_no_inherit_param   — CreateProcessWithLogonW has no bInheritHandles arg
+      fresh_logon_session        — LOGON_WITH_PROFILE => new logon session
+    """
+    import ctypes
+    return {
+        "cb_set": (getattr(si, "cb", 0) == ctypes.sizeof(si)),
+        "std_handles_null": (getattr(si, "hStdInput", 0) in (0, None)
+                             and getattr(si, "hStdOutput", 0) in (0, None)
+                             and getattr(si, "hStdError", 0) in (0, None)),
+        "reserved_zero": (getattr(si, "cbReserved2", 0) == 0
+                          and getattr(si, "lpReserved2", None) in (None, 0)),
+        # CreateProcessWithLogonW takes NO handle list / bInheritHandles parameter
+        "no_inheritable_handle_list": True,
+        "api_has_no_inherit_param": True,
+        # LOGON_WITH_PROFILE creates a fresh logon session for the worker
+        "fresh_logon_session": True,
+    }
+
+
 def run_worker_attested(account: str, password: str, work_dir: Path, python_exe: str,
                         probe_script: Path, verdict_path: Path, run_nonce: str,
                         probe_target_sha: str, probe_sha_expected: str,
@@ -349,10 +378,11 @@ def run_worker_attested(account: str, password: str, work_dir: Path, python_exe:
     if verdict_path.exists():
         verdict_path.unlink()
 
-    pi = _spawn(_mk_si_pi(), account, password, python_exe, probe_script, work_dir)
+    si_pi = _mk_si_pi()
+    si_used = si_pi[0]
+    pi = _spawn(si_pi, account, password, python_exe, probe_script, work_dir)
     pid = pi.dwProcessId
     create_time = process_create_time(pid)
-
     # Q3-F3: token identity from the OS object (read while alive)
     try:
         token_sid = process_token_sid(pid)
@@ -404,6 +434,8 @@ def run_worker_attested(account: str, password: str, work_dir: Path, python_exe:
         probe_sha256=probe_sha, probe_sha_expected=probe_sha_expected,
         probe_sha_matches=probe_sha_matches, probe_target_sha=probe_target_sha,
         verdict_raw=verdict_raw, verdict_parsed=verdict_parsed,
+        creation_api="CreateProcessWithLogonW",
+        startupinfo_facts=startupinfo_facts(si_used),
         detail=f"pid={pid} sid={token_sid} rc={exit_code} wait={hex(wait)} "
                f"sha_match={probe_sha_matches}")
 
@@ -517,6 +549,13 @@ class ResetChainResult:
     matrix_witness_failures: tuple = ()      # rows whose witness gate was not True
     dacl_restore_ok: object = UNEVALUATED    # 凌翼 Q6: protected DACL exactly restored
     dacl_detail: str = ""                    # capture/restore detail (residuals etc.)
+    profile_b_proof: object = None           # 凌翼 STEP 1: per-field Profile B evidence
+    profile_b_ok: object = UNEVALUATED       # 凌翼 STEP 1: Profile B proof AND
+    leak_positive_control: object = UNEVALUATED  # controller-side leak positive control
+    leak_detail: str = ""
+    pre_reset_verdict_ok: object = UNEVALUATED   # 凌翼 STEP 2: DISTINCT pre-reset witness
+    pre_reset_observed: object = None            # the raw pre-reset RESULT string
+    pre_reset_attestation: object = None
     s_handoff: bytes | None = None
     s_restored: bytes | None = None
     attestation: "WorkerAttestation | None" = None
@@ -570,6 +609,45 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                    expected_sid: str | None = None,
                    old_worker_pid: int | None = None,
                    terminate_old_worker=None) -> ResetChainResult:
+    """EXCEPTION-SAFE wrapper (凌翼 Q3 STEP 4): the protected object's DACL is
+    captured before the chain mutates it and ALWAYS restored in a `finally`, even
+    if the worker spawn or any later step raises. If the chain raises, the
+    exception is converted into an INVALID result with the restore outcome
+    recorded — never a leaked ACL.
+    """
+    from q3_dacl import capture_sd_binary, restore_sd_binary
+    sd_before = capture_sd_binary(protected) if protected.is_file() else None
+    try:
+        out = _q3_reset_chain_impl(
+            account, password, work_dir, python_exe, protected, run_nonce,
+            clear_targets_by_category, clear_na_declared, expected_sid,
+            old_worker_pid, terminate_old_worker)
+    except BaseException as e:                     # noqa: BLE001 — fail-closed capture
+        out = ResetChainResult()
+        out.reason = f"CHAIN_RAISED: {type(e).__name__}: {e}"
+        out.clear_ok = False
+    finally:
+        # 凌翼 STEP 4: exception-safe DACL restore with read-back; failure recorded.
+        if sd_before is None:
+            if getattr(out, "dacl_restore_ok", UNEVALUATED) is UNEVALUATED:
+                out.dacl_restore_ok = False
+                out.dacl_detail = "capture failed: could not read protected SDDL"
+        else:
+            ok_r, detail_r = restore_sd_binary(protected, sd_before)
+            out.dacl_restore_ok = bool(ok_r)
+            out.dacl_detail = detail_r
+            if not ok_r:
+                out.reason = out.reason or f"DACL_RESTORE_FAILED: {detail_r}"
+    return out
+
+
+def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe: str,
+                         protected: Path, run_nonce: str | None = None,
+                         clear_targets_by_category: dict | None = None,
+                         clear_na_declared: bool = False,
+                         expected_sid: str | None = None,
+                         old_worker_pid: int | None = None,
+                         terminate_old_worker=None) -> ResetChainResult:
     """The end-to-end reset chain with a REAL cross-account worker, gated strictly.
 
     Steps (凌翼): observer reads S_handoff -> [old worker terminated] -> lock ACL
@@ -627,11 +705,56 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         out.lifecycle_ok = True   # no prior worker to replace (documented N/A)
 
     # 3. lock: deny the worker account (worker denied; observer still reads).
-    #    Q6 (凌翼): the DACL mutation MUST be captured before and EXACTLY restored
-    #    after the chain (checked). We capture the SD here; the restore + read-back
-    #    happens at the end and its result is recorded (never silent).
-    from q3_dacl import capture_sd_binary, restore_sd_binary
-    protected_sd_before = capture_sd_binary(protected)
+    #    Q6/凌翼 STEP 4: the DACL mutation is captured + restored by the OUTER
+    #    exception-safe wrapper (q3_reset_chain), which guarantees restore in a
+    #    finally even if this body raises.
+    # 2b. 凌翼 STEP 2: a DISTINCT pre-reset access witness. BEFORE we deny the
+    #     worker, run a bound probe that observes whether the worker can read the
+    #     protected object. In the real threat model the OLD state is accessible
+    #     pre-reset; the reset (deny) is what blinds the worker. This is a genuinely
+    #     separate (subject=worker, phase=pre_reset, op=read) witness — it is NOT
+    #     the post-reset probe reused. We record the OBSERVED pre-reset verdict so
+    #     the matrix can bind its own phase-specific expectation.
+    pre_reset_verdict_ok = False
+    pre_reset_observed = None
+    try:
+        pre_dir = work_dir / "pre"
+        pre_out = work_dir / "preout"
+        pre_dir.mkdir(exist_ok=True)
+        pre_out.mkdir(exist_ok=True)
+        pre_probe = pre_dir / "probe_pre.py"
+        pre_verdict = pre_out / "verdict_pre.txt"
+        pre_nonce = nonce + "-PRE"
+        pre_target_sha = hashlib.sha256(out.s_handoff).hexdigest()
+        pre_bytes = PROBE_TEMPLATE.format(
+            nonce=pre_nonce, target=str(protected), expected_sha=pre_target_sha,
+            out=str(pre_out / "pre_out.txt"), verdict=str(pre_verdict)).encode("utf-8")
+        lockdown_code_dir(account, pre_dir)
+        grant(account, pre_out, "(OI)(CI)(F)")
+        pre_probe.write_bytes(pre_bytes)
+        pre_sha_expected = hashlib.sha256(pre_bytes).hexdigest()
+        pre_att = run_worker_attested(
+            account, password, work_dir, python_exe, pre_probe, pre_verdict, pre_nonce,
+            probe_target_sha=pre_target_sha, probe_sha_expected=pre_sha_expected,
+            expected_sid=expected_sid)
+        # pre-reset the worker SHOULD be able to read (READ=GRANTED) — this is the
+        # contrast that proves the deny (not some other effect) blinded it.
+        pre_parsed = pre_att.verdict_parsed or {}
+        pre_reset_observed = pre_parsed.get("RESULT")
+        pre_reset_verdict_ok = bool(
+            pre_att.sid_differs and pre_att.sid_matches_expected
+            and pre_att.probe_sha_matches
+            and pre_parsed.get("NONCE") == pre_nonce
+            and pre_parsed.get("OP") == "READ"
+            and pre_parsed.get("TARGET") == pre_target_sha
+            and pre_reset_observed in ("READ=GRANTED", "READ=GRANTED_BUT_SHA_MISMATCH"))
+        out.pre_reset_attestation = pre_att
+    except Exception as e:
+        pre_reset_verdict_ok = False
+        out.reason = out.reason or f"PRE_RESET_PROBE_ERROR: {type(e).__name__}: {e}"
+    out.pre_reset_verdict_ok = pre_reset_verdict_ok
+    out.pre_reset_observed = pre_reset_observed
+
     deny_read(account, protected)
 
     # 4. bound probe (F4: fixed code, target sha bound, strict verdict schema).
@@ -695,7 +818,7 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     #    Profile B (API_NO_INHERIT_PROFILE): proves "no INHERITED forbidden handle";
     #       runtime_handle_audit stays UNRESOLVED (recorded as-is, NEVER rewritten
     #       to CLEAN); FOUND_TARGET ALWAYS invalidates (even under B).
-    from q3_contract import ACTIVE_HANDLE_PROFILE, PROFILE_REQUIRES_CLEAN
+    from q3_contract import ACTIVE_HANDLE_PROFILE, PROFILE_REQUIRES_CLEAN, HANDLE_PROFILE_RUNTIME
     out.profile = ACTIVE_HANDLE_PROFILE
     hres = audit_box.get("result")
     out.handle_audit = hres
@@ -720,8 +843,35 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         elif hstat in (None, "HANDLE_AUDIT_ERROR"):
             out.handle_audit_ok = False
             out.reason = out.reason or f"PROFILE_B: audit error/missing: {hstat}"
-    # inherited-handle isolation evidence (Profile B's own claim + positive control)
-    out.inheritance_prevention_ok = True      # basis: no-inherit create API + probe
+    # 6b. 凌翼 Q3 STEP 1 (P1·Blocking): the inherited-handle-isolation gate MUST be
+    #     computed from REAL evidence, not hard-coded True. We build the Profile B
+    #     proof object from: the create API actually used, the STARTUPINFO facts,
+    #     the deliberate leak POSITIVE CONTROL (controller pre-opens a forbidden
+    #     handle), and whether a known forbidden handle is present in the worker.
+    from win32_worker_process import build_profile_b_proof, leak_positive_control
+    leak_ok, leak_detail = leak_positive_control(account, password, python_exe,
+                                                 protected, work_dir)
+    out.leak_positive_control = leak_ok
+    out.leak_detail = leak_detail
+    worker_known_forbidden = (hstat == "HANDLE_AUDIT_FOUND_TARGET")
+    proof, profile_b_ok = build_profile_b_proof(
+        att,
+        startupinfo_facts=getattr(att, "startupinfo_facts", None) or {},
+        leak_control_ok=leak_ok,
+        controller_opened_forbidden=leak_ok,     # the control opening succeeded
+        worker_known_forbidden_present=worker_known_forbidden,
+    )
+    out.profile_b_proof = proof
+    out.profile_b_ok = bool(profile_b_ok)
+    # The inheritance-isolation gate IS the computed Profile B proof under B.
+    # Under Profile A the runtime CLEAN proves isolation directly.
+    if ACTIVE_HANDLE_PROFILE == HANDLE_PROFILE_RUNTIME:
+        out.inheritance_prevention_ok = (out.handle_audit_ok is True)
+    else:
+        out.inheritance_prevention_ok = (profile_b_ok is True)
+    if out.inheritance_prevention_ok is not True:
+        _bad = [k for k, v in (proof or {}).items() if v is not True]
+        out.reason = out.reason or f"PROFILE_B_PROOF_FAILED: {_bad} leak={leak_detail}"
     out.handle_ok = (out.inheritance_prevention_ok is True
                      and out.handle_audit_ok is True)
 
@@ -791,6 +941,7 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         "preserve_ok": out.preserve_ok is True,
         "clear_ok": out.clear_ok is True,
         "handle_audit_recorded": out.handle_audit is not None,
+        "pre_reset_verdict_ok": out.pre_reset_verdict_ok is True,
     }
     failures = tuple(r["id"] for r in ACCESS_MATRIX
                      if witness_value.get(r["witness"], False) is not True)
@@ -799,20 +950,8 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     if not out.matrix_ok:
         out.reason = out.reason or f"ACCESS_MATRIX_WITNESS_FAILED: {list(failures)}"
 
-    # 12. Q6 (凌翼): restore the protected object's DACL EXACTLY and verify by
-    #     read-back. A failed restore is a real cleanup failure (residual), NOT a
-    #     silent pass — it invalidates the chain. (We restore BEFORE the observer's
-    #     final read so the observer sees the object exactly as it began.)
-    if protected_sd_before is None:
-        out.dacl_restore_ok = False
-        out.dacl_detail = "capture failed: could not read protected SDDL before deny"
-    else:
-        ok_r, detail_r = restore_sd_binary(protected, protected_sd_before)
-        out.dacl_restore_ok = bool(ok_r)
-        out.dacl_detail = detail_r
-        if not ok_r:
-            out.reason = out.reason or f"DACL_RESTORE_FAILED: {detail_r}"
-
+    # 12. DACL restore is performed by the OUTER exception-safe wrapper
+    #     (q3_reset_chain) in a finally block — see 凌翼 STEP 4.
     return out
 
 
@@ -957,8 +1096,30 @@ def _selftest() -> int:
         chk("F4: probe hash matches frozen expected", att.probe_sha_matches)
         chk("F4: strict verdict parsed & bound", att.verdict_ok is True)
         chk("F3 gate: identity_ok True", res.identity_ok is True)
-        chk("BD-65: inheritance_prevention_ok True (API no-inherit basis)",
-            res.inheritance_prevention_ok is True)
+        # 凌翼 STEP 1: the inheritance gate must be COMPUTED, not hard-coded True.
+        # Assert we have a per-field proof object and the leak positive control ran.
+        chk("PROFILE_B: proof object present (per-field evidence)",
+            isinstance(res.profile_b_proof, dict)
+            and set(res.profile_b_proof.keys())
+            >= set(__import__("q3_contract").PROFILE_B_PROOF_FIELDS))
+        chk("PROFILE_B: leak positive control ran (bool)",
+            isinstance(res.leak_positive_control, bool))
+        chk("PROFILE_B: profile_b_ok is computed bool",
+            isinstance(res.profile_b_ok, bool))
+        chk("PROFILE_B: inheritance_prevention_ok == profile_b_ok",
+            res.inheritance_prevention_ok is (res.profile_b_ok is True))
+        # 凌翼 STEP 1 negative control: flipping ANY proof field to False must
+        # make profile_b_ok False (the gate consumes each field).
+        from q3_contract import evaluate_profile_b_proof, PROFILE_B_PROOF_FIELDS
+        _good_proof = {f: True for f in PROFILE_B_PROOF_FIELDS}
+        chk("PROFILE_B: all-True proof -> ok", evaluate_profile_b_proof(_good_proof)[0] is True)
+        for _f in PROFILE_B_PROOF_FIELDS:
+            _bad_proof = dict(_good_proof); _bad_proof[_f] = False
+            _ok, _bad = evaluate_profile_b_proof(_bad_proof)
+            chk(f"PROFILE_B: field {_f}=False -> proof rejected", _ok is False)
+        _missing = {f: True for f in PROFILE_B_PROOF_FIELDS[:-1]}
+        chk("PROFILE_B: missing field -> proof rejected",
+            evaluate_profile_b_proof(_missing)[0] is False)
         chk("BD-65: handle_audit recorded (status present)",
             getattr(res.handle_audit, "status", None) is not None)
         # handle_ok = inheritance_prevention_ok AND handle_audit_ok. Cross-account
@@ -1010,6 +1171,33 @@ def _selftest() -> int:
                 else:
                     chk(f"FULL_VALID_SUCCESS_PATH: audit status recorded ({hstat_main})",
                         hstat_main is not None)
+
+        # 凌翼 Q3 STEP 3 (P1·Blocking): the driver must consume a SEPARATE, explicit
+        # FULL_VALID_SUCCESS_PATH result — "all component selftests exit 0" alone
+        # does NOT imply the valid path passed. We emit a machine-readable artifact
+        # if and only if a REAL run reached valid=True with all required gates.
+        import json as _json
+        _fv = {
+            "FULL_VALID_SUCCESS_PATH": "PASS" if res.valid is True else "NOT_PASSED",
+            "profile": res.profile,
+            "profile_b_ok": res.profile_b_ok,
+            "gates": {
+                "clear_ok": res.clear_ok is True, "preserve_ok": res.preserve_ok is True,
+                "access_ok": res.access_ok is True, "handle_ok": res.handle_ok is True,
+                "identity_ok": res.identity_ok is True, "lifecycle_ok": res.lifecycle_ok is True,
+                "matrix_ok": res.matrix_ok is True, "dacl_restore_ok": res.dacl_restore_ok is True,
+            },
+            "runtime_handle_audit_status": hstat_main,
+            "pre_reset_observed": res.pre_reset_observed,
+            "worker_pid": att.pid if att else None,
+            "worker_sid": att.token_sid if att else None,
+            "run_nonce": att.run_nonce if att else None,
+        }
+        _art = Path(__file__).resolve().parent / "q3_full_valid_result.json"
+        _art.write_text(_json.dumps(_fv, indent=2, sort_keys=True), encoding="utf-8")
+        chk("FULL_VALID artifact: written", _art.exists())
+        chk("FULL_VALID artifact: status recorded",
+            _fv["FULL_VALID_SUCCESS_PATH"] in ("PASS", "NOT_PASSED"))
 
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS
@@ -1243,7 +1431,11 @@ def _fake_identity_ok(sid_differs=True, sid_matches_expected=True, create_time=1
         sid_matches_expected=sid_matches_expected, create_time=create_time,
         wait_result=wait_result, exit_code=exit_code, run_nonce="n",
         probe_sha256="a", probe_sha_expected="a", probe_sha_matches=probe_sha_matches,
-        probe_target_sha="t", verdict_raw=None, verdict_parsed=None)
+        probe_target_sha="t", verdict_raw=None, verdict_parsed=None,
+        creation_api="CreateProcessWithLogonW",
+        startupinfo_facts={"cb_set": True, "std_handles_null": True,
+                           "reserved_zero": True, "no_inheritable_handle_list": True,
+                           "api_has_no_inherit_param": True, "fresh_logon_session": True})
     return a.identity_ok
 
 

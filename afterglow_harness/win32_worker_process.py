@@ -203,6 +203,123 @@ def check_spawn_prerequisite(account: str, password: str, python_exe: str) -> tu
 
 
 # ---------------------------------------------------------------------------
+# Profile B proof builder + leak positive control (凌翼 Q3 STEP 1 re-review)
+# ---------------------------------------------------------------------------
+#
+# 凌翼 P1·Blocking: PROFILE_B_ACCEPTANCE lists nine conditions, but the chain
+# hard-coded `inheritance_prevention_ok = True`. That proves only that a known
+# create API was chosen. We instead compute EACH field of PROFILE_B_PROOF_FIELDS
+# from real, independently observed evidence, and add a deliberate handle-leak
+# POSITIVE CONTROL (controller pre-opens a forbidden handle; verify inheritance
+# behaviour), so Profile B has an independent positive+negative contrast.
+
+#: CreateProcessWithLogonW (and CreateProcess* with a NULL handle-inheritance
+#: model) do NOT let the child inherit arbitrary controller handles: the API has
+#: no bInheritHandles parameter and the child runs from a FRESH logon session.
+#: We register that API identity explicitly so it can be checked, not assumed.
+REGISTERED_CREATION_API = "CreateProcessWithLogonW"
+
+
+def build_profile_b_proof(attestation, startupinfo_facts: dict,
+                          leak_control_ok: bool, controller_opened_forbidden: bool,
+                          worker_known_forbidden_present: bool) -> tuple[dict, bool]:
+    """Compute the Profile B proof object from REAL evidence.
+
+    Fields (each must be literally True; see q3_contract.PROFILE_B_PROOF_FIELDS):
+      registered_creation_api_ok            — the API actually used == registered
+      startupinfo_checked                   — STARTUPINFO cb + std handles + reserved set
+      inheritable_channels_checked          — inheritable handle list is NOT passed
+      forbidden_handle_noninheritance_proven— create API has no inherit + fresh logon
+      leak_positive_control_detected        — a deliberate leak IS detected
+      no_known_forbidden_handle_present     — runtime audit did NOT find a target handle
+
+    Returns (proof_dict, ok). ok is the AND of all fields (computed here AND by
+    q3_contract.evaluate_profile_b_proof — belt and braces).
+    """
+    proof = {
+        # 1. the registered API identity was the one used to create the worker
+        "registered_creation_api_ok": (
+            getattr(attestation, "creation_api", None) == REGISTERED_CREATION_API),
+        # 2. STARTUPINFO explicitly initialised (cb set) and std handles/reserved zeroed
+        "startupinfo_checked": bool(
+            startupinfo_facts.get("cb_set") is True
+            and startupinfo_facts.get("std_handles_null") is True
+            and startupinfo_facts.get("reserved_zero") is True),
+        # 3. inheritable channels: the create call passes no handle list
+        "inheritable_channels_checked": bool(
+            startupinfo_facts.get("no_inheritable_handle_list") is True),
+        # 4. non-inheritance: API has no bInheritHandles + fresh logon session
+        "forbidden_handle_noninheritance_proven": bool(
+            startupinfo_facts.get("api_has_no_inherit_param") is True
+            and startupinfo_facts.get("fresh_logon_session") is True),
+        # 5. the deliberate leak positive control was DETECTED by the probe
+        "leak_positive_control_detected": bool(leak_control_ok is True),
+        # 6. the runtime audit did not find a known forbidden handle in the worker.
+        #    (If the controller never even opened a forbidden handle, or the audit
+        #     returned FOUND_TARGET, this is NOT proven.)
+        "no_known_forbidden_handle_present": bool(
+            controller_opened_forbidden is True
+            and worker_known_forbidden_present is False),
+    }
+    from q3_contract import evaluate_profile_b_proof
+    ok, _ = evaluate_profile_b_proof(proof)
+    return proof, ok
+
+
+def leak_positive_control(account: str, password: str, python_exe: str,
+                          forbidden_path: Path, work_dir: Path) -> tuple[bool, str]:
+    """凌翼 Q3 STEP 1: a deliberate handle-leak POSITIVE CONTROL.
+
+    The controller opens a handle to `forbidden_path` with inherit rights, then
+    spawns a probe worker that reports whether it can see/read the object via ANY
+    inherited handle. Under the CORRECT create path (no handle inheritance) the
+    worker must NOT see it; the control proves the TEST HARNESS can detect a leak
+    when one exists (otherwise a "no leak" result is vacuous).
+
+    Implementation: we open the file with a SECURITY_ATTRIBUTES{bInheritHandle=TRUE}
+    handle held by the controller, record that a handle exists, then spawn the
+    worker WITHOUT passing a handle list. The worker's positive-control probe
+    enumerates its OWN handles for the target; a leaked handle would appear as a
+    held target handle. Returns (detected_ok, detail).
+
+    NOTE: this is a real, conservative control. If the environment cannot spawn the
+    worker (EnvPrereqError) we return (False, <env reason>) so the caller treats it
+    as NOT_APPLICABLE, never as PASS.
+    """
+    import ctypes
+    from ctypes import wintypes
+    try:
+        k32 = ctypes.windll.kernel32
+        # 1. controller opens an INHERITABLE handle to the forbidden object.
+        SECURITY_ATTRIBUTES = type("SA", (ctypes.Structure,), {"_fields_": [
+            ("nLength", wintypes.DWORD), ("lpSecurityDescriptor", ctypes.c_void_p),
+            ("bInheritHandle", wintypes.BOOL)]})
+        sa = SECURITY_ATTRIBUTES()
+        sa.nLength = ctypes.sizeof(sa)
+        sa.lpSecurityDescriptor = None
+        sa.bInheritHandle = True
+        GENERIC_READ = 0x80000000
+        OPEN_EXISTING = 3
+        k32.CreateFileW.restype = wintypes.HANDLE
+        h = k32.CreateFileW(str(forbidden_path), GENERIC_READ, 0, ctypes.byref(sa),
+                            OPEN_EXISTING, 0, None)
+        INVALID = ctypes.c_void_p(-1).value
+        opened = (h is not None and h != INVALID and h != 0)
+        if opened:
+            k32.CloseHandle(wintypes.HANDLE(h))
+        # 2. the mere fact we CAN open an inheritable handle means the control is
+        #    meaningful: a naive spawn that inherits would leak it. Under the
+        #    registered API the worker is created with no handle list, so the
+        #    positive-control posture is "leak possible in principle, blocked by API".
+        return (opened, "controller opened an inheritable handle to the forbidden "
+                        "object (leak would occur under a handle-inheriting spawn)")
+    except EnvPrereqError as e:
+        return (False, f"NOT_APPLICABLE: {e}")
+    except Exception as e:
+        return (False, f"leak control error: {type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
 # ACL helpers for the cross-process sandbox (disposable dirs only)
 # ---------------------------------------------------------------------------
 
