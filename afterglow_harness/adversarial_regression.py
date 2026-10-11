@@ -120,7 +120,7 @@ chk("R5-1 extra affine[999] -> INVALID", res.l2 == e.INVALID and "PROBE_SET" in 
 
 # raw_q cross-check: corrupt raw_q -> INVALID
 b = _bundle_from_fixture("V5a")
-b.members["A1"].reader_witness["raw_q"] = REDACTED_ROTATED_CREDENTIAL
+b.members["A1"].reader_witness["raw_q"] = 123456
 res = _eval_v5a(b)
 chk("R5-1 corrupt raw_q cross-check -> INVALID",
     res.l2 == e.INVALID and "RAW_Q" in res.code)
