@@ -51,6 +51,13 @@ class WorkerSpawnError(Exception):
     """Cross-process worker spawn failed. FAIL CLOSED."""
 
 
+class EnvPrereqError(WorkerSpawnError):
+    """The RUNNING CONTEXT cannot satisfy a precondition of this test (e.g. the
+    caller account lacks the logon capability CreateProcessWithLogonW needs, so
+    it returns err=5). This is NOT a security result: the caller should report
+    NOT_APPLICABLE / precondition-unmet, never PASS and never a bare FAIL."""
+
+
 # ---------------------------------------------------------------------------
 # CreateProcessWithLogonW binding
 # ---------------------------------------------------------------------------
@@ -110,8 +117,14 @@ def run_cross_process_worker(account: str, password: str, work_dir: Path,
                              verdict_path: Path, timeout_s: int = 30) -> WorkerRun:
     """Run `python child_script` as `account` and wait for it. Returns WorkerRun.
 
-    FAIL CLOSED: spawn failure, timeout, or a missing verdict file raise/extend
-    clearly; the caller must NOT treat a missing verdict as "denied".
+    FAIL CLOSED: spawn failure, timeout, or a missing verdict file raise clearly;
+    the caller must NOT treat a missing verdict as "denied".
+
+    钳星: CreateProcessWithLogonW can return err=5 (ERROR_ACCESS_DENIED) when the
+    CALLER runs as a service/machine account (e.g. nt authority\system / OEM-AI$)
+    that lacks the interactive/secondary-logon capability. That is an ENVIRONMENT
+    PRECONDITION failure, not a security finding — we surface it as such via
+    EnvPrereqError so callers can report NOT_APPLICABLE rather than FAIL/PASS.
     """
     import ctypes
     adv, k32 = _adv_k32()
@@ -121,8 +134,15 @@ def run_cross_process_worker(account: str, password: str, work_dir: Path,
                                      None, cmd, CREATE_NO_WINDOW, None, str(work_dir),
                                      ctypes.byref(si), ctypes.byref(pi))
     if not ok:
+        err = k32.GetLastError()
+        if err == 5:      # ERROR_ACCESS_DENIED -> caller-context precondition
+            raise EnvPrereqError(
+                f"CreateProcessWithLogonW denied (err=5) for {account}; the calling "
+                f"account lacks the logon capability required by CreateProcessWithLogonW "
+                f"(e.g. running as a service/machine account). ENV PRECONDITION, not a "
+                f"security result.")
         raise WorkerSpawnError(
-            f"CreateProcessWithLogonW failed for {account}: err={k32.GetLastError()}")
+            f"CreateProcessWithLogonW failed for {account}: err={err}")
     k32.WaitForSingleObject(pi.hProcess, timeout_s * 1000)
     rc = ctypes.c_ulong()
     k32.GetExitCodeProcess(pi.hProcess, ctypes.byref(rc))
@@ -138,6 +158,32 @@ def run_cross_process_worker(account: str, password: str, work_dir: Path,
         raise WorkerSpawnError(
             f"worker produced no verdict (rc={rc.value}); environment likely invalid")
     return WorkerRun(account, pi.dwProcessId, rc.value, verdict_path, verdict)
+
+
+def check_spawn_prerequisite(account: str, password: str, python_exe: str) -> tuple[bool, str]:
+    """Preflight: can THIS process spawn `account` via CreateProcessWithLogonW?
+
+    Returns (ok, detail). A False with 'err=5' means an environment precondition
+    (caller-context) failure — callers should report NOT_APPLICABLE, not FAIL.
+    Runs a trivial child (python -c "pass") and waits.
+    """
+    import ctypes
+    from ctypes import wintypes
+    adv, k32 = _adv_k32()
+    si, pi = _startupinfo()
+    cmd = ctypes.create_unicode_buffer(f'"{python_exe}" -c "pass"')
+    ok = adv.CreateProcessWithLogonW(account, ".", password, LOGON_WITH_PROFILE,
+                                     None, cmd, CREATE_NO_WINDOW, None,
+                                     str(Path.cwd()), ctypes.byref(si), ctypes.byref(pi))
+    if not ok:
+        err = k32.GetLastError()
+        return False, f"CreateProcessWithLogonW preflight failed: err={err}"
+    k32.WaitForSingleObject(pi.hProcess, 15000)
+    rc = wintypes.DWORD()
+    k32.GetExitCodeProcess(pi.hProcess, ctypes.byref(rc))
+    k32.CloseHandle(pi.hThread)
+    k32.CloseHandle(pi.hProcess)
+    return True, f"preflight ok (rc={rc.value})"
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +231,17 @@ def _selftest() -> int:
 
     if not Path(python_exe).exists():
         print(f"public python not found: {python_exe}")
+        return 2
+
+    # 钳星: PRECONDITION — can THIS process even do CreateProcessWithLogonW?
+    # (err=5 when running as a service/machine account). If not, this is a
+    # NOT_APPLICABLE environment, not a security FAIL.
+    pre_ok, pre_detail = check_spawn_prerequisite(account, password, python_exe)
+    if not pre_ok:
+        print(f"NOT_APPLICABLE: {pre_detail}")
+        print("  cause: the CALLING account lacks the logon capability required by "
+              "CreateProcessWithLogonW (e.g. runs as nt authority\\system / OEM-AI$).")
+        print("  this is an ENVIRONMENT PRECONDITION, not a security result.")
         return 2
 
     d = Path(tempfile.mkdtemp(prefix="q3_xproc_"))

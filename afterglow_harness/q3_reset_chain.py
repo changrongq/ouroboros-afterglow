@@ -833,6 +833,18 @@ def _selftest() -> int:
     if not Path(py).exists():
         print(f"public python missing: {py}"); return 2
 
+    # 钳星: environment precondition — can this process do CreateProcessWithLogonW?
+    try:
+        from win32_worker_process import check_spawn_prerequisite
+        pre_ok, pre_detail = check_spawn_prerequisite(WORKER_ACCOUNT_DEFAULT, pw, py)
+    except Exception as e:
+        pre_ok, pre_detail = False, f"preflight error: {type(e).__name__}: {e}"
+    if not pre_ok:
+        print(f"NOT_APPLICABLE: {pre_detail}")
+        print("  cause: calling account lacks the logon capability CreateProcessWithLogonW "
+              "needs (e.g. service/machine account). ENV PRECONDITION, not a security result.")
+        return 2
+
     d = Path(tempfile.mkdtemp(prefix="q3_chain_"))
     try:
         work = d / "work"; work.mkdir()

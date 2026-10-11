@@ -86,6 +86,9 @@ def main() -> int:
         return 1
     if any_skip:
         print("Q3_QUALIFICATION = NOT_EVALUATED (SKIP present; NOT a pass)")
+        print("  A SKIP here usually means an ENVIRONMENT PRECONDITION was not met")
+        print("  (no credential, or the calling account cannot CreateProcessWithLogonW")
+        print("  e.g. running as nt authority\\system). This is NOT a security result.")
         return 2
     print("Q3_QUALIFICATION = PASS")
     return 0
