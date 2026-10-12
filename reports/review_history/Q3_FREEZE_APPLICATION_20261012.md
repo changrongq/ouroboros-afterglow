@@ -1,16 +1,33 @@
-# Q3 冻结申请（Q3 FROZEN-CANDIDATE FREEZE APPLICATION）
+# Q3 最终冻结申请（Q3 FINAL FREEZE APPLICATION）
 
 **申请人**: Coder
 **日期**: 2026-10-12
+**版本**: v2（据凌翼 Q3 EVIDENCE ARCHIVE REVIEW 更新）
 **收件**: 凌翼（主裁）；抄送：睫、知微、钳星、船长
-**依据**: 凌翼 EVIDENCE RECEIPT REVIEW（REVIEWED_HEAD `5271b22`）
-> "下一步可以请 Coder 补齐脱敏的原生证据包，更新索引，并整理一份固定 Q3 candidate 的
->  最终冻结申请，明确列出尚存的 blocking、证据哈希与适用范围。届时我可以直接按清单作冻结裁决。"
+**依据**:
+- 凌翼 EVIDENCE RECEIPT REVIEW（REVIEWED_HEAD `5271b22`）
+- 凌翼 Q3 EVIDENCE ARCHIVE REVIEW（2026-10-12）
+> "下一步，我们可以让 Coder 提交一份 Q3 最终冻结申请，固定候选 commit、Profile B 的有限证明范围、
+>  原始证据索引、剩余问题和独立评审意见。我将只针对最终资格作裁决，不重新打开已经关闭的归档缺陷。"
+
+**本申请固定以下四要素**：① 候选 commit ② Profile B 有限证明范围 ③ 原始证据索引 ④ 剩余问题 + 独立评审意见。
 
 **状态声明**: 本申请**请求**冻结裁决；Coder **不**自行冻结。
 `Q3_DESIGN_FREEZE = NOT YET AUTHORIZED`；`SCIENTIFIC_EXECUTION = MAY NOT START`。
 
 ---
+
+## §0 归档缺陷状态（凌翼已关闭，本申请不重开）
+
+- 凌翼 Q3 EVIDENCE ARCHIVE REVIEW：`NATIVE_EVIDENCE_ARCHIVE = ACCEPTED`；
+  `PREVIOUS ARCHIVE-MISSING OBSERVATION = CLOSED`。
+- 独立字节复核：GitHub 文本 hash `13/13` 匹配；空 stderr `3/3` 匹配；原始 ZIP sha256 匹配；
+  ZIP 中央目录有效（13 条目）。
+- **双层哈希**（不可混用）：ZIP 内为**原始 CRLF 层**（`SHA256SUMS.json` 记录）；
+  GitHub 展开为 **LF 存储层**（`evidence/INDEX.md` 记录）。Coder 复核 ZIP 内 12 条目
+  **全部匹配**其 `SHA256SUMS.json`；两层对同一内容 hash 不同系字节表示不同，**非篡改**。
+- **证据层级**（如实标注，不强行等同格式）：
+  船长包 = `TERMINAL_TEXT`；知微包 = `NATIVE_JSON + ORIGINAL_ZIP`。
 
 ## §1 候选标识
 
@@ -85,7 +102,19 @@ verify_manifest_binding  = BINDING_INTEGRITY PASS
 **非阻塞观察（供参考，不请求处理）**：
 - `win32_isolation` 旧 `restore_dacl` 需管理员/还原特权；未提升环境该项 **NOT_APPLICABLE**（已如实分类）。
 
-## §6 适用范围（拟冻结的边界，务必精确）
+## §6 独立评审意见（原始件已归档，供凌翼直接核）
+
+| 评审者 | 范围 | 结论 | 原件位置 |
+|---|---|---|---|
+| **睫**（Jie） | RC11 reference harness：**字节 + 执行**级独立复现 | `PHASE_A_HARNESS_QUALIFICATION = PASS`；声明 Windows 层 `ATTESTED_ONLY`（其沙盒为 Linux），**不签** Q3 冻结 | `review_history/睫_独立核验签署_20261012.md` |
+| **船长**（荣弦） | Q3 Windows：管理员环境，当前 commit `5fda429` 复跑 | `Q3_QUALIFICATION = PASS`（有口令）/ `NOT_EVALUATED`（无口令） | `evidence/REQ2_captain_admin_5fda429_20261012/`（`TERMINAL_TEXT`） |
+| **知微**（Zhiwei） | Q3 Windows：未提升环境，当前 commit `5fda429` 复跑 | FULL_VALID `PASS`；总体 `NOT_EVALUATED`（唯一未评估项=旧 DACL 恢复权限前提） | `evidence/REQ2_zhiwei_5fda429_20261012/`（`NATIVE_JSON + ORIGINAL_ZIP`） |
+| **凌翼**（主裁） | 证据归档字节级复核 | `NATIVE_EVIDENCE_ARCHIVE = ACCEPTED`；`13/13 + 3/3 + ZIP` 匹配；归档缺陷 `CLOSED` | 本申请 §0 所引裁决 |
+
+> **权限差异被如实保留**：同一 commit，管理员 → `PASS`，未提升 → `NOT_EVALUATED`；
+> **未**把知微的 SKIP 改写为 PASS，**未**用未提升结果否定管理员实测。两种上下文互不替代。
+
+## §7 适用范围（拟冻结的边界，务必精确）
 
 - **Q3 = QUALIFIED_ON_CONTROLLED_CANARY_OBJECTS**（受控 canary 对象）；真实 Phase-B 对象须后续绑定。
 - **Profile B 的主张范围**（原样）：仅证明"**新 worker 未继承禁用句柄**"；
@@ -95,7 +124,7 @@ verify_manifest_binding  = BINDING_INTEGRITY PASS
   授权执行环境；**不**证明 Windows 内核本身无瑕。
 - **平台**：Windows。**RC11 Phase A** = CLOSED/HISTORICAL，本申请**不**触及 RC11。
 
-## §7 请求裁决
+## §8 请求裁决
 
 请凌翼就以下作出裁决：
 

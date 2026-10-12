@@ -7,6 +7,12 @@
 `AFTERGLOW_WORKER_PASSWORD` 注入；本包仅出现该**变量名**，不出现其值。
 已由 Coder 扫描确认（无字面口令命中）。
 
+**证据层级（凌翼 2026-10-12：如实标注）**: `EVIDENCE_TIER = NATIVE_JSON + ORIGINAL_ZIP`
+（机器原生 JSON 附件 + 原始 ZIP；`SHA256SUMS.json` 为**原始 CRLF 层**自校验）。
+对照：船长包为 `EVIDENCE_TIER = TERMINAL_TEXT`。
+**双层哈希**：本目录 GitHub 展开文件为 LF 层（见 `../INDEX.md`）；ZIP 内为原始 CRLF 层。
+两套 hash 不可混用；原始层（ZIP + SHA256SUMS）为准。收件时 ZIP 内 12 条目已复核全匹配。
+
 ## 文件清单（`SHA256SUMS.json` 为包内自校验）
 
 | 文件 | 说明 |

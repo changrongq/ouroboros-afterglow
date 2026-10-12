@@ -28,13 +28,32 @@ reports/review_history/evidence/
     └── raw_terminal_output.txt                船长原始终端输出（逐字）
 ```
 
-## 文件哈希（SHA-256，LF 归一后字节）
+## 双层哈希说明（凌翼 2026-10-12：务必保留，不可混用）
+
+本目录存在**两套字节表示**，各有其 hash，**不可互相替代**：
+
+1. **ZIP 内原始字节（CRLF）** —— 权威原始证据。`received_original.zip`（19,296 B，
+   sha256 `cacb21d8e811f4e0ed2c198e630030f3afc86bc7d54282b68ae9ef2b0f7370d3`）内含 13 个
+   文件条目；其 `SHA256SUMS.json` 记录的就是这层**原始 CRLF** 字节的 hash。
+2. **GitHub 展开文本（LF 归一）** —— 为跨平台存储归一为 LF；下方"文件哈希"表即这层。
+
+**验证事实（凌翼与 Coder 双方独立复核）**：
+- ZIP 内 12 个条目 sha256 **全部匹配**其 `SHA256SUMS.json`（原始层自洽）。
+- GitHub 展开文件 sha256 **全部匹配**本 `INDEX.md` 哈希表（存储层自洽）。
+- 两套 hash 对同一内容**不同**，因为**字节表示不同**（CRLF vs LF）；**非篡改**。
+- 复跑脚本 `run_req2.py` 与 3 个空 stderr 在两套表示中**字节相同**（无换行差异）。
+
+> 纪律：引用证据时**注明是哪一层**。原始层（ZIP + SHA256SUMS）为准；存储层（GitHub）为可读副本。
+
+---
+
+## 文件哈希（SHA-256，GitHub 存储层 = LF 归一后字节）
 
 | 文件（相对本目录） | bytes | sha256 |
 |---|---|---|
 | `REQ2_captain_admin_5fda429_20261012/raw_terminal_output.txt` | 3471 | `d998177a43f1f114ab63d55a891aea39f455db0036a9befa0a5a29ca8d6c1d55` |
-| `REQ2_captain_admin_5fda429_20261012/README.md` | 1230 | `58be81bda6cff10892c4048cbeab35c0e1a433e028370dd71ddba561cf8e91d3` |
-| `REQ2_zhiwei_5fda429_20261012/README.md` | 2065 | `e2ad8cf614bed00c86835e52f20e76747a68f7333514fbf2f1cca44cd712c965` |
+| `REQ2_captain_admin_5fda429_20261012/README.md` | 1528 | `676d7fab322dc4e5be7509dd52d519c99548ec81a800a2e10006712db116328e` |
+| `REQ2_zhiwei_5fda429_20261012/README.md` | 2552 | `db3242b73fcfd774e70f58d1ed7907c30bbf5900000891e13ff4be85dec3e112` |
 | `REQ2_zhiwei_5fda429_20261012/snapshot.json` | 549 | `7d2c50074443957d9664c6c2f9a503523702a6de131d64a0ba957a736f057f2f` |
 | `REQ2_zhiwei_5fda429_20261012/results.json` | 2250 | `1f360870594f71a0d6dbf981d418886e1134c222625ffd78dac11d746ec52bc1` |
 | `REQ2_zhiwei_5fda429_20261012/source_hashes_before.json` | 22326 | `ab0e2c407bdf561dcf2513c67b6dc461009407814b3e5764267962417de3c7d2` |
