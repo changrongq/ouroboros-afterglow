@@ -37,6 +37,9 @@ from pathlib import Path
 Q3_LINEAGE_ID = "Q3_OS_ISOLATION_LINEAGE_V1"
 
 # Q3 modules whose bytes can change a Q3 qualification decision.
+# 凌翼 B3 (Q3 FREEZE ADJUDICATION 2026-10-12): the Q3 freeze list keeps its OWN
+# 10 execution roles. RC12's binding module is a SEPARATE lineage and MUST NOT be
+# folded in here (folding it in would silently change the Q3 lineage digest).
 Q3_EXECUTION_CRITICAL = (
     "q3_contract.py",
     "q3_access_matrix.py",
@@ -49,6 +52,30 @@ Q3_EXECUTION_CRITICAL = (
     "q3_adversarial.py",
     "q3_provenance.py",
 )
+
+#: 凌翼 B3: module names that belong to a DIFFERENT lineage and must NEVER appear
+#: in Q3_EXECUTION_CRITICAL (guards against accidental folding).
+FOREIGN_LINEAGE_MODULES = (
+    "qualification_binding_rc12.py",
+)
+
+
+def assert_lineage_boundary() -> tuple[bool, list]:
+    """凌翼 B3: Q3 and RC12 are SEPARATE lineages. Returns (ok, violations).
+
+    ok iff Q3_EXECUTION_CRITICAL contains exactly 10 roles AND none of the
+    FOREIGN_LINEAGE_MODULES appear in it.
+    """
+    violations = []
+    q3 = list(Q3_EXECUTION_CRITICAL)
+    if len(q3) != 10:
+        violations.append(f"Q3_ROLE_COUNT={len(q3)} (expected 10)")
+    if len(set(q3)) != len(q3):
+        violations.append("Q3_ROLE_DUPLICATE")
+    for m in FOREIGN_LINEAGE_MODULES:
+        if m in q3:
+            violations.append(f"FOREIGN_MODULE_IN_Q3: {m}")
+    return (len(violations) == 0), violations
 
 
 def sha256_file(path: Path) -> str:
@@ -190,6 +217,15 @@ def _selftest() -> int:
     q3, q3_missing = recompute_q3_roles(harness)
     chk("Q3 roles all present", q3_missing == [])
     chk("Q3 roles non-empty", len(q3) == len(Q3_EXECUTION_CRITICAL))
+    # 凌翼 B3: exactly 10 Q3 roles; RC12 module must NOT be in the Q3 lineage.
+    _lb_ok, _lb_v = assert_lineage_boundary()
+    chk("B3: Q3 lineage boundary (exactly 10 roles, no RC12)", _lb_ok is True)
+    if not _lb_ok:
+        print("   violations:", _lb_v)
+    chk("B3: RC12 module is NOT in Q3_EXECUTION_CRITICAL",
+        "qualification_binding_rc12.py" not in Q3_EXECUTION_CRITICAL)
+    chk("B3: RC12 module IS in FOREIGN_LINEAGE_MODULES",
+        "qualification_binding_rc12.py" in FOREIGN_LINEAGE_MODULES)
 
     rc11, rc11_missing = recompute_rc11_roles(harness)
     chk("RC11 roles all present (no drift)", rc11_missing == [])

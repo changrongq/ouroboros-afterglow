@@ -275,55 +275,145 @@ def build_profile_b_proof(attestation, startupinfo_facts: dict,
 
 def leak_positive_control(account: str, password: str, python_exe: str,
                           forbidden_path: Path, work_dir: Path) -> tuple[bool, str]:
-    """凌翼 Q3 STEP 1: a deliberate handle-leak POSITIVE CONTROL.
+    """凌翼 B1 (Q3 FREEZE ADJUDICATION 2026-10-12): a REAL handle-leak positive control.
 
-    The controller opens a handle to `forbidden_path` with inherit rights, then
-    spawns a probe worker that reports whether it can see/read the object via ANY
-    inherited handle. Under the CORRECT create path (no handle inheritance) the
-    worker must NOT see it; the control proves the TEST HARNESS can detect a leak
-    when one exists (otherwise a "no leak" result is vacuous).
+    The previous version only OPENED an inheritable handle and closed it — it never
+    spawned a child, never let the child inherit, and never probed. That proved only
+    `controller_successfully_opened_inheritable_handle`, NOT that the detector can
+    catch an actual leak. This rewrite performs a genuine two-run experiment:
 
-    Implementation: we open the file with a SECURITY_ATTRIBUTES{bInheritHandle=TRUE}
-    handle held by the controller, record that a handle exists, then spawn the
-    worker WITHOUT passing a handle list. The worker's positive-control probe
-    enumerates its OWN handles for the target; a leaked handle would appear as a
-    held target handle. Returns (detected_ok, detail).
+      RUN-POSITIVE (leak is REAL and MUST be detected):
+        · controller opens the forbidden object with an INHERITABLE handle (held open);
+        · spawn a child WITH handle inheritance (CreateProcessW, bInheritHandles=TRUE);
+        · while the child is alive, enumerate ITS handle table for the target.
+        · EXPECTED: HANDLE_AUDIT_FOUND_TARGET  (the detector SEES the real leak).
 
-    NOTE: this is a real, conservative control. If the environment cannot spawn the
-    worker (EnvPrereqError) we return (False, <env reason>) so the caller treats it
-    as NOT_APPLICABLE, never as PASS.
+      RUN-NEGATIVE (the registered isolation path does NOT leak):
+        · controller holds the SAME inheritable handle open;
+        · spawn via CreateProcessWithLogonW (no handle list → no inheritance);
+        · audit the child's handle table.
+        · EXPECTED: NOT FOUND_TARGET.
+
+    Returns (ok, detail). ok is True ONLY if the positive run DETECTS the leak AND the
+    negative run does NOT. If the environment cannot spawn (EnvPrereqError) we return
+    (False, reason) ⇒ NOT_APPLICABLE, never PASS.
+
+    This is a CONTROL: it deliberately creates a leak in a THROWAWAY child; it does
+    NOT touch the正式 worker isolation path.
     """
     import ctypes
     from ctypes import wintypes
     try:
-        k32 = ctypes.windll.kernel32
-        # 1. controller opens an INHERITABLE handle to the forbidden object.
-        SECURITY_ATTRIBUTES = type("SA", (ctypes.Structure,), {"_fields_": [
-            ("nLength", wintypes.DWORD), ("lpSecurityDescriptor", ctypes.c_void_p),
-            ("bInheritHandle", wintypes.BOOL)]})
-        sa = SECURITY_ATTRIBUTES()
-        sa.nLength = ctypes.sizeof(sa)
-        sa.lpSecurityDescriptor = None
-        sa.bInheritHandle = True
-        GENERIC_READ = 0x80000000
-        OPEN_EXISTING = 3
-        k32.CreateFileW.restype = wintypes.HANDLE
-        h = k32.CreateFileW(str(forbidden_path), GENERIC_READ, 0, ctypes.byref(sa),
-                            OPEN_EXISTING, 0, None)
-        INVALID = ctypes.c_void_p(-1).value
-        opened = (h is not None and h != INVALID and h != 0)
-        if opened:
-            k32.CloseHandle(wintypes.HANDLE(h))
-        # 2. the mere fact we CAN open an inheritable handle means the control is
-        #    meaningful: a naive spawn that inherits would leak it. Under the
-        #    registered API the worker is created with no handle list, so the
-        #    positive-control posture is "leak possible in principle, blocked by API".
-        return (opened, "controller opened an inheritable handle to the forbidden "
-                        "object (leak would occur under a handle-inheriting spawn)")
-    except EnvPrereqError as e:
-        return (False, f"NOT_APPLICABLE: {e}")
+        from q3_handle_audit import audit_process_handles_for_target, HANDLE_AUDIT_FOUND_TARGET
     except Exception as e:
-        return (False, f"leak control error: {type(e).__name__}: {e}")
+        return False, f"leak control: cannot import handle audit: {type(e).__name__}: {e}"
+
+    k32 = ctypes.windll.kernel32
+
+    SECURITY_ATTRIBUTES = type("SA", (ctypes.Structure,), {"_fields_": [
+        ("nLength", wintypes.DWORD), ("lpSecurityDescriptor", ctypes.c_void_p),
+        ("bInheritHandle", wintypes.BOOL)]})
+    sa = SECURITY_ATTRIBUTES()
+    sa.nLength = ctypes.sizeof(sa)
+    sa.lpSecurityDescriptor = None
+    sa.bInheritHandle = True          # <-- make the handle INHERITABLE
+
+    GENERIC_READ = 0x80000000
+    OPEN_EXISTING = 3
+    # 凌翼 B1 debug: share mode MUST allow reads, else our own handle-audit cannot
+    # open the object to read its file identity (would false-report HANDLE_AUDIT_ERROR).
+    FILE_SHARE_READ = 0x00000001
+    FILE_SHARE_WRITE = 0x00000002
+    SHARE_RW = FILE_SHARE_READ | FILE_SHARE_WRITE
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+                                ctypes.c_void_p]
+    INVALID = ctypes.c_void_p(-1).value
+
+    # a tiny child that just sleeps so we can audit it while alive
+    sleeper = Path(work_dir) / "leak_sleeper.py"
+    sleeper.write_text("import time\ntime.sleep(3)\n", encoding="utf-8")
+    probe = Path(work_dir) / "leak_probe_child.py"
+
+    # The registered-API child runs AS the worker account, so its cwd must be a
+    # directory the worker can access (otherwise CreateProcessWithLogonW err=267).
+    # Grant the worker read+execute on the throwaway work dir (control-only dir).
+    try:
+        grant(account, work_dir, "(OI)(CI)(RX)")
+    except Exception:
+        pass
+
+    def _audit_while_alive(pid: int):
+        import time as _t
+        res = None
+        for _ in range(40):
+            res = audit_process_handles_for_target(pid, str(forbidden_path))
+            if getattr(res, "status", None) == HANDLE_AUDIT_FOUND_TARGET:
+                break
+            _t.sleep(0.05)
+        return res
+
+    # ---- RUN-POSITIVE : inheritable handle + child WITH inheritance ----------
+    h = k32.CreateFileW(str(forbidden_path), GENERIC_READ, SHARE_RW, ctypes.byref(sa),
+                        OPEN_EXISTING, 0, None)
+    opened = (h is not None and h != INVALID and h != 0)
+    if not opened:
+        return False, f"leak control: cannot open inheritable handle (err={k32.GetLastError()})"
+    pos_status = None
+    try:
+        si, pi = _startupinfo()
+        cmd = ctypes.create_unicode_buffer(f'"{python_exe}" "{sleeper}"')
+        # CreateProcessW(cmd, inherit=TRUE) -> the child inherits our inheritable handle
+        k32.CreateProcessW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, ctypes.c_void_p,
+                                       ctypes.c_void_p, wintypes.BOOL, wintypes.DWORD,
+                                       ctypes.c_void_p, wintypes.LPCWSTR,
+                                       ctypes.c_void_p, ctypes.c_void_p]
+        k32.CreateProcessW.restype = wintypes.BOOL
+        okp = k32.CreateProcessW(None, cmd, None, None, True, CREATE_NO_WINDOW,
+                                 None, str(work_dir), ctypes.byref(si), ctypes.byref(pi))
+        if not okp:
+            return False, f"leak control: positive child spawn failed (err={k32.GetLastError()})"
+        res_pos = _audit_while_alive(pi.dwProcessId)
+        pos_status = getattr(res_pos, "status", None)
+        k32.TerminateProcess(pi.hProcess, 0)
+        k32.WaitForSingleObject(pi.hProcess, 5000)
+        k32.CloseHandle(pi.hThread); k32.CloseHandle(pi.hProcess)
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(h))
+
+    detected = (pos_status == HANDLE_AUDIT_FOUND_TARGET)
+
+    # ---- RUN-NEGATIVE : same inheritable handle, registered API (no inherit) --
+    h2 = k32.CreateFileW(str(forbidden_path), GENERIC_READ, SHARE_RW, ctypes.byref(sa),
+                         OPEN_EXISTING, 0, None)
+    neg_status = None
+    try:
+        adv, _ = _adv_k32()
+        si2, pi2 = _startupinfo()
+        cmd2 = ctypes.create_unicode_buffer(f'"{python_exe}" "{sleeper}"')
+        okn = adv.CreateProcessWithLogonW(account, ".", password, LOGON_WITH_PROFILE,
+                                          None, cmd2, CREATE_NO_WINDOW, None, str(work_dir),
+                                          ctypes.byref(si2), ctypes.byref(pi2))
+        if not okn:
+            err = k32.GetLastError()
+            if err == 5:
+                return False, ("NOT_APPLICABLE: leak control negative spawn err=5 "
+                               "(caller lacks logon capability)")
+            return False, f"leak control: negative child spawn failed (err={err})"
+        res_neg = _audit_while_alive(pi2.dwProcessId)
+        neg_status = getattr(res_neg, "status", None)
+        k32.TerminateProcess(pi2.hProcess, 0)
+        k32.WaitForSingleObject(pi2.hProcess, 5000)
+        k32.CloseHandle(pi2.hThread); k32.CloseHandle(pi2.hProcess)
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(h2))
+
+    neg_clean = (neg_status != HANDLE_AUDIT_FOUND_TARGET)
+    ok = bool(detected and neg_clean)
+    detail = (f"positive(inheriting child) detected={detected} [{pos_status}]; "
+              f"negative(registered API) clean={neg_clean} [{neg_status}]")
+    return ok, detail
 
 
 # ---------------------------------------------------------------------------

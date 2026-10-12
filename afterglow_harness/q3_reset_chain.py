@@ -556,6 +556,9 @@ class ResetChainResult:
     pre_reset_verdict_ok: object = UNEVALUATED   # 凌翼 STEP 2: DISTINCT pre-reset witness
     pre_reset_observed: object = None            # the raw pre-reset RESULT string
     pre_reset_attestation: object = None
+    clear_action_ran: object = UNEVALUATED       # 凌翼 B2: the reset actually cleared
+    real_reset_required: object = UNEVALUATED    # B2: a REAL reset was demanded
+    real_reset_ok: object = UNEVALUATED          # B2: real reset actually demonstrated
     s_handoff: bytes | None = None
     s_restored: bytes | None = None
     attestation: "WorkerAttestation | None" = None
@@ -565,10 +568,14 @@ class ResetChainResult:
     @property
     def valid(self) -> bool:
         # EVERY gate must be literally True. UNEVALUATED/False/anything else => invalid.
-        return all(x is True for x in (
-            self.clear_ok, self.preserve_ok, self.access_ok,
-            self.handle_ok, self.identity_ok, self.lifecycle_ok,
-            self.matrix_ok, self.dacl_restore_ok))
+        # 凌翼 B2: when a REAL reset was demanded, real_reset_ok must also be True
+        # (a first-start N/A run is valid ONLY if no real reset was required).
+        gates = [self.clear_ok, self.preserve_ok, self.access_ok,
+                 self.handle_ok, self.identity_ok, self.lifecycle_ok,
+                 self.matrix_ok, self.dacl_restore_ok]
+        if self.real_reset_required is True:
+            gates.append(self.real_reset_ok)
+        return all(x is True for x in gates)
 
 
 PROBE_TEMPLATE = """\
@@ -608,7 +615,8 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
                    clear_na_declared: bool = False,
                    expected_sid: str | None = None,
                    old_worker_pid: int | None = None,
-                   terminate_old_worker=None) -> ResetChainResult:
+                   terminate_old_worker=None,
+                   clear_action=None) -> ResetChainResult:
     """EXCEPTION-SAFE wrapper (凌翼 Q3 STEP 4): the protected object's DACL is
     captured before the chain mutates it and ALWAYS restored in a `finally`, even
     if the worker spawn or any later step raises. If the chain raises, the
@@ -621,7 +629,7 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
         out = _q3_reset_chain_impl(
             account, password, work_dir, python_exe, protected, run_nonce,
             clear_targets_by_category, clear_na_declared, expected_sid,
-            old_worker_pid, terminate_old_worker)
+            old_worker_pid, terminate_old_worker, clear_action)
     except BaseException as e:                     # noqa: BLE001 — fail-closed capture
         out = ResetChainResult()
         out.reason = f"CHAIN_RAISED: {type(e).__name__}: {e}"
@@ -647,7 +655,8 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
                          clear_na_declared: bool = False,
                          expected_sid: str | None = None,
                          old_worker_pid: int | None = None,
-                         terminate_old_worker=None) -> ResetChainResult:
+                         terminate_old_worker=None,
+                         clear_action=None) -> ResetChainResult:
     """The end-to-end reset chain with a REAL cross-account worker, gated strictly.
 
     Steps (凌翼): observer reads S_handoff -> [old worker terminated] -> lock ACL
@@ -846,19 +855,23 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
     # 6b. 凌翼 Q3 STEP 1 (P1·Blocking): the inherited-handle-isolation gate MUST be
     #     computed from REAL evidence, not hard-coded True. We build the Profile B
     #     proof object from: the create API actually used, the STARTUPINFO facts,
-    #     the deliberate leak POSITIVE CONTROL (controller pre-opens a forbidden
-    #     handle), and whether a known forbidden handle is present in the worker.
+    #     the deliberate leak POSITIVE CONTROL (real: inheriting child MUST leak &
+    #     be detected; registered API MUST NOT), and whether a known forbidden handle
+    #     is present in the worker.
     from win32_worker_process import build_profile_b_proof, leak_positive_control
     leak_ok, leak_detail = leak_positive_control(account, password, python_exe,
                                                  protected, work_dir)
     out.leak_positive_control = leak_ok
     out.leak_detail = leak_detail
     worker_known_forbidden = (hstat == "HANDLE_AUDIT_FOUND_TARGET")
+    # 凌翼 B1: leak_ok now means the REAL two-run control passed
+    # (positive detected the leak AND negative stayed clean). Both proof fields
+    # below are subsumed by that single, now-genuine result.
     proof, profile_b_ok = build_profile_b_proof(
         att,
         startupinfo_facts=getattr(att, "startupinfo_facts", None) or {},
         leak_control_ok=leak_ok,
-        controller_opened_forbidden=leak_ok,     # the control opening succeeded
+        controller_opened_forbidden=leak_ok,     # control ran end-to-end (open+spawn+audit)
         worker_known_forbidden_present=worker_known_forbidden,
     )
     out.profile_b_proof = proof
@@ -881,6 +894,19 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
     else:
         out.access_ok = False
         out.reason = out.reason or f"VERDICT_INVALID: {att.verdict_raw!r}"
+
+    # 7.5 凌翼 B2: the RESET must ACTUALLY clear the targets (not have them
+    #     pre-deleted by the caller). If a clear_action is supplied, we run it HERE
+    #     (the reset operation), then the clear gate (step 10) verifies the targets
+    #     are gone BY the action — a real reset, observable by an independent read.
+    out.clear_action_ran = False
+    if clear_action is not None:
+        try:
+            clear_action(clear_targets_by_category)
+            out.clear_action_ran = True
+        except Exception as e:
+            out.clear_action_ran = False
+            out.reason = out.reason or f"CLEAR_ACTION_FAILED: {type(e).__name__}: {e}"
 
     # 8. observer reads S_restored (independent post-reset observation)
     try:
@@ -927,6 +953,26 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
             out.clear_ok = bool(all_gone)
             if not all_gone:
                 out.reason = out.reason or "CLEAR_TARGETS_NOT_REMOVED"
+
+    # 10b. 凌翼 B2: a REAL reset means (i) an old worker was actually replaced, AND
+    #      (ii) targets EXISTED before and were removed BY the reset action. We
+    #      demand a real reset whenever a clear_action or an old_worker_pid was
+    #      given. real_reset_ok = clear_action ran AND lifecycle proven AND the
+    #      targets are now gone (which the action — not the caller — removed).
+    out.real_reset_required = bool(clear_action is not None or old_worker_pid is not None)
+    if out.real_reset_required:
+        out.real_reset_ok = bool(
+            out.clear_action_ran is True
+            and out.lifecycle_ok is True
+            and out.clear_ok is True
+        )
+        if out.real_reset_ok is not True:
+            out.reason = out.reason or (
+                f"REAL_RESET_NOT_DEMONSTRATED: clear_action_ran={out.clear_action_ran} "
+                f"lifecycle_ok={out.lifecycle_ok} clear_ok={out.clear_ok}")
+    else:
+        # no real reset demanded (first-start N/A) -> gate not applicable
+        out.real_reset_ok = out.real_reset_ok if out.real_reset_ok is not UNEVALUATED else UNEVALUATED
 
     # 11. EXECUTABLE ACCESS MATRIX consumption (凌翼 step 2): every row's declared
     #     witness must map to a gate that is ACTUALLY True. This is what stops a
@@ -1104,6 +1150,16 @@ def _selftest() -> int:
             >= set(__import__("q3_contract").PROFILE_B_PROOF_FIELDS))
         chk("PROFILE_B: leak positive control ran (bool)",
             isinstance(res.leak_positive_control, bool))
+        # 凌翼 B1: the leak control is a REAL two-run experiment, not a bare open.
+        # Assert the detail records BOTH runs (positive detected a real leak;
+        # negative via the registered API stayed clean).
+        _ld = res.leak_detail or ""
+        chk("B1: leak control detail shows positive run (inheriting child)",
+            "positive" in _ld and "detected=True" in _ld)
+        chk("B1: leak control detail shows negative run (registered API clean)",
+            "negative" in _ld and "clean=True" in _ld)
+        chk("B1: leak control genuinely passed (ok True)",
+            res.leak_positive_control is True)
         chk("PROFILE_B: profile_b_ok is computed bool",
             isinstance(res.profile_b_ok, bool))
         chk("PROFILE_B: inheritance_prevention_ok == profile_b_ok",
@@ -1205,6 +1261,72 @@ def _selftest() -> int:
             _fv["FULL_VALID_SUCCESS_PATH"] in ("PASS", "NOT_PASSED"))
         chk("FULL_VALID artifact: run_id field present",
             "run_id" in _fv and _fv["profile_version"] != "")
+
+        # ---- 凌翼 B2: a REAL reset success path -------------------------------
+        # Old worker REALLY exists (live process); clear targets REALLY exist BEFORE
+        # the reset; the reset ACTION removes them; an independent observer then
+        # verifies; the whole chain reaches VALID.
+        b2d = d / "b2"; b2d.mkdir()
+        b2_protected = b2d / "real_substrate.bin"
+        b2_protected.write_bytes(b"TOP-SECRET-PAYLOAD")
+        b2_work = b2d / "work"; b2_work.mkdir()
+        grant(WORKER_ACCOUNT_DEFAULT, b2_work, "(OI)(CI)(F)")
+        grant(WORKER_ACCOUNT_DEFAULT, b2d, "(OI)(CI)(RX)")
+        # clear targets EXIST before the reset (do NOT pre-delete)
+        b2_map = {}
+        for cat in REQUIRED_CLEAR_CATEGORIES:
+            p = b2d / f"b2clear_{cat}.bin"
+            p.write_bytes(b"COUNTERFEIT-TO-BE-CLEARED")
+            b2_map[cat] = p
+        chk("B2: clear targets EXIST before reset",
+            all(Path(str(v)).exists() for v in b2_map.values()))
+        # a REAL old worker process (live, then terminated by the chain)
+        old_proc = subprocess.Popen([py, "-c", "import time; time.sleep(30)"])
+        chk("B2: old worker is a LIVE process before reset", old_proc.poll() is None)
+
+        clear_calls = {"n": 0}
+
+        def _real_clear(mapping):
+            # the RESET action: actually delete the targets
+            clear_calls["n"] += 1
+            for t in mapping.values():
+                try:
+                    Path(t).unlink()
+                except FileNotFoundError:
+                    pass
+
+        def _old_terminator(pid):
+            try:
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                               capture_output=True, text=True)
+            except Exception:
+                pass
+
+        res_b2 = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, b2_work, py, b2_protected,
+                                clear_targets_by_category=b2_map,
+                                expected_sid=expected_sid,
+                                old_worker_pid=old_proc.pid,
+                                terminate_old_worker=_old_terminator,
+                                clear_action=_real_clear)
+        old_proc.poll()
+        chk("B2: clear ACTION actually ran", res_b2.clear_action_ran is True and clear_calls["n"] == 1)
+        chk("B2: targets GONE after reset (removed by the action)", res_b2.clear_ok is True
+            and all(not Path(str(v)).exists() for v in b2_map.values()))
+        chk("B2: old worker terminated (real lifecycle)", res_b2.lifecycle_ok is True
+            and old_proc.poll() is not None)
+        chk("B2: real_reset_required True", res_b2.real_reset_required is True)
+        chk("B2: real_reset_ok True (action + lifecycle + clear)", res_b2.real_reset_ok is True)
+        chk("B2: reset reached FULL VALID (real reset path)", res_b2.valid is True)
+        # negative: WITHOUT the clear action, the same targets would still exist =>
+        # a caller that pre-deletes proves nothing. Show that a real reset is REQUIRED.
+        res_b2_noclear = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, b2_work, py, b2_protected,
+                                        clear_targets_by_category=b2_map,
+                                        expected_sid=expected_sid,
+                                        old_worker_pid=None,
+                                        terminate_old_worker=None,
+                                        clear_action=None)
+        chk("B2: no clear_action + no old worker -> real_reset not required (N/A ok)",
+            res_b2_noclear.real_reset_required is False)
 
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS
@@ -1421,9 +1543,13 @@ def _selftest() -> int:
         ok_lock2, res_lock2 = checked_rmtree(locked_dir)
         chk("CLEANUP: after release -> clean", ok_lock2 is True and res_lock2 == [])
     finally:
-        ok_final, final_residuals = checked_rmtree(d)
-        if not ok_final:
-            print(f"[WARN] selftest teardown residuals: {final_residuals}")
+        try:
+            from q3_dacl import checked_rmtree as _crm
+            ok_final, final_residuals = _crm(d)
+            if not ok_final:
+                print(f"[WARN] selftest teardown residuals: {final_residuals}")
+        except Exception as _e:
+            print(f"[WARN] selftest teardown skipped: {type(_e).__name__}: {_e}")
 
     passed = sum(1 for _, ok in results if ok)
     print(f"\nq3_reset_chain selftest: {passed}/{len(results)} PASS")

@@ -270,6 +270,27 @@ def _selftest() -> int:
         _q.HERE = _orig_here
         _sh2.rmtree(_tmp2, ignore_errors=True)
 
+    # --- 凌翼 B1/B2: the reset gate consumes real-reset evidence --------------
+    from q3_reset_chain import ResetChainResult as _R2
+    _base = dict(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
+                 identity_ok=True, lifecycle_ok=True, matrix_ok=True,
+                 dacl_restore_ok=True)
+    # B2: a real reset demanded but not demonstrated -> INVALID
+    chk("A33 B2 real_reset_required + real_reset_ok=False -> INVALID",
+        _R2(**{**_base, "real_reset_required": True, "real_reset_ok": False}).valid is False)
+    chk("A33b B2 real_reset_required + real_reset_ok=True -> valid (all else True)",
+        _R2(**{**_base, "real_reset_required": True, "real_reset_ok": True}).valid is True)
+    chk("A33c B2 real_reset not required -> real_reset_ok ignored",
+        _R2(**{**_base, "real_reset_required": False, "real_reset_ok": False}).valid is True)
+    chk("A33d B2 real_reset_required UNEVALUATED -> gate not applied (valid)",
+        _R2(**{**_base, "real_reset_required": "UNEVALUATED"}).valid is True)
+    # B3: lineage boundary — RC12 must never fold into Q3 roles
+    import q3_provenance as _qp
+    chk("A34 B3: Q3 lineage boundary ok", _qp.assert_lineage_boundary()[0] is True)
+    chk("A34b B3: RC12 not in Q3_EXECUTION_CRITICAL",
+        "qualification_binding_rc12.py" not in _qp.Q3_EXECUTION_CRITICAL)
+    chk("A34c B3: exactly 10 Q3 roles", len(_qp.Q3_EXECUTION_CRITICAL) == 10)
+
     passed = sum(1 for _, ok in results if ok)
     print(f"\nq3_adversarial selftest: {passed}/{len(results)} PASS")
     return 0 if passed == len(results) else 1
