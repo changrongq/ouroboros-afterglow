@@ -127,11 +127,10 @@ RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 | 槽位 | 内容 | 状态 |
 |---|---|---|
 | REQ-1 | **睫 2026-10-12 独立核验签署完整原文**（含 OBS-1～4 风险评级、RC11 字节核验命令与执行结果） | ✅ **RECEIVED**（`睫_独立核验签署_20261012.md`，原件落位） |
-| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | ⚠️ **PARTIAL** — 已收 `1db6286` 的原始记录（`荣弦复跑原始记录_1db6286_20261012.txt`、`知微_Windows实机复跑_20261012.md`、`给Coder_知微_Q3实机复跑与权限差异澄清_20261012.md`）。**但均早于修复后的 `d836ffc`/`ecd7ab4`**：日志显示 adversarial `38/38`、chain `84/84`，且荣弦当时需**手改 Python 路径**（尚未有 `AFTERGLOW_PUBLIC_PYTHON`）。⇒ 仍缺**在固定 `d836ffc`+ commit、用 `AFTERGLOW_PUBLIC_PYTHON`、不改源码字节**的一次独立复跑原始日志。 |
+| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | ✅ **RECEIVED**（当前固定提交 `5fda429`）— 管理员轮：`REQ2_当前提交复跑_船长管理员_5fda429_20261012.md`（完整 **PASS**，run_id `f1e7d604…`）；未提升轮：`知微_REQ2当前提交复跑_5fda429_20261012.md`（`NOT_EVALUATED`，唯一未评估项=旧 DACL 恢复权限前提）。两轮计数 `50/50 · 85/85 · 17/17` 与 `5fda429` 代码吻合；**未改源码字节**（仅 `AFTERGLOW_PUBLIC_PYTHON`）。 |
 
-> REQ-1 已满足（睫原件已落位本目录）。
-> REQ-2 的 `1db6286` 原始件已落位并保留（不删）；仍待**最新 commit** 的**精确字节**独立复跑。
-> 复跑无需改源码：设 `AFTERGLOW_PUBLIC_PYTHON=<本机公共解释器>` 即可。
+> REQ-1 / REQ-2 均已满足。`1db6286` 旧版原始件（`荣弦复跑原始记录_1db6286_20261012.txt` 等）保留在册，不删。
+> 复跑无需改源码：设 `AFTERGLOW_PUBLIC_PYTHON=<本机公共解释器>` 即可。两种权限上下文（管理员 PASS / 未提升 NOT_EVALUATED）**分别如实记录，互不替代**。
 
 **RC12（OBS-2 定向加固候选）**：见 `../RC12_README.md` 与
 `afterglow_harness/qualification_binding_rc12.py`（`strict_detached_match`，selftest 8/8）。

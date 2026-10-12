@@ -23,3 +23,5 @@ Thumbs.db
 *.bin
 !afterglow_harness/**/*.bin
 afterglow_harness_artifacts/
+
+afterglow_harness/q3_full_valid_result.json
