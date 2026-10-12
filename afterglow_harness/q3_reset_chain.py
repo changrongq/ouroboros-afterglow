@@ -630,6 +630,12 @@ def q3_reset_chain(account: str, password: str, work_dir: Path, python_exe: str,
     if the worker spawn or any later step raises. If the chain raises, the
     exception is converted into an INVALID result with the restore outcome
     recorded — never a leaked ACL.
+
+    SCOPE OF `attestation is None` (凌翼 V5 clarification): the pre-spawn failure
+    gate runs AFTER the pre-reset diagnostic probe. So `attestation is None` proves
+    the FORMAL post-reset worker was NOT started — it does NOT prove that no
+    worker-account test subprocess ran at all (the pre-reset probe may have). Read
+    it as the narrower claim.
     """
     from q3_dacl import capture_sd_binary, restore_sd_binary
     sd_before = capture_sd_binary(protected) if protected.is_file() else None
@@ -784,18 +790,51 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
     #             removed them ACTUALLY RAN (target-absent != clear-succeeded).
     #     Any failure => set reason and RETURN (no new worker spawned).
     from q3_contract import (classify_reset_mode, reset_mode_requirements,
-                             RESET_MODE_REAL_RESET, RESET_MODE_FIRST_START)
+                             RESET_MODE_INCONSISTENT)
     out.reset_mode = classify_reset_mode(old_worker_pid, clear_action)
     _req = reset_mode_requirements(out.reset_mode)
     out.reset_old_worker_required = _req["old_worker_required"]
     out.reset_clear_action_required = _req["clear_action_required"]
 
-    # (ii) lifecycle: a REQUIRED old worker must be terminated (fail-closed).
-    if out.reset_old_worker_required and out.lifecycle_ok is not True:
+    # (i) 凌翼 V5: an INCONSISTENT mode (clear_action but no old worker) can never be
+    #     satisfied -> STOP immediately.
+    if out.reset_mode == RESET_MODE_INCONSISTENT:
         out.real_reset_required = True
         out.real_reset_ok = False
-        out.reason = out.reason or "PRESPAWN_STOP: old-worker lifecycle not proven"
+        out.reason = out.reason or (
+            "PRESPAWN_STOP: INCONSISTENT reset mode (clear_action without old worker)")
         return out
+
+    # (ii) 凌翼 V5 (REAL_RESET_CONTRACT_PRESPAWN_ENFORCEMENT): when the mode REQUIRES
+    #      an old worker, that worker must ACTUALLY EXIST (a supplied pid) AND be
+    #      proven terminated. `lifecycle_ok is True` alone is NOT enough — a
+    #      REAL_RESET entered via only a clear_action (no pid) must STOP here.
+    if out.reset_old_worker_required:
+        if old_worker_pid is None:
+            out.real_reset_required = True
+            out.real_reset_ok = False
+            out.reason = out.reason or (
+                "PRESPAWN_STOP: REAL_RESET requires an EXISTING old worker "
+                "(old_worker_pid is None)")
+            return out
+        if out.lifecycle_ok is not True:
+            out.real_reset_required = True
+            out.real_reset_ok = False
+            out.reason = out.reason or "PRESPAWN_STOP: old-worker lifecycle not proven"
+            return out
+
+    # (iv-pre) 凌翼 V5: the REQUIRED clear SET must be COMPLETE before the new worker,
+    #      not merely "the submitted paths are gone". A missing required category is
+    #      a contract violation that must STOP the spawn (not be caught post-spawn).
+    if out.reset_clear_action_required:
+        from q3_contract import validate_clear_targets
+        _cov_ok, _cov_missing = validate_clear_targets(clear_targets_by_category)
+        if not _cov_ok:
+            out.real_reset_required = True
+            out.real_reset_ok = False
+            out.reason = out.reason or (
+                f"PRESPAWN_STOP: required clear set incomplete: {_cov_missing}")
+            return out
 
     # (iii)+(iv) clear: run/verify the clear action per the mode requirements.
     out.clear_action_ran = False
@@ -1411,10 +1450,14 @@ def _selftest() -> int:
         def _noop_clear(mapping):
             pass    # deliberately does NOT remove targets
 
+        # REAL_RESET (with a real old worker) so the clear logic is exercised.
+        _live_a = subprocess.Popen([py, "-c", "import time;time.sleep(30)"])
+        _term_a = lambda p: subprocess.run(["taskkill", "/PID", str(p), "/F"],
+                                           capture_output=True)
         res_b2n = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, b2n_work, py, b2n_protected,
                                  clear_targets_by_category=b2n_map,
                                  expected_sid=expected_sid,
-                                 old_worker_pid=None, terminate_old_worker=None,
+                                 old_worker_pid=_live_a.pid, terminate_old_worker=_term_a,
                                  clear_action=_noop_clear)
         chk("B2: incomplete clear -> clear_verified False", res_b2n.clear_verified is False)
         chk("B2: incomplete clear -> chain INVALID (no new worker)", res_b2n.valid is False)
@@ -1477,15 +1520,18 @@ def _selftest() -> int:
         chk("V4-B2: mode == REAL_RESET", res_nc2.reset_mode == "REAL_RESET")
 
         # Branch 3: clear_action RAISES but targets already gone (delete then raise) ->
-        # must STOP (target-absent != clear-succeeded).
+        # must STOP (target-absent != clear-succeeded). REAL_RESET (live old worker).
         d3b, p3b, w3b, m3b = _mk_branch("raises")
         def _raise_after_delete(mm):
             for t in mm.values():
                 Path(str(t)).unlink(missing_ok=True)   # targets become absent...
             raise RuntimeError("injected clear failure") # ...but the action FAILED
+        _live_c = subprocess.Popen([py, "-c", "import time;time.sleep(30)"])
+        _term_c = lambda p: subprocess.run(["taskkill", "/PID", str(p), "/F"],
+                                           capture_output=True)
         res_rz = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w3b, py, p3b,
                                 clear_targets_by_category=m3b, expected_sid=expected_sid,
-                                old_worker_pid=None, terminate_old_worker=None,
+                                old_worker_pid=_live_c.pid, terminate_old_worker=_term_c,
                                 clear_action=_raise_after_delete)
         chk("V4-B3: clear raised though targets gone -> clear_action_ran False",
             res_rz.clear_action_ran is False)
@@ -1493,6 +1539,42 @@ def _selftest() -> int:
             res_rz.valid is False and res_rz.attestation is None)
         chk("V4-B3: clear raised -> prespawn stop recorded",
             "PRESPAWN_STOP" in (res_rz.reason or ""))
+
+        # ---- 凌翼 V5 (REAL_RESET_CONTRACT_PRESPAWN_ENFORCEMENT): two NEW negatives.
+        # V5-N1: clear_action but NO old worker -> INCONSISTENT -> STOP before spawn.
+        d5a, p5a, w5a, m5a = _mk_branch("incons")
+        def _ok_clear(mapping):
+            for t in mapping.values():
+                Path(str(t)).unlink(missing_ok=True)
+        res_v5n1 = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w5a, py, p5a,
+                                  clear_targets_by_category=m5a, expected_sid=expected_sid,
+                                  old_worker_pid=None, terminate_old_worker=None,
+                                  clear_action=_ok_clear)
+        chk("V5-N1: clear_action w/o old worker -> INCONSISTENT mode",
+            res_v5n1.reset_mode == "INCONSISTENT")
+        chk("V5-N1: clear_action w/o old worker -> INVALID", res_v5n1.valid is False)
+        chk("V5-N1: clear_action w/o old worker -> new worker NOT started",
+            res_v5n1.attestation is None)
+        chk("V5-N1: prespawn stop recorded", "PRESPAWN_STOP" in (res_v5n1.reason or ""))
+
+        # V5-N2: REAL_RESET with a live old worker but an INCOMPLETE required clear
+        # set -> STOP before spawn (missing category must not reach the new worker).
+        d5b, p5b, w5b, m5b = _mk_branch("misscat")
+        _m5b_partial = {k: v for k, v in m5b.items() if k != REQUIRED_CLEAR_CATEGORIES[0]}
+        _live_d = subprocess.Popen([py, "-c", "import time;time.sleep(30)"])
+        _term_d = lambda p: subprocess.run(["taskkill", "/PID", str(p), "/F"],
+                                           capture_output=True)
+        res_v5n2 = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w5b, py, p5b,
+                                  clear_targets_by_category=_m5b_partial,
+                                  expected_sid=expected_sid,
+                                  old_worker_pid=_live_d.pid, terminate_old_worker=_term_d,
+                                  clear_action=_ok_clear)
+        chk("V5-N2: missing required clear category -> INVALID", res_v5n2.valid is False)
+        chk("V5-N2: missing required clear category -> new worker NOT started",
+            res_v5n2.attestation is None)
+        chk("V5-N2: prespawn stop recorded (required clear set incomplete)",
+            "PRESPAWN_STOP" in (res_v5n2.reason or "")
+            and "clear set incomplete" in (res_v5n2.reason or ""))
 
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS

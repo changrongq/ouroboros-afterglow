@@ -192,9 +192,10 @@ CONTRACT_NOT_APPLICABLE_ALLOWED = frozenset()
 
 RESET_MODE_FIRST_START = "FIRST_START"       # no prior worker; no clear action expected
 RESET_MODE_REAL_RESET = "REAL_RESET"         # a prior worker + a REQUIRED clear action
+RESET_MODE_INCONSISTENT = "INCONSISTENT"     # clear_action but NO old worker => invalid
 
 #: The only reset modes the contract recognises.
-RESET_MODES = (RESET_MODE_FIRST_START, RESET_MODE_REAL_RESET)
+RESET_MODES = (RESET_MODE_FIRST_START, RESET_MODE_REAL_RESET, RESET_MODE_INCONSISTENT)
 
 #: Per-mode REQUIREMENTS (machine-consumed by q3_reset_chain's pre-spawn gate):
 #:   old_worker_required   — a live old worker MUST be supplied & proven terminated
@@ -211,19 +212,33 @@ RESET_MODE_REQUIREMENTS = {
         "clear_action_required": True,
         "clear_verified_required": True,
     },
+    # INCONSISTENT is always rejected by the driver (never satisfiable).
+    RESET_MODE_INCONSISTENT: {
+        "old_worker_required": True,
+        "clear_action_required": True,
+        "clear_verified_required": True,
+        "always_invalid": True,
+    },
 }
 
 
 def classify_reset_mode(old_worker_pid, clear_action) -> str:
-    """凌翼 V4: decide the reset mode from EXPLICIT inputs (contract class).
+    """凌翼 V5: decide the reset mode from EXPLICIT inputs (contract class).
 
-    A REAL_RESET is declared when the caller supplies an old worker OR a clear
-    action. Otherwise the caller is declaring FIRST_START. The driver then applies
-    the per-mode REQUIREMENTS — it never infers "may skip clear" from a missing
-    input after the fact.
+    A REAL_RESET is declared by the PRESENCE OF AN OLD WORKER — that is its
+    defining property ("REAL_RESET must prove the old worker was terminated").
+    A clear_action WITHOUT an old worker is therefore a CONSISTENCY VIOLATION: it
+    claims a reset (which needs an old worker) yet supplies none. We surface that
+    as a distinct sentinel so the driver fails closed rather than silently passing.
+
+    Returns one of RESET_MODE_FIRST_START / RESET_MODE_REAL_RESET /
+    RESET_MODE_INCONSISTENT.
     """
-    if old_worker_pid is not None or clear_action is not None:
+    if old_worker_pid is not None:
         return RESET_MODE_REAL_RESET
+    if clear_action is not None:
+        # clear without an old worker contradicts "REAL_RESET needs an old worker".
+        return RESET_MODE_INCONSISTENT
     return RESET_MODE_FIRST_START
 
 

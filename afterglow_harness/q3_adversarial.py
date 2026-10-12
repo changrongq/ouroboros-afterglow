@@ -296,6 +296,17 @@ def _selftest() -> int:
         "qualification_binding_rc12.py" not in _qp.Q3_EXECUTION_CRITICAL)
     chk("A34c B3: exactly 10 Q3 roles", len(_qp.Q3_EXECUTION_CRITICAL) == 10)
 
+    # 凌翼 V5: REAL_RESET contract-prespawn enforcement.
+    from q3_contract import classify_reset_mode, RESET_MODE_INCONSISTENT, RESET_MODE_REAL_RESET
+    chk("A35 V5: clear_action without old worker -> INCONSISTENT",
+        classify_reset_mode(None, lambda m: None) == RESET_MODE_INCONSISTENT)
+    chk("A35b V5: old worker present -> REAL_RESET",
+        classify_reset_mode(123, None) == RESET_MODE_REAL_RESET)
+    chk("A35c V5: neither -> FIRST_START",
+        classify_reset_mode(None, None) == "FIRST_START")
+    chk("A35d V5: INCONSISTENT is a recognised mode",
+        "INCONSISTENT" in __import__("q3_contract").RESET_MODES)
+
     passed = sum(1 for _, ok in results if ok)
     print(f"\nq3_adversarial selftest: {passed}/{len(results)} PASS")
     return 0 if passed == len(results) else 1
