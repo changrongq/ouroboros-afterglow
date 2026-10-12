@@ -1176,10 +1176,15 @@ def _selftest() -> int:
         # FULL_VALID_SUCCESS_PATH result — "all component selftests exit 0" alone
         # does NOT imply the valid path passed. We emit a machine-readable artifact
         # if and only if a REAL run reached valid=True with all required gates.
+        # 知微 P1: bind THIS run's id + the registered profile/version + the exact
+        # gate set, so the consumer can reject stale/malformed artifacts.
         import json as _json
+        from q3_contract import PROFILE_VERSION as _PV
         _fv = {
             "FULL_VALID_SUCCESS_PATH": "PASS" if res.valid is True else "NOT_PASSED",
+            "run_id": os.environ.get("AFTERGLOW_Q3_RUN_ID", ""),
             "profile": res.profile,
+            "profile_version": _PV.get(res.profile, ""),
             "profile_b_ok": res.profile_b_ok,
             "gates": {
                 "clear_ok": res.clear_ok is True, "preserve_ok": res.preserve_ok is True,
@@ -1198,6 +1203,8 @@ def _selftest() -> int:
         chk("FULL_VALID artifact: written", _art.exists())
         chk("FULL_VALID artifact: status recorded",
             _fv["FULL_VALID_SUCCESS_PATH"] in ("PASS", "NOT_PASSED"))
+        chk("FULL_VALID artifact: run_id field present",
+            "run_id" in _fv and _fv["profile_version"] != "")
 
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS

@@ -281,6 +281,37 @@ def restore_dacl(path: Path, saved_text: str) -> bool:
     return r.returncode == 0
 
 
+def restore_dacl_outcome(path: Path, saved_text: str) -> tuple[str, str]:
+    """Like restore_dacl but distinguishes ENVIRONMENT-PRECONDITION failure from a
+    real restore bug (知微 P1 / 凌翼 Q1 classification).
+
+    Returns (outcome, detail) where outcome is one of:
+      "OK"             — restore succeeded
+      "NOT_APPLICABLE" — the caller token lacks the privilege /restore needs
+                         (icacls exit 1300 "not all privileges ... assigned")
+      "FAILED"         — restore genuinely failed for another reason
+    """
+    if not _is_windows():
+        return "OK", "non-Windows: DACL restore not applicable"
+    if not saved_text:
+        return "FAILED", "no saved DACL text"
+    p = Path(path)
+    save_file = p.parent / (p.name + ".aclsave.txt")
+    save_file.write_text(saved_text, encoding="utf-16")
+    r = subprocess.run(["icacls", str(p.parent), "/restore", str(save_file)],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        return "OK", "restore succeeded"
+    msg = ((r.stdout or "") + (r.stderr or "")).strip()
+    low = msg.lower()
+    priv_markers = ("1300", "privilege", "privileges", "权限", "特权")
+    if any(m in low for m in priv_markers):
+        return "NOT_APPLICABLE", (f"icacls /restore rc={r.returncode} — caller token "
+                                  f"lacks the restore privilege (env precondition): {msg[:200]}")
+    return "FAILED", f"icacls /restore rc={r.returncode}: {msg[:200]}"
+
+
+
 # ---------------------------------------------------------------------------
 # Authenticated access witness (Q3-F1)
 # ---------------------------------------------------------------------------
@@ -558,10 +589,17 @@ def _checked_cleanup(path: Path) -> bool:
 
 def _selftest() -> int:
     results = []
+    not_applicable = []      # 知微 P1: environment-precondition tests (env N/A)
 
     def chk(name, cond):
         results.append((name, bool(cond)))
         print(f"[{'PASS' if cond else 'FAIL'}] {name}")
+
+    def na(name, detail):
+        """Mark a test NOT_APPLICABLE (env precondition unmet). NOT a PASS, and
+        NOT a FAIL: it makes the overall selftest exit 2 (SKIP)."""
+        not_applicable.append((name, detail))
+        print(f"[N/A ] {name}  {detail}")
 
     if not _is_windows():
         print("win32_isolation selftest requires Windows")
@@ -591,8 +629,19 @@ def _selftest() -> int:
     w_obs = probe_read_access(run, id2)
     chk("SHAPE: deny by RESTRICTING SID -> observer still reads (GRANTED)",
         w_obs.verdict == ACCESS_GRANTED)
-    # restore the exact DACL and verify
-    chk("DACL: exact restore via saved SDDL verified", restore_dacl(c2, sddl))
+    # restore the exact DACL and verify. 知微 P1: icacls /restore needs SeRestore
+    # privilege; when the caller token is UNELEVATED (Limited, 1300), this is an
+    # ENVIRONMENT PRECONDITION, not a restore bug -> report NOT_APPLICABLE (exit 2),
+    # never a silent PASS and never a hard FAIL.
+    _outcome, _detail = restore_dacl_outcome(c2, sddl)
+    if _outcome == "OK":
+        chk("DACL: exact restore via saved SDDL verified", True)
+    elif _outcome == "NOT_APPLICABLE":
+        na("DACL: exact restore via saved SDDL verified", _detail)
+    else:
+        chk("DACL: exact restore via saved SDDL verified", False)
+        print("   detail:", _detail)
+
 
     # DENIED: deny by MY OWN SID -> my read denied (mechanism works)
     c3 = tmp / "self_denied.bin"; c3.write_bytes(b"self")
@@ -662,8 +711,16 @@ def _selftest() -> int:
     chk("CLEANUP: checked (True on success)", _checked_cleanup(tmp) is True)
 
     passed = sum(1 for _, ok in results if ok)
-    print(f"\nwin32_isolation selftest (V2): {passed}/{len(results)} PASS")
-    return 0 if passed == len(results) else 1
+    # 知微 P1: FAIL dominates; otherwise env-N/A (SKIP) => exit 2; else 0.
+    suffix = ""
+    if not_applicable:
+        suffix = f" [{len(not_applicable)} NOT_APPLICABLE (env precondition)]"
+    print(f"\nwin32_isolation selftest (V2): {passed}/{len(results)} PASS{suffix}")
+    if passed != len(results):
+        return 1
+    if not_applicable:
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

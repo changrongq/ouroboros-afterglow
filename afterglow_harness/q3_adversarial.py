@@ -227,6 +227,49 @@ def _selftest() -> int:
         import shutil
         shutil.rmtree(lk, ignore_errors=True)
 
+    # 知微 P1: FULL_VALID artifact CONSUMER negative regressions (referenced from
+    # the driver's consumer suite, duplicated here as adversarial coverage).
+    import q3_qualify as _q
+    import tempfile as _tf2, json as _json2
+    from q3_contract import ACTIVE_HANDLE_PROFILE as _PROF, PROFILE_VERSION as _PV
+    _orig_here = _q.HERE
+    _tmp2 = Path(_tf2.mkdtemp(prefix="q3_adv_fv_"))
+    _q.HERE = _tmp2
+    _art = _tmp2 / "q3_full_valid_result.json"
+    _rid = "adv-run-1"
+    _gates = {g: True for g in _q.REQUIRED_FULL_VALID_GATES}
+    _good = {"FULL_VALID_SUCCESS_PATH": "PASS", "run_id": _rid, "profile": _PROF,
+             "profile_version": _PV.get(_PROF, ""), "profile_b_ok": True,
+             "gates": dict(_gates)}
+
+    def _cons(d):
+        _art.write_text(_json2.dumps(d), encoding="utf-8")
+        return _q._consume_full_valid(True, _rid)[0]
+    try:
+        chk("A24 FV consumer: good artifact -> PASS", _cons(_good) == "PASS")
+        chk("A25 FV consumer: empty gates -> FAIL",
+            _cons(dict(_good, gates={})) == "FAIL")
+        chk("A26 FV consumer: missing gates -> FAIL",
+            _cons({k: v for k, v in _good.items() if k != "gates"}) == "FAIL")
+        for _b in ("UNEVALUATED", 1, None, "true"):
+            _g = dict(_good); _g["gates"] = dict(_gates); _g["gates"]["access_ok"] = _b
+            chk(f"A27 FV consumer: gate={_b!r} -> FAIL", _cons(_g) == "FAIL")
+        _g = dict(_good); _g["gates"] = dict(_gates); _g["gates"]["access_ok"] = False
+        chk("A28 FV consumer: gate=False -> FAIL", _cons(_g) == "FAIL")
+        chk("A29 FV consumer: wrong profile -> FAIL",
+            _cons(dict(_good, profile="NOPE")) == "FAIL")
+        chk("A30 FV consumer: Profile B not proven -> FAIL",
+            _cons(dict(_good, profile_b_ok=False)) == "FAIL")
+        chk("A31 FV consumer: stale run_id -> FAIL",
+            _cons(dict(_good, run_id="old")) == "FAIL")
+        _art.unlink()
+        chk("A32 FV consumer: missing artifact -> FAIL",
+            _q._consume_full_valid(True, _rid)[0] == "FAIL")
+    finally:
+        import shutil as _sh2
+        _q.HERE = _orig_here
+        _sh2.rmtree(_tmp2, ignore_errors=True)
+
     passed = sum(1 for _, ok in results if ok)
     print(f"\nq3_adversarial selftest: {passed}/{len(results)} PASS")
     return 0 if passed == len(results) else 1
