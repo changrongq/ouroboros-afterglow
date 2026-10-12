@@ -78,6 +78,21 @@ RC11 is the CURRENT CLOSED CANDIDATE; 知微 confirmed closure of all 4 P1 + 2 P
 > 注：RC11 的资格范围仍限于 reference harness 的逻辑层（HARNESS_VALIDATION）；
 > OS 级隔离、真实模型、科学候选仍按既有交付报告声明的后续范围，未在本轮开启。
 
+### RC11 — 睫独立核验 OBS 裁决（凌翼 2026-10-12，REVIEWED_HEAD `68bc80f`）
+
+```text
+OBS-1 = CONFIRMED  (detached 组件名单错位; RC11 冻结字节不动; 附外部勘误)
+OBS-2 = CONFIRMED  (detached_match 子串匹配; 批准 RC12 定向加固)
+OBS-3 = CLOSED     (INDEX.md = 10621 B / CR=0 / LF=121)
+OBS-4 = CURRENTLY NOT REPRODUCED  (仓库 About 已不再显示旧 RC7)
+RC11_PHASE_A = CLOSED / HISTORICAL
+RC11_FROZEN_BYTES = DO NOT MODIFY
+```
+
+- OBS-1 勘误：`../RC11_DETACHED_RECORD_ERRATUM_OBS1_20261012.md`（外部记录，不动冻结字节）。
+- OBS-2 加固：`../RC12_README.md` + `afterglow_harness/qualification_binding_rc12.py`（RC12 候选）。
+- 睫原始签署原件：见下方 **REQ-1**（待提供）。
+
 ---
 
 ## Q3 — OS-level isolation (下一层；NOT frozen)
@@ -97,24 +112,49 @@ RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 | Q3-6 | `给凌翼知微睫钳星_Q3句柄审计_clear_端到端_20261011.md` | BD-62 句柄继承审计 + clear-side + 链整合 |
 | Q3-7 | `给凌翼知微_Q3_BD65_BD66_F2F3F4门禁_20261011.md` | BD-65/BD-66 封堵 + F2/F3/F4 纳入唯一门禁 |
 | Q3-8 | `给凌翼知微_Q3_四缺口修复_P1时序_P1生命周期_P1probe_P2_20261011.md` | P1-1 时序 / P1-2 生命周期 / P1-3 probe 身份 / P2 布尔 |
-| Q3-9 | `给凌翼知微_Q3_probe权限锁补强_旧入口NameError修复_20261011.md` | **probe 有效权限锁 + 旧入口 NameError（最新）** |
+| Q3-9 | `给凌翼知微_Q3_probe权限锁补强_旧入口NameError修复_20261011.md` | probe 有效权限锁 + 旧入口 NameError |
+| Q3-10 | `给凌翼睫_Q3_十步执行令进展_第1-6步完成_20261011.md` | 凌翼 10 步执行令 第 1–6 步 |
+| Q3-11 | `给凌翼睫知微_Q3_第二轮四项P1复现与修复_20261011.md` | 凌翼二轮源码复查 4 项 P1 复现与修复（Profile B 证据链 / 矩阵 / FULL_VALID / DACL+provenance） |
+| Q3-12 | `Q3_INDEPENDENT_REVIEW_RECORD_荣弦_20261011.md` | **独立窗口复核记录**（荣弦，独立主机，Python `D:\Python`）：8 组件全 PASS + FULL_VALID PASS |
+| Q3-13 | `给凌翼睫知微_Q3_知微P1FULL_VALID消费门禁复现修复_20261012.md` | 知微 P1：FULL_VALID 消费门禁严格化（schema/布尔/profile/run-id）+ DACL 权限前提诊断 |
+| Q3-14 | `给凌翼睫知微_Q3RC11_对睫独立核验的回应_20261012.md` | 对睫独立核验签署（RC11 字节+执行）的回应 + 4 条 OBS 处置 |
+
+**Q3 评审请求（凌翼 2026-10-12，REVIEWED_HEAD `68bc80f` 所需原始材料）**：
+
+| 槽位 | 内容 | 状态 |
+|---|---|---|
+| REQ-1 | **睫 2026-10-12 独立核验签署完整原文**（含 OBS-1～4 风险评级、RC11 字节核验命令与执行结果） | **REQUESTED — 待睫/船长提供原件**（仓内仅 Coder 转述） |
+| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | **PENDING — 待荣弦/知微在 `d836ffc`（或更高）用 `AFTERGLOW_PUBLIC_PYTHON` 复跑** |
+
+> REQ-1 / REQ-2 一旦提供，将落位到本目录（`reports/review_history/`）并登记。
+> 不重复提供荣弦 `1db6286` 的既有记录（已在册）。
+
+**RC12（OBS-2 定向加固候选）**：见 `../RC12_README.md` 与
+`afterglow_harness/qualification_binding_rc12.py`（`strict_detached_match`，selftest 8/8）。
+**RC11 冻结字节不动**（OBS-1 勘误见 `../RC11_DETACHED_RECORD_ERRATUM_OBS1_20261012.md`）。
 
 Q3 代码（`afterglow_harness/`）：`win32_isolation.py`、`win32_worker_process.py`、
-`q3_handle_audit.py`、`q3_reset_chain.py`（均自测 PASS，未接入 frozen Phase A）。
+`q3_handle_audit.py`、`q3_reset_chain.py`、`q3_contract.py`、`q3_access_matrix.py`、
+`q3_dacl.py`、`q3_qualify.py`、`q3_adversarial.py`、`q3_provenance.py`（均自测 PASS，未接入 frozen Phase A）。
 
 Q3 状态：
 
 ```text
 Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
-  win32_isolation       21/21 PASS
-  win32_worker_process   4/4 PASS
-  q3_handle_audit        3/3 PASS   (file-identity hardlink + strict positive control)
-  q3_reset_chain        47/47 PASS  (BD-65/66 + F2/F3/F4 + P1/P2 + effective-perm ACL attack)
-  HANDLE-ISOLATION PROFILES: A RUNTIME_HANDLE_AUDIT (needs CLEAN) / B API_NO_INHERIT (preregistered, pending)
-  INDEPENDENT WINDOWS RUN = NOT PERFORMED (by 知微/睫/钳星)
-  STILL OPEN: BD-66 contract binding; probe authority frozen profile; complete VALID success path;
-              unified driver (SKIP!=PASS); cleanup/DACL verify; post-rewrite provenance;
-              executable permission matrix; real-object binding; independent Windows replay
+  q3_access_matrix      14/14 PASS
+  q3_dacl               14/14 PASS
+  q3_adversarial        50/50 PASS   (含知微 P1 FULL_VALID 消费门禁负向回归)
+  q3_provenance         10/10 PASS
+  win32_isolation       21/21 PASS   (未提升令牌主机 -> DACL 项 NOT_APPLICABLE)
+  win32_worker_process   4/4  PASS
+  q3_handle_audit        5/5  PASS
+  q3_reset_chain        85/85 PASS
+  q3_qualify --selftest 17/17 PASS   (FULL_VALID 消费门禁: schema/布尔/profile/run-id)
+  FULL_VALID_SUCCESS_PATH = PASS (profile=API_NO_INHERIT_PROFILE v=1.0; run_id 绑定)
+  Q3_QUALIFICATION = PASS (exit 0)
+  HANDLE-ISOLATION PROFILES: A RUNTIME_HANDLE_AUDIT / B API_NO_INHERIT (ACTIVE=B)
+  INDEPENDENT WINDOWS RUN = PERFORMED (荣弦 1db6286; 知微 1db6286)
+  LATEST-COMMIT EXACT REPLAY (d836ffc) = PENDING (REQ-2)
 ```
 
 > 安全：worker 凭据**不得入库**（运行时 env 注入 `AFTERGLOW_WORKER_PASSWORD`）。
