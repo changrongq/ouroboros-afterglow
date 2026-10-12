@@ -560,6 +560,9 @@ class ResetChainResult:
     clear_verified: object = UNEVALUATED         # B2: targets GONE before new worker
     real_reset_required: object = UNEVALUATED    # B2: a REAL reset was demanded
     real_reset_ok: object = UNEVALUATED          # B2: real reset actually demonstrated
+    reset_mode: str = ""                         # 凌翼 V4: contract reset class
+    reset_old_worker_required: object = UNEVALUATED   # V4: mode requires a prior worker
+    reset_clear_action_required: object = UNEVALUATED  # V4: mode requires a clear action
     s_handoff: bytes | None = None
     s_restored: bytes | None = None
     attestation: "WorkerAttestation | None" = None
@@ -771,29 +774,61 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
 
     deny_read(account, protected)
 
-    # 3b. 凌翼 B2 fix: the RESET ORDER must be 旧 worker 终止 → clear 完成 → 新 worker 启动.
-    #     So the clear action runs HERE — AFTER the old worker is terminated and the
-    #     access is locked, but BEFORE the new worker is spawned. If the clear does not
-    #     COMPLETE (targets still present), we STOP and do NOT start the new worker
-    #     (fail-closed), rather than writing an invalid result after it already ran.
+    # 3b. 凌翼 V4 (B2_PRESPAWN_FAILURE_GATE, BLOCKING): a UNIFIED fail-closed gate
+    #     that runs BEFORE any new worker is created. Motto: "如果 reset 没有成功，
+    #     新的 worker 就不应该开始。" We check, in order:
+    #       (i)   the reset MODE (contract class) and its REQUIREMENTS;
+    #       (ii)  old-worker lifecycle (a REQUIRED prior worker must be proven gone);
+    #       (iii) the clear ACTION is present when REQUIRED, ran, and succeeded;
+    #       (iv)  the clear is VERIFIED complete (targets gone) — and the action that
+    #             removed them ACTUALLY RAN (target-absent != clear-succeeded).
+    #     Any failure => set reason and RETURN (no new worker spawned).
+    from q3_contract import (classify_reset_mode, reset_mode_requirements,
+                             RESET_MODE_REAL_RESET, RESET_MODE_FIRST_START)
+    out.reset_mode = classify_reset_mode(old_worker_pid, clear_action)
+    _req = reset_mode_requirements(out.reset_mode)
+    out.reset_old_worker_required = _req["old_worker_required"]
+    out.reset_clear_action_required = _req["clear_action_required"]
+
+    # (ii) lifecycle: a REQUIRED old worker must be terminated (fail-closed).
+    if out.reset_old_worker_required and out.lifecycle_ok is not True:
+        out.real_reset_required = True
+        out.real_reset_ok = False
+        out.reason = out.reason or "PRESPAWN_STOP: old-worker lifecycle not proven"
+        return out
+
+    # (iii)+(iv) clear: run/verify the clear action per the mode requirements.
     out.clear_action_ran = False
     out.clear_verified = UNEVALUATED
+    if out.reset_clear_action_required and clear_action is None:
+        out.real_reset_required = True
+        out.real_reset_ok = False
+        out.reason = out.reason or "PRESPAWN_STOP: REAL_RESET requires a clear_action"
+        return out
     if clear_action is not None:
+        _raised = False
         try:
             clear_action(clear_targets_by_category)
             out.clear_action_ran = True
         except Exception as e:
+            _raised = True
             out.clear_action_ran = False
             out.reason = out.reason or f"CLEAR_ACTION_FAILED: {type(e).__name__}: {e}"
-        # independent completion check: every declared target must now be GONE
+        # independent completion check: every declared target must now be GONE.
         _map = dict(clear_targets_by_category or {})
         _remaining = [str(t) for t in _map.values() if Path(str(t)).exists()]
-        out.clear_verified = (len(_remaining) == 0)
-        if out.clear_verified is not True:
-            out.reason = out.reason or f"CLEAR_NOT_COMPLETED_BEFORE_NEW_WORKER: {_remaining}"
-            # STOP: do not spawn the new worker if the reset did not complete.
+        out.clear_verified = bool(len(_remaining) == 0 and out.clear_action_ran is True)
+        # 凌翼 V4: target-absent is NOT the same as clear-succeeded. If the action
+        # RAISED (or did not run) the clear is NOT proven, even if targets vanished.
+        if _raised or out.clear_action_ran is not True or out.clear_verified is not True:
             out.real_reset_required = True
             out.real_reset_ok = False
+            out.reason = out.reason or (
+                f"PRESPAWN_STOP: clear not proven "
+                f"(ran={out.clear_action_ran} verified={out.clear_verified} "
+                f"remaining={_remaining} raised={_raised})")
+            if "PRESPAWN_STOP" not in out.reason:
+                out.reason = "PRESPAWN_STOP: " + out.reason
             return out
 
     # 4. bound probe (F4: fixed code, target sha bound, strict verdict schema).
@@ -1386,6 +1421,79 @@ def _selftest() -> int:
         chk("B2: incomplete clear -> new worker NOT started (no attestation)",
             res_b2n.attestation is None)
 
+        # ---- 凌翼 V4 (B2_PRESPAWN_FAILURE_GATE): three failure branches MUST
+        #      block the new worker BEFORE it starts. Each asserts attestation is None.
+        def _mk_branch(tag):
+            dd = d / f"pre_{tag}"; dd.mkdir()
+            prot = dd / "sub.bin"; prot.write_bytes(b"payload")
+            wd = dd / "work"; wd.mkdir()
+            grant(WORKER_ACCOUNT_DEFAULT, wd, "(OI)(CI)(F)")
+            grant(WORKER_ACCOUNT_DEFAULT, dd, "(OI)(CI)(RX)")
+            cmap = {}
+            for cat in REQUIRED_CLEAR_CATEGORIES:
+                pp = dd / f"{tag}_{cat}.bin"; pp.write_bytes(b"x")
+                cmap[cat] = pp
+            return dd, prot, wd, cmap
+
+        # Branch 1: old worker present but lifecycle NOT proven -> stop before spawn.
+        d1b, p1b, w1b, m1b = _mk_branch("lifecycle")
+        res_lc = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w1b, py, p1b,
+                                clear_targets_by_category=m1b, expected_sid=expected_sid,
+                                old_worker_pid=0x7FFFFFF0,          # unobservable pid
+                                terminate_old_worker=lambda p: None,  # no-op terminator
+                                clear_action=lambda mm: [Path(str(t)).unlink(missing_ok=True) for t in mm.values()])
+        chk("V4-B1: old worker lifecycle failed -> INVALID", res_lc.valid is False)
+        chk("V4-B1: old worker lifecycle failed -> new worker NOT started",
+            res_lc.attestation is None)
+        chk("V4-B1: prespawn stop recorded",
+            "PRESPAWN_STOP" in (res_lc.reason or ""))
+
+        # Branch 2: old worker present but NO clear_action -> stop before spawn.
+        d2b, p2b, w2b, m2b = _mk_branch("nocA")
+        res_nc = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w2b, py, p2b,
+                                clear_targets_by_category=m2b, expected_sid=expected_sid,
+                                old_worker_pid=None, terminate_old_worker=None,
+                                clear_action=None)
+        # This is classified FIRST_START (no old worker, no clear) -> not a stop.
+        # To test "REAL_RESET missing clear_action", supply an old worker (proven gone)
+        # via a live-then-killed pid is complex; instead assert the MODE logic directly.
+        chk("V4-B2: FIRST_START (no old worker, no clear) not a REAL_RESET",
+            res_nc.reset_mode == "FIRST_START")
+
+        # Branch 2b: REAL_RESET declared by old worker but clear_action missing -> stop.
+        # Use a genuinely-terminable live process so lifecycle passes.
+        _k32b = __import__("ctypes").windll.kernel32
+        live = subprocess.Popen([py, "-c", "import time;time.sleep(30)"])
+        d2c, p2c, w2c, m2c = _mk_branch("nocB")
+        res_nc2 = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w2c, py, p2c,
+                                 clear_targets_by_category=m2c, expected_sid=expected_sid,
+                                 old_worker_pid=live.pid,
+                                 terminate_old_worker=lambda p: subprocess.run(
+                                     ["taskkill", "/PID", str(p), "/F"], capture_output=True),
+                                 clear_action=None)     # REQUIRED but missing
+        chk("V4-B2: REAL_RESET without clear_action -> INVALID", res_nc2.valid is False)
+        chk("V4-B2: REAL_RESET without clear_action -> new worker NOT started",
+            res_nc2.attestation is None)
+        chk("V4-B2: mode == REAL_RESET", res_nc2.reset_mode == "REAL_RESET")
+
+        # Branch 3: clear_action RAISES but targets already gone (delete then raise) ->
+        # must STOP (target-absent != clear-succeeded).
+        d3b, p3b, w3b, m3b = _mk_branch("raises")
+        def _raise_after_delete(mm):
+            for t in mm.values():
+                Path(str(t)).unlink(missing_ok=True)   # targets become absent...
+            raise RuntimeError("injected clear failure") # ...but the action FAILED
+        res_rz = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, w3b, py, p3b,
+                                clear_targets_by_category=m3b, expected_sid=expected_sid,
+                                old_worker_pid=None, terminate_old_worker=None,
+                                clear_action=_raise_after_delete)
+        chk("V4-B3: clear raised though targets gone -> clear_action_ran False",
+            res_rz.clear_action_ran is False)
+        chk("V4-B3: clear raised though targets gone -> INVALID (no new worker)",
+            res_rz.valid is False and res_rz.attestation is None)
+        chk("V4-B3: clear raised -> prespawn stop recorded",
+            "PRESPAWN_STOP" in (res_rz.reason or ""))
+
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS
         for st in ("HANDLE_AUDIT_UNRESOLVED", "HANDLE_AUDIT_ERROR", "INVALID", None):
@@ -1451,10 +1559,17 @@ def _selftest() -> int:
                                      expected_sid=expected_sid,
                                      old_worker_pid=os.getpid(),
                                      terminate_old_worker=_bad_terminator)
-        chk("P1-1: handoff sampled BEFORE terminate -> corruption seen (preserve False)",
+        # P1-1 intent: the handoff is sampled BEFORE the terminate attempt (so a
+        # terminator that corrupts the object is visible in the handoff baseline).
+        # 凌翼 V4: with the new pre-spawn gate, a non-terminated old worker now
+        # STOPPED the chain before spawning a new worker (fail-closed). We assert
+        # BOTH: handoff captured the pre-corruption bytes, and the chain blocked.
+        chk("P1-1: handoff sampled BEFORE terminate (pre-corruption baseline)",
             res_corrupt.s_handoff == b"canary-before"
-            and res_corrupt.preserve_ok is False
+            and res_corrupt.lifecycle_ok is False
             and res_corrupt.valid is False)
+        chk("P1-1: V4 gate blocked new worker (no attestation)",
+            res_corrupt.attestation is None)
 
         # ---- P1-2 negative: unobservable old worker must NOT be 'terminated' ----
         # open a pid that cannot be opened (bogus) -> must be False, not 'assume gone'

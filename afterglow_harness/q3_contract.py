@@ -182,6 +182,55 @@ REQUIRED_CLEAR_CATEGORIES = (
 CONTRACT_NOT_APPLICABLE_ALLOWED = frozenset()
 
 # ---------------------------------------------------------------------------
+# Reset-mode classification (凌翼 V4: clear necessity must be a CONTRACT CLASS,
+# not decided post-hoc from whether an input happens to be missing)
+# ---------------------------------------------------------------------------
+#
+# 凌翼 Q3 REVIEW V4: "如果清除动作的必需性随首次启动和真实 reset 不同，应在合同里
+# 明确分类，而不是事后从输入是否缺失来决定允许跳过。" and
+# "如果 reset 没有成功，新的 worker 就不应该开始。"
+
+RESET_MODE_FIRST_START = "FIRST_START"       # no prior worker; no clear action expected
+RESET_MODE_REAL_RESET = "REAL_RESET"         # a prior worker + a REQUIRED clear action
+
+#: The only reset modes the contract recognises.
+RESET_MODES = (RESET_MODE_FIRST_START, RESET_MODE_REAL_RESET)
+
+#: Per-mode REQUIREMENTS (machine-consumed by q3_reset_chain's pre-spawn gate):
+#:   old_worker_required   — a live old worker MUST be supplied & proven terminated
+#:   clear_action_required — a clear_action MUST be supplied, run, AND succeed
+#:   clear_verified_required — the declared targets MUST be gone BEFORE the new worker
+RESET_MODE_REQUIREMENTS = {
+    RESET_MODE_FIRST_START: {
+        "old_worker_required": False,
+        "clear_action_required": False,
+        "clear_verified_required": False,
+    },
+    RESET_MODE_REAL_RESET: {
+        "old_worker_required": True,
+        "clear_action_required": True,
+        "clear_verified_required": True,
+    },
+}
+
+
+def classify_reset_mode(old_worker_pid, clear_action) -> str:
+    """凌翼 V4: decide the reset mode from EXPLICIT inputs (contract class).
+
+    A REAL_RESET is declared when the caller supplies an old worker OR a clear
+    action. Otherwise the caller is declaring FIRST_START. The driver then applies
+    the per-mode REQUIREMENTS — it never infers "may skip clear" from a missing
+    input after the fact.
+    """
+    if old_worker_pid is not None or clear_action is not None:
+        return RESET_MODE_REAL_RESET
+    return RESET_MODE_FIRST_START
+
+
+def reset_mode_requirements(mode: str) -> dict:
+    return dict(RESET_MODE_REQUIREMENTS.get(mode, RESET_MODE_REQUIREMENTS[RESET_MODE_REAL_RESET]))
+
+# ---------------------------------------------------------------------------
 # Trusted probe identity (frozen; the worker must not be able to substitute it)
 # ---------------------------------------------------------------------------
 
