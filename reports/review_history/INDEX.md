@@ -91,7 +91,7 @@ RC11_FROZEN_BYTES = DO NOT MODIFY
 
 - OBS-1 勘误：`../RC11_DETACHED_RECORD_ERRATUM_OBS1_20261012.md`（外部记录，不动冻结字节）。
 - OBS-2 加固：`../RC12_README.md` + `afterglow_harness/qualification_binding_rc12.py`（RC12 候选）。
-- 睫原始签署原件：见下方 **REQ-1**（待提供）。
+- 睫原始签署原件：`睫_独立核验签署_20261012.md`（REQ-1，已收）。
 
 ---
 
@@ -118,16 +118,20 @@ RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 | Q3-12 | `Q3_INDEPENDENT_REVIEW_RECORD_荣弦_20261011.md` | **独立窗口复核记录**（荣弦，独立主机，Python `D:\Python`）：8 组件全 PASS + FULL_VALID PASS |
 | Q3-13 | `给凌翼睫知微_Q3_知微P1FULL_VALID消费门禁复现修复_20261012.md` | 知微 P1：FULL_VALID 消费门禁严格化（schema/布尔/profile/run-id）+ DACL 权限前提诊断 |
 | Q3-14 | `给凌翼睫知微_Q3RC11_对睫独立核验的回应_20261012.md` | 对睫独立核验签署（RC11 字节+执行）的回应 + 4 条 OBS 处置 |
+| Q3-15 | `睫_独立核验签署_20261012.md` | **睫独立核验签署原件**（RC11 字节+执行；OBS-1～4；自我更正 BD-67） |
+| Q3-16 | `荣弦复跑原始记录_1db6286_20261012.txt` | **荣弦复跑原始记录**（`1db6286`；有密码 FAIL→改路径 PASS→无密码 NOT_EVALUATED） |
+| Q3-17 | `知微_Windows实机复跑_20261012.md` + `给Coder_知微_Q3实机复跑与权限差异澄清_20261012.md` | **知微实机复跑原件**（`1db6286`；DACL 权限前提澄清 + FULL_VALID 消费 P1） |
 
 **Q3 评审请求（凌翼 2026-10-12，REVIEWED_HEAD `68bc80f` 所需原始材料）**：
 
 | 槽位 | 内容 | 状态 |
 |---|---|---|
-| REQ-1 | **睫 2026-10-12 独立核验签署完整原文**（含 OBS-1～4 风险评级、RC11 字节核验命令与执行结果） | **REQUESTED — 待睫/船长提供原件**（仓内仅 Coder 转述） |
-| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | **PENDING — 待荣弦/知微在 `d836ffc`（或更高）用 `AFTERGLOW_PUBLIC_PYTHON` 复跑** |
+| REQ-1 | **睫 2026-10-12 独立核验签署完整原文**（含 OBS-1～4 风险评级、RC11 字节核验命令与执行结果） | ✅ **RECEIVED**（`睫_独立核验签署_20261012.md`，原件落位） |
+| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | ⚠️ **PARTIAL** — 已收 `1db6286` 的原始记录（`荣弦复跑原始记录_1db6286_20261012.txt`、`知微_Windows实机复跑_20261012.md`、`给Coder_知微_Q3实机复跑与权限差异澄清_20261012.md`）。**但均早于修复后的 `d836ffc`/`ecd7ab4`**：日志显示 adversarial `38/38`、chain `84/84`，且荣弦当时需**手改 Python 路径**（尚未有 `AFTERGLOW_PUBLIC_PYTHON`）。⇒ 仍缺**在固定 `d836ffc`+ commit、用 `AFTERGLOW_PUBLIC_PYTHON`、不改源码字节**的一次独立复跑原始日志。 |
 
-> REQ-1 / REQ-2 一旦提供，将落位到本目录（`reports/review_history/`）并登记。
-> 不重复提供荣弦 `1db6286` 的既有记录（已在册）。
+> REQ-1 已满足（睫原件已落位本目录）。
+> REQ-2 的 `1db6286` 原始件已落位并保留（不删）；仍待**最新 commit** 的**精确字节**独立复跑。
+> 复跑无需改源码：设 `AFTERGLOW_PUBLIC_PYTHON=<本机公共解释器>` 即可。
 
 **RC12（OBS-2 定向加固候选）**：见 `../RC12_README.md` 与
 `afterglow_harness/qualification_binding_rc12.py`（`strict_detached_match`，selftest 8/8）。
