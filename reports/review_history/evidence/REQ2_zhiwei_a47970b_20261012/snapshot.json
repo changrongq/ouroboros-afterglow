@@ -1,0 +1,8 @@
+{
+  "requested_commit": "a47970b",
+  "commit": "a47970b205022b2e15abdca5d2999a13bdb2a1e0",
+  "root": "D:\\qcr\\afterglow-review-a47970b20502",
+  "commit_subject": "Q3 freeze candidate v6 (Lingyi V5 review): REAL_RESET contract-prespawn enforcement FIXED. Contract classify_reset_mode -> INCONSISTENT for clear_action-without-old-worker; gate requires old_worker_pid EXISTS + terminated; required clear-set completeness checked BEFORE new worker. Negatives V5-N1/N2 (attestation None). reset_chain 113->120; adversarial 61->65; new 10-role digest ab12c396.... 6afe56a retained as v5 historical. RC11 MANIFEST unchanged.",
+  "retrieval": "GitHub API pinned SHA and codeload archive",
+  "archive_sha256": "f0504c6fa9580bba4a1cb75a0fc59ecae09943c15a49b3d634b473a5555e018b"
+}

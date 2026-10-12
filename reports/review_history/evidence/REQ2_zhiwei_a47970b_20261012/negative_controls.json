@@ -1,0 +1,28 @@
+{
+  "scope": "Unmodified original component selftest, actual Windows execution",
+  "component_exit_code": 0,
+  "v5_lines": [
+    "[PASS] V5-N1: clear_action w/o old worker -> INCONSISTENT mode",
+    "[PASS] V5-N1: clear_action w/o old worker -> INVALID",
+    "[PASS] V5-N1: clear_action w/o old worker -> new worker NOT started",
+    "[PASS] V5-N1: prespawn stop recorded",
+    "[PASS] V5-N2: missing required clear category -> INVALID",
+    "[PASS] V5-N2: missing required clear category -> new worker NOT started",
+    "[PASS] V5-N2: prespawn stop recorded (required clear set incomplete)"
+  ],
+  "v5_expected_seven_observed": true,
+  "v5_all_pass": true,
+  "v4_lines": [
+    "[PASS] V4-B1: old worker lifecycle failed -> INVALID",
+    "[PASS] V4-B1: old worker lifecycle failed -> new worker NOT started",
+    "[PASS] V4-B1: prespawn stop recorded",
+    "[PASS] V4-B2: FIRST_START (no old worker, no clear) not a REAL_RESET",
+    "[PASS] V4-B2: REAL_RESET without clear_action -> INVALID",
+    "[PASS] V4-B2: REAL_RESET without clear_action -> new worker NOT started",
+    "[PASS] V4-B2: mode == REAL_RESET",
+    "[PASS] V4-B3: clear raised though targets gone -> clear_action_ran False",
+    "[PASS] V4-B3: clear raised though targets gone -> INVALID (no new worker)",
+    "[PASS] V4-B3: clear raised -> prespawn stop recorded"
+  ],
+  "v4_all_observed_pass": true
+}

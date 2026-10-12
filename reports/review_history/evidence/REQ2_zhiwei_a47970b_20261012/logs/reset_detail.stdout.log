@@ -1,0 +1,123 @@
+[PASS] BD-73: contract pin matches current template
+[PASS] BD-73: mismatched hash => validate False
+[PASS] BD-73: empty pin => validate False (fail-closed)
+[PASS] CHAIN: worker pid recorded
+[PASS] F2: wait status == WAIT_OBJECT_0
+[PASS] F2: exit == registered success (0)
+[PASS] F3: worker token SID read from OS object
+[PASS] F3: worker SID != controller SID
+[PASS] F3: worker SID == expected account SID
+[PASS] F4: probe hash matches frozen expected
+[PASS] F4: strict verdict parsed & bound
+[PASS] F3 gate: identity_ok True
+[PASS] PROFILE_B: proof object present (per-field evidence)
+[PASS] PROFILE_B: leak positive control ran (bool)
+[PASS] B1: leak control detail shows positive run (inheriting child)
+[PASS] B1: leak control detail shows negative run (registered API clean)
+[PASS] B1: leak control genuinely passed (ok True)
+[PASS] PROFILE_B: profile_b_ok is computed bool
+[PASS] PROFILE_B: inheritance_prevention_ok == profile_b_ok
+[PASS] PROFILE_B: all-True proof -> ok
+[PASS] PROFILE_B: field registered_creation_api_ok=False -> proof rejected
+[PASS] PROFILE_B: field startupinfo_checked=False -> proof rejected
+[PASS] PROFILE_B: field inheritable_channels_checked=False -> proof rejected
+[PASS] PROFILE_B: field forbidden_handle_noninheritance_proven=False -> proof rejected
+[PASS] PROFILE_B: field leak_positive_control_detected=False -> proof rejected
+[PASS] PROFILE_B: field no_known_forbidden_handle_present=False -> proof rejected
+[PASS] PROFILE_B: missing field -> proof rejected
+[PASS] BD-65: handle_audit recorded (status present)
+[PASS] BD-65: handle_ok matches (audit_ok AND inheritance_prevention_ok)
+[PASS] access_ok True (strict DENIED)
+[PASS] preserve_ok True (independent reads equal)
+[PASS] BD-66 gate: clear_ok True (non-empty + removed)
+[PASS] lifecycle_ok True (no prior worker)
+[PASS] MATRIX: matrix_ok True after real run
+[PASS] DACL: dacl_restore_ok True after real run
+[PASS] FULL_VALID_SUCCESS_PATH: real end-to-end run fully VALID (Profile B)
+[PASS] FULL_VALID_SUCCESS_PATH: every profile gate literally True
+[PASS] FULL_VALID_SUCCESS_PATH: runtime handle audit RECORDED (not FOUND_TARGET)
+[PASS] FULL_VALID_SUCCESS_PATH: audit status recorded (HANDLE_AUDIT_CLEAN)
+[PASS] FULL_VALID artifact: written
+[PASS] FULL_VALID artifact: status recorded
+[PASS] FULL_VALID artifact: run_id field present
+[PASS] B2: clear targets EXIST before reset
+[PASS] B2: old worker is a LIVE process before reset
+[PASS] B2: old worker token SID == afterglow_worker SID
+[PASS] B2: clear ACTION actually ran
+[PASS] B2: clear VERIFIED before new worker (targets gone)
+[PASS] B2: targets GONE after reset (removed by the action)
+[PASS] B2: old worker terminated (real lifecycle)
+[PASS] B2: real_reset_required True
+[PASS] B2: real_reset_ok True (action+verified+lifecycle+clear)
+[PASS] B2: reset reached FULL VALID (real reset path)
+[PASS] B2: no clear_action + no old worker -> real_reset not required (N/A ok)
+[PASS] B2: incomplete clear -> clear_verified False
+[PASS] B2: incomplete clear -> chain INVALID (no new worker)
+[PASS] B2: incomplete clear -> new worker NOT started (no attestation)
+[PASS] V4-B1: old worker lifecycle failed -> INVALID
+[PASS] V4-B1: old worker lifecycle failed -> new worker NOT started
+[PASS] V4-B1: prespawn stop recorded
+[PASS] V4-B2: FIRST_START (no old worker, no clear) not a REAL_RESET
+[PASS] V4-B2: REAL_RESET without clear_action -> INVALID
+[PASS] V4-B2: REAL_RESET without clear_action -> new worker NOT started
+[PASS] V4-B2: mode == REAL_RESET
+[PASS] V4-B3: clear raised though targets gone -> clear_action_ran False
+[PASS] V4-B3: clear raised though targets gone -> INVALID (no new worker)
+[PASS] V4-B3: clear raised -> prespawn stop recorded
+[PASS] V5-N1: clear_action w/o old worker -> INCONSISTENT mode
+[PASS] V5-N1: clear_action w/o old worker -> INVALID
+[PASS] V5-N1: clear_action w/o old worker -> new worker NOT started
+[PASS] V5-N1: prespawn stop recorded
+[PASS] V5-N2: missing required clear category -> INVALID
+[PASS] V5-N2: missing required clear category -> new worker NOT started
+[PASS] V5-N2: prespawn stop recorded (required clear set incomplete)
+[PASS] BD-65: handle status 'HANDLE_AUDIT_UNRESOLVED' -> not pass
+[PASS] BD-65: handle status 'HANDLE_AUDIT_ERROR' -> not pass
+[PASS] BD-65: handle status 'INVALID' -> not pass
+[PASS] BD-65: handle status None -> not pass
+[PASS] BD-65: HANDLE_AUDIT_CLEAN -> pass
+[PASS] BD-66/68: empty clear mapping -> clear_ok False -> invalid
+[PASS] BD-68: missing a required clear CATEGORY -> clear_ok False
+[PASS] BD-68: N/A declared but contract forbids -> clear_ok False
+[PASS] BD-66: present required clear target -> clear_ok False -> invalid
+[PASS] P2: clear_na_declared='UNEVALUATED' (non-bool) -> clear_ok False
+[PASS] P2: clear_na_declared='False' (non-bool) -> clear_ok False
+[PASS] P2: clear_na_declared=1 (non-bool) -> clear_ok False
+[PASS] P2: clear_na_declared=0 (non-bool) -> clear_ok False
+[PASS] P2: clear_na_declared=[] (non-bool) -> clear_ok False
+[PASS] P1-1: handoff sampled BEFORE terminate (pre-corruption baseline)
+[PASS] P1-1: V4 gate blocked new worker (no attestation)
+[PASS] P1-2: unobservable old pid -> lifecycle False (not assume-gone)
+[PASS] P1-2: live old worker + no-op terminator -> False
+[PASS] F4/P1: code dir effective permission verified immutable
+  worker ACL attack: OVERWRITE=PermissionError; APPEND=PermissionError; RENAME=PermissionError; DELETE=PermissionError
+[PASS] F4/P1: worker CANNOT overwrite probe (denied)
+[PASS] F4/P1: worker CANNOT append to probe (denied)
+[PASS] F4/P1: worker CANNOT rename/replace code dir (denied)
+[PASS] F4/P1: worker CANNOT delete probe (denied)
+[PASS] F4: conflicting/unknown schema -> parse None
+[PASS] F4: exact schema -> parsed
+[PASS] F3: sid_differs False -> identity_ok False
+[PASS] F3: exit!=0 -> identity_ok False
+[PASS] F3: create_time==0 -> identity_ok False
+[PASS] F3: sha mismatch -> identity_ok False
+[PASS] F3: all good -> identity_ok True
+[PASS] lifecycle: alive 'old worker' -> not confirmed terminated
+[PASS] preserve: different restored bytes -> not valid
+[PASS] MATRIX: full valid result -> matrix_ok True
+[PASS] MATRIX: matrix_ok False -> valid False despite all else True
+[PASS] MATRIX: matrix_ok default UNEVALUATED -> valid False
+[PASS] DACL: dacl_restore_ok False -> valid False despite all else True
+[PASS] DACL: dacl_restore_ok default UNEVALUATED -> valid False
+[PASS] MATRIX: defective matrix -> chain INVALID (fail-closed)
+[PASS] MATRIX: restored -> canonical validates
+[PASS] DACL: privilege precheck ok
+[PASS] DACL: capture work-dir SDDL
+[PASS] DACL: mutation detected
+[PASS] DACL: exact restore + read-back match
+[PASS] DACL: post-restore SDDL equals captured
+[PASS] CLEANUP: checked_rmtree no residuals
+[PASS] CLEANUP: locked tree -> failure recorded with residuals
+[PASS] CLEANUP: after release -> clean
+
+q3_reset_chain selftest: 120/120 PASS

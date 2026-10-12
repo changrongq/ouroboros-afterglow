@@ -1,0 +1,11 @@
+    MANIFEST_HASH = 78bdb90f7a56b5da0c9b37ce7f454fa98a64530800f9d0727cf773e120e23059
+    detached_match = True
+    registry_vs_manifest_equal = True
+    role_set_equal = True
+    role_hash_ok = True
+    provenance_not_in_critical = True
+    spec_file_matches_frozen = True
+    prereg_file_matches_frozen = True
+    fixture_contract_bound = True
+
+BINDING_INTEGRITY = PASS

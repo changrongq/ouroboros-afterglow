@@ -1,0 +1,81 @@
+{
+  "snapshot": {
+    "requested_commit": "a47970b",
+    "commit": "a47970b205022b2e15abdca5d2999a13bdb2a1e0",
+    "root": "D:\\qcr\\afterglow-review-a47970b20502",
+    "commit_subject": "Q3 freeze candidate v6 (Lingyi V5 review): REAL_RESET contract-prespawn enforcement FIXED. Contract classify_reset_mode -> INCONSISTENT for clear_action-without-old-worker; gate requires old_worker_pid EXISTS + terminated; required clear-set completeness checked BEFORE new worker. Negatives V5-N1/N2 (attestation None). reset_chain 113->120; adversarial 61->65; new 10-role digest ab12c396.... 6afe56a retained as v5 historical. RC11 MANIFEST unchanged.",
+    "retrieval": "GitHub API pinned SHA and codeload archive",
+    "archive_sha256": "f0504c6fa9580bba4a1cb75a0fc59ecae09943c15a49b3d634b473a5555e018b"
+  },
+  "python": "D:\\Python\\python.exe",
+  "python_version": "Python 3.9.8",
+  "admin_token": false,
+  "source_edited": false,
+  "public_python_env": "D:\\Python\\python.exe",
+  "artifact_existed_before_run": false,
+  "runs": [
+    {
+      "name": "binding",
+      "command": [
+        "D:\\Python\\python.exe",
+        "verify_manifest_binding.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-a47970b20502\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 0,
+      "elapsed_s": 0.09,
+      "component_run_id": null,
+      "q3_run_id": null,
+      "full_valid_line": null
+    },
+    {
+      "name": "with_credential",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_qualify.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-a47970b20502\\afterglow_harness",
+      "credential_present": true,
+      "exit_code": 2,
+      "elapsed_s": 161.42,
+      "component_run_id": null,
+      "q3_run_id": "07251e7445b740c0843941551140e5b1",
+      "full_valid_line": "[PASS] FULL_VALID_SUCCESS_PATH  profile=API_NO_INHERIT_PROFILE v=1.0 audit=HANDLE_AUDIT_CLEAN run_id=07251e7445b740c0843941551140e5b1",
+      "artifact_run_id_matches": true
+    },
+    {
+      "name": "reset_detail",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_reset_chain.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-a47970b20502\\afterglow_harness",
+      "credential_present": true,
+      "exit_code": 0,
+      "elapsed_s": 158.75,
+      "component_run_id": "405e9028bc1f44b8bb75a0261d46aa18",
+      "q3_run_id": null,
+      "full_valid_line": "[PASS] FULL_VALID_SUCCESS_PATH: real end-to-end run fully VALID (Profile B)",
+      "artifact_run_id_matches": true
+    },
+    {
+      "name": "without_credential",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_qualify.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-a47970b20502\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 2,
+      "elapsed_s": 1.89,
+      "component_run_id": null,
+      "q3_run_id": "bf0de5b560db4dbf858473dc4b96d2eb",
+      "full_valid_line": "[SKIP] FULL_VALID_SUCCESS_PATH  no credential (valid path not exercised)"
+    }
+  ],
+  "all_snapshot_files_unchanged": true,
+  "snapshot_generated_artifact_excluded_from_source_check": true,
+  "new_files": [
+    "afterglow_harness\\q3_full_valid_result.json"
+  ]
+}

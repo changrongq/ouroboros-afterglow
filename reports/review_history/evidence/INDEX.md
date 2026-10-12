@@ -91,3 +91,16 @@ reports/review_history/evidence/
 - 固定对象：`6afe56a37865e965eebcdb1ee81b5e7c051b2767`（v5 候选）。
 - 计数：`access_matrix 14 · dacl 14 · adversarial 61 · provenance 13 · isolation 21(管理员)/20+N-A(未提升) · worker 4 · audit 5 · reset_chain 113 · consumer 17`。
 - 两种权限上下文**分别如实保留，互不替代**。
+
+---
+
+## V6 复跑证据（固定提交 `a47970b`）
+
+| 目录 | 执行 | 证据层 | 结果 |
+|---|---|---|---|
+| `REQ2_captain_admin_a47970b_20261012/` | 船长（管理员） | `TERMINAL_TEXT` | `Q3_QUALIFICATION = PASS`（run_id `208d760f…`; reset_chain 120/120） |
+| `REQ2_zhiwei_a47970b_20261012/` | 知微（未提升） | `NATIVE_JSON + ORIGINAL_ZIP` | `NOT_EVALUATED`；十角色 **10/10**，digest `ab12c396…`；含 V5-N1/N2 + V4-B1/B2/B3 实机负例 |
+
+- 固定对象：`a47970b205022b2e15abdca5d2999a13bdb2a1e0`（v6 候选）。
+- 计数：`access_matrix 14 · dacl 14 · adversarial 65 · provenance 13 · isolation 21(管理员)/20+N-A(未提升) · worker 4 · audit 5 · reset_chain 120 · consumer 17`。
+- 两种权限上下文**分别如实保留，互不替代**。
