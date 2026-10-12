@@ -120,9 +120,18 @@ def recompute_q3_roles(harness_dir: Path) -> tuple[dict, list]:
 def q3_lineage_digest(harness_dir: Path) -> tuple[str, list]:
     """A single canonical digest over ALL Q3 execution-critical role hashes.
 
+    BD-76 (睫): the lineage-boundary guard MUST run at the GENERATION entry point,
+    not only in the tests that merely prove it exists. If the Q3 role SET has been
+    altered (wrong count / RC12 folded in), we FAIL here — raising — instead of
+    silently emitting a new digest for a mutated set. This is the door the change
+    actually walks through.
+
     Deterministic: roles sorted, joined as '<role> <sha256>\\n', then SHA-256.
     Returns (digest, missing).
     """
+    ok, violations = assert_lineage_boundary()
+    if not ok:
+        raise ValueError(f"LINEAGE_BOUNDARY_VIOLATION (digest not generated): {violations}")
     hashes, missing = recompute_q3_roles(harness_dir)
     if missing:
         return "", missing
@@ -133,9 +142,15 @@ def q3_lineage_digest(harness_dir: Path) -> tuple[str, list]:
 def write_detached_record(harness_dir: Path, out_path: Path) -> str:
     """Write a DETACHED provenance record (roles + raw hashes + lineage digest).
 
+    BD-76 (睫): guard at THIS entry point too — a mutated Q3 role set must not
+    produce a record. Fails closed (raises) before writing anything.
+
     Returns the lineage digest. The record is OUTSIDE the frozen objects (it is
     metadata), so it can be regenerated; it never edits any role file.
     """
+    _ok, _violations = assert_lineage_boundary()
+    if not _ok:
+        raise ValueError(f"LINEAGE_BOUNDARY_VIOLATION (record not written): {_violations}")
     q3_hashes, q3_missing = recompute_q3_roles(harness_dir)
     rc11_hashes, rc11_missing = recompute_rc11_roles(harness_dir)
     digest, _ = q3_lineage_digest(harness_dir)
@@ -205,6 +220,7 @@ def verify_against_record(harness_dir: Path, record_path: Path) -> tuple[bool, l
 # ---------------------------------------------------------------------------
 
 def _selftest() -> int:
+    global Q3_EXECUTION_CRITICAL
     import tempfile
     results = []
 
@@ -226,6 +242,42 @@ def _selftest() -> int:
         "qualification_binding_rc12.py" not in Q3_EXECUTION_CRITICAL)
     chk("B3: RC12 module IS in FOREIGN_LINEAGE_MODULES",
         "qualification_binding_rc12.py" in FOREIGN_LINEAGE_MODULES)
+
+    # BD-76 (睫): the guard must FIRE at the GENERATION entries, not only exist in
+    # the tests. Mutate the Q3 role set and prove digest/record generation FAILS.
+    _orig_roles = Q3_EXECUTION_CRITICAL
+    try:
+        # (a) fold RC12 into the Q3 set -> digest generation must RAISE
+        Q3_EXECUTION_CRITICAL = tuple(_orig_roles) + ("qualification_binding_rc12.py",)
+        _raised = False
+        try:
+            q3_lineage_digest(harness)
+        except ValueError:
+            _raised = True
+        chk("BD-76: mutated set (RC12 folded) -> q3_lineage_digest RAISES", _raised is True)
+        # (b) record write must also RAISE and write NOTHING
+        import tempfile as _tf
+        _rp = Path(_tf.mkdtemp(prefix="bd76_")) / "rec.txt"
+        _raised2 = False
+        try:
+            write_detached_record(harness, _rp)
+        except ValueError:
+            _raised2 = True
+        chk("BD-76: mutated set -> write_detached_record RAISES", _raised2 is True)
+        chk("BD-76: record NOT written on violation", not _rp.exists())
+        # (c) 11-role count alone (drop a real role) also RAISES
+        Q3_EXECUTION_CRITICAL = tuple(_orig_roles)[:-1]
+        _raised3 = False
+        try:
+            q3_lineage_digest(harness)
+        except ValueError:
+            _raised3 = True
+        chk("BD-76: 9-role set -> q3_lineage_digest RAISES", _raised3 is True)
+    finally:
+        Q3_EXECUTION_CRITICAL = _orig_roles
+    chk("BD-76: original set restores and generates",
+        q3_lineage_digest(harness)[0] == q3_lineage_digest(harness)[0]
+        and len(q3_lineage_digest(harness)[0]) == 64)
 
     rc11, rc11_missing = recompute_rc11_roles(harness)
     chk("RC11 roles all present (no drift)", rc11_missing == [])
