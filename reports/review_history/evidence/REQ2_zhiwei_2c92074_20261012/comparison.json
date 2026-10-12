@@ -1,0 +1,8 @@
+{
+  "previous_commit": "a47970b205022b2e15abdca5d2999a13bdb2a1e0",
+  "current_commit": "2c92074a9808b1c9acd5ad5a36cba7a34e472892",
+  "changed_q3_roles": [
+    "q3_provenance.py"
+  ],
+  "other_nine_unchanged": true
+}

@@ -1,0 +1,20 @@
+[PASS] Q3 roles all present
+[PASS] Q3 roles non-empty
+[PASS] B3: Q3 lineage boundary (exactly 10 roles, no RC12)
+[PASS] B3: RC12 module is NOT in Q3_EXECUTION_CRITICAL
+[PASS] B3: RC12 module IS in FOREIGN_LINEAGE_MODULES
+[PASS] BD-76: mutated set (RC12 folded) -> q3_lineage_digest RAISES
+[PASS] BD-76: mutated set -> write_detached_record RAISES
+[PASS] BD-76: record NOT written on violation
+[PASS] BD-76: 9-role set -> q3_lineage_digest RAISES
+[PASS] BD-76: original set restores and generates
+[PASS] RC11 roles all present (no drift)
+[PASS] RC11 recompute covers 20 roles
+[PASS] lineage digest deterministic
+[PASS] record written + digest matches
+[PASS] verify against fresh record -> ok
+[PASS] tampered record detected as CHANGED
+[PASS] record with a DELETED role line detected (missing required)
+[PASS] record with an UNEXPECTED role detected
+
+q3_provenance selftest: 18/18 PASS

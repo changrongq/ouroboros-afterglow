@@ -1,0 +1,22 @@
+{
+  "给Coder_固定2c92074知微资格复跑_20261012.md": "48d23a439a86e37539b4b935c7ca385550dc9efe54bcbc9d365ac0f895295ce1",
+  "snapshot.json": "afa61e2405bbe4328257818ed4c7289b64a37726945b2b29b7c043e44f046dda",
+  "independent_role_hashes.json": "f7c703cfef951b542de1fb3fceee993046d70d75e9660feec7a5130f9daf53ff",
+  "comparison.json": "abb2b52da6bcef71619c2d947e75f3e000bb8f2cbac1720f371e4655e9b60e99",
+  "source_hashes_before.json": "0ac1f6bfacaa4f025ecb8a6b9f07e69d06570ed3bbda288ed86191dc58a0d82e",
+  "results.json": "d1a4960764c216890db6f082a1114fc9d7244cb05ca86143013b186dbd57a9fd",
+  "negative_controls.json": "ecc9cb331df347de441f37292c977cdf50674933a57227063ff71711df9e9be7",
+  "full_valid_with_credential.json": "0f428293961c79d49e2a5d8e7de8a0baecd6c383e45db92c4e8e3eeca039c647",
+  "full_valid_reset_detail.json": "a8fa010c101d98fa0455930737d488e25d3a4d1bde3683a1cf4eeaab8c022efd",
+  "run_replay.py": "807d7b004d8c94b07672f072628053ef0da794a2b70eb5ae70b110ec49e5b08a",
+  "logs/binding.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/binding.stdout.log": "88800b22d62b7e53538c4eeb3220bed48d3d76a02f2e7cf4be79a58813e22ed1",
+  "logs/provenance_detail.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/provenance_detail.stdout.log": "649839e50d290bd040589271884491d1529e09d0bd373f4bde84394e6484a89a",
+  "logs/reset_detail.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/reset_detail.stdout.log": "6381a2e49dde0216529c9cb5364354016d7ba210aed55bc47f6ab856660ba233",
+  "logs/with_credential.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/with_credential.stdout.log": "cf8508b736b78ee2b9f1fbbdd78ef785b3208af620c4837afea11432ba154cb6",
+  "logs/without_credential.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/without_credential.stdout.log": "1ae15bc4b440dd0552d2f0912aa534481b0fea41b10060058c329c583445dc97"
+}

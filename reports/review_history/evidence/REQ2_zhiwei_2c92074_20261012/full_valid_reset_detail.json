@@ -1,0 +1,22 @@
+{
+  "FULL_VALID_SUCCESS_PATH": "PASS",
+  "gates": {
+    "access_ok": true,
+    "clear_ok": true,
+    "dacl_restore_ok": true,
+    "handle_ok": true,
+    "identity_ok": true,
+    "lifecycle_ok": true,
+    "matrix_ok": true,
+    "preserve_ok": true
+  },
+  "pre_reset_observed": "READ=GRANTED",
+  "profile": "API_NO_INHERIT_PROFILE",
+  "profile_b_ok": true,
+  "profile_version": "1.0",
+  "run_id": "865f67d96fb049e6b1a843efcdf05a37",
+  "run_nonce": "c77dbd00018b475eb6473a05c6234a1f",
+  "runtime_handle_audit_status": "HANDLE_AUDIT_CLEAN",
+  "worker_pid": 35048,
+  "worker_sid": "S-1-5-21-1435817774-958721018-1488588540-1021"
+}

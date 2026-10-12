@@ -104,3 +104,16 @@ reports/review_history/evidence/
 - 固定对象：`a47970b205022b2e15abdca5d2999a13bdb2a1e0`（v6 候选）。
 - 计数：`access_matrix 14 · dacl 14 · adversarial 65 · provenance 13 · isolation 21(管理员)/20+N-A(未提升) · worker 4 · audit 5 · reset_chain 120 · consumer 17`。
 - 两种权限上下文**分别如实保留，互不替代**。
+
+---
+
+## BD-76 复跑证据（固定提交 `2c92074`）
+
+| 目录 | 执行 | 证据层 | 结果 |
+|---|---|---|---|
+| `REQ2_captain_admin_2c92074_20261012/` | 船长（管理员） | `TERMINAL_TEXT` | `Q3_QUALIFICATION = PASS`（run_id `6a87237e…`; provenance 18/18, reset_chain 120/120） |
+| `REQ2_zhiwei_2c92074_20261012/` | 知微（未提升） | `NATIVE_JSON + ORIGINAL_ZIP` | `NOT_EVALUATED`；十角色 **10/10**，digest `45034911…`；含 **BD-76 五条** + V5-N1/N2 + V4-B1/B2/B3 实机负例；comparison 证明仅 provenance 变更 |
+
+- 固定对象：`2c92074a9808b1c9acd5ad5a36cba7a34e472892`（BD-76 修复后）。
+- 计数：`adversarial 65 · provenance 18 · reset_chain 120 · isolation 21(管理员)/20+N-A(未提升) · consumer 17`。
+- 两种权限上下文**分别如实保留，互不替代**。

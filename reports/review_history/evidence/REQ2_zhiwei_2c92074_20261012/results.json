@@ -1,0 +1,95 @@
+{
+  "snapshot": {
+    "requested_commit": "2c92074",
+    "commit": "2c92074a9808b1c9acd5ad5a36cba7a34e472892",
+    "root": "D:\\qcr\\afterglow-review-2c92074a9808",
+    "commit_subject": "BD-76 fixed (睫, via 钳星): lineage-boundary guard was installed at 'proof of existence' sites (selftest, adversarial A34) but NOT at the GENERATION entries. Now assert_lineage_boundary() runs at q3_lineage_digest() and write_detached_record() entry -> mutating the Q3 role set FAILS digest/record generation (raises, writes nothing). Negatives added; provenance 13->18. New q3_provenance.py c0a91926...; new 10-role digest 45034911.... Other 9 roles unchanged. RC11 MANIFEST unchanged.",
+    "retrieval": "GitHub API pinned SHA and codeload archive",
+    "archive_sha256": "cdd4ca96e5b63f33ce0bfbf9cc589f82d77900fc5e6c57f9072a68c5f63be9ca"
+  },
+  "python": "D:\\Python\\python.exe",
+  "python_version": "Python 3.9.8",
+  "admin_token": false,
+  "source_edited": false,
+  "public_python_env": "D:\\Python\\python.exe",
+  "artifact_existed_before_run": false,
+  "runs": [
+    {
+      "name": "binding",
+      "command": [
+        "D:\\Python\\python.exe",
+        "verify_manifest_binding.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-2c92074a9808\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 0,
+      "elapsed_s": 0.11,
+      "component_run_id": null,
+      "q3_run_id": null,
+      "full_valid_line": null
+    },
+    {
+      "name": "with_credential",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_qualify.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-2c92074a9808\\afterglow_harness",
+      "credential_present": true,
+      "exit_code": 2,
+      "elapsed_s": 165.36,
+      "component_run_id": null,
+      "q3_run_id": "ecf37248756346cdaeb35e73eb6aab11",
+      "full_valid_line": "[PASS] FULL_VALID_SUCCESS_PATH  profile=API_NO_INHERIT_PROFILE v=1.0 audit=HANDLE_AUDIT_CLEAN run_id=ecf37248756346cdaeb35e73eb6aab11",
+      "artifact_run_id_matches": true
+    },
+    {
+      "name": "reset_detail",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_reset_chain.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-2c92074a9808\\afterglow_harness",
+      "credential_present": true,
+      "exit_code": 0,
+      "elapsed_s": 163.61,
+      "component_run_id": "865f67d96fb049e6b1a843efcdf05a37",
+      "q3_run_id": null,
+      "full_valid_line": "[PASS] FULL_VALID_SUCCESS_PATH: real end-to-end run fully VALID (Profile B)",
+      "artifact_run_id_matches": true
+    },
+    {
+      "name": "provenance_detail",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_provenance.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-2c92074a9808\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 0,
+      "elapsed_s": 0.28,
+      "component_run_id": null,
+      "q3_run_id": null,
+      "full_valid_line": null
+    },
+    {
+      "name": "without_credential",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_qualify.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-review-2c92074a9808\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 2,
+      "elapsed_s": 2.05,
+      "component_run_id": null,
+      "q3_run_id": "3f53726ecf7b40109ab8edb76195e87d",
+      "full_valid_line": "[SKIP] FULL_VALID_SUCCESS_PATH  no credential (valid path not exercised)"
+    }
+  ],
+  "all_snapshot_files_unchanged": true,
+  "snapshot_generated_artifact_excluded_from_source_check": true,
+  "new_files": [
+    "afterglow_harness\\q3_full_valid_result.json"
+  ]
+}

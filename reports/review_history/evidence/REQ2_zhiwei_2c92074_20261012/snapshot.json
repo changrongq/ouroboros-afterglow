@@ -1,0 +1,8 @@
+{
+  "requested_commit": "2c92074",
+  "commit": "2c92074a9808b1c9acd5ad5a36cba7a34e472892",
+  "root": "D:\\qcr\\afterglow-review-2c92074a9808",
+  "commit_subject": "BD-76 fixed (睫, via 钳星): lineage-boundary guard was installed at 'proof of existence' sites (selftest, adversarial A34) but NOT at the GENERATION entries. Now assert_lineage_boundary() runs at q3_lineage_digest() and write_detached_record() entry -> mutating the Q3 role set FAILS digest/record generation (raises, writes nothing). Negatives added; provenance 13->18. New q3_provenance.py c0a91926...; new 10-role digest 45034911.... Other 9 roles unchanged. RC11 MANIFEST unchanged.",
+  "retrieval": "GitHub API pinned SHA and codeload archive",
+  "archive_sha256": "cdd4ca96e5b63f33ce0bfbf9cc589f82d77900fc5e6c57f9072a68c5f63be9ca"
+}

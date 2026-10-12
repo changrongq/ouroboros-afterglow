@@ -1,0 +1,56 @@
+REQ-2 (BD-76 / 2c92074) 管理员环境复跑 — 原始终端输出（船长 / 荣弦）
+固定提交 = 2c92074a9808b1c9acd5ad5a36cba7a34e472892
+日期 = 2026-10-12
+说明 = 逐字登记船长提供的原始 PowerShell 输出；仅设 AFTERGLOW_PUBLIC_PYTHON（环境变量），未改任何源码字节。
+
+PS D:\qcr\ouroboros-afterglow\afterglow_harness>   python verify_manifest_binding.py
+    MANIFEST_HASH = 78bdb90f7a56b5da0c9b37ce7f454fa98a64530800f9d0727cf773e120e23059
+    detached_match = True
+    registry_vs_manifest_equal = True
+    role_set_equal = True
+    role_hash_ok = True
+    provenance_not_in_critical = True
+    spec_file_matches_frozen = True
+    prereg_file_matches_frozen = True
+    fixture_contract_bound = True
+
+BINDING_INTEGRITY = PASS
+PS D:\qcr\ouroboros-afterglow\afterglow_harness>  python q3_qualify.py
+========================================================================
+Q3 QUALIFICATION — single driver
+========================================================================
+Q3_RUN_ID = 6a87237eaca74a99b966b804fbef7625
+[PASS] q3_access_matrix.py  q3_access_matrix selftest: 14/14 PASS
+[PASS] q3_dacl.py  q3_dacl selftest: 14/14 PASS
+[PASS] q3_adversarial.py  q3_adversarial selftest: 65/65 PASS
+[PASS] q3_provenance.py  q3_provenance selftest: 18/18 PASS
+[PASS] win32_isolation.py  win32_isolation selftest (V2): 21/21 PASS
+[PASS] win32_worker_process.py  win32_worker_process selftest: 4/4 PASS
+[PASS] q3_handle_audit.py  q3_handle_audit selftest: 5/5 PASS
+[PASS] q3_reset_chain.py  q3_reset_chain selftest: 120/120 PASS
+[PASS] q3_qualify.py --selftest  q3_qualify(full-valid consumer) selftest: 17/17 PASS
+[PASS] FULL_VALID_SUCCESS_PATH  profile=API_NO_INHERIT_PROFILE v=1.0 audit=HANDLE_AUDIT_CLEAN run_id=6a87237eaca74a99b966b804fbef7625
+========================================================================
+Q3_QUALIFICATION = PASS
+PS D:\qcr\ouroboros-afterglow\afterglow_harness> Remove-Item Env:\AFTERGLOW_WORKER_PASSWORD
+PS D:\qcr\ouroboros-afterglow\afterglow_harness>  python q3_qualify.py
+========================================================================
+Q3 QUALIFICATION — single driver
+========================================================================
+NOTE: AFTERGLOW_WORKER_PASSWORD not set; credential-dependent modules will SKIP (NOT counted as PASS).
+Q3_RUN_ID = 1a1809c2d6e84c4ba43e853fadeb1a0d
+[PASS] q3_access_matrix.py  q3_access_matrix selftest: 14/14 PASS
+[PASS] q3_dacl.py  q3_dacl selftest: 14/14 PASS
+[PASS] q3_adversarial.py  q3_adversarial selftest: 65/65 PASS
+[PASS] q3_provenance.py  q3_provenance selftest: 18/18 PASS
+[PASS] win32_isolation.py  win32_isolation selftest (V2): 21/21 PASS
+[SKIP] win32_worker_process.py  no credential
+[PASS] q3_handle_audit.py  q3_handle_audit selftest: 5/5 PASS
+[SKIP] q3_reset_chain.py  no credential
+[PASS] q3_qualify.py --selftest  q3_qualify(full-valid consumer) selftest: 17/17 PASS
+[SKIP] FULL_VALID_SUCCESS_PATH  no credential (valid path not exercised)
+========================================================================
+Q3_QUALIFICATION = NOT_EVALUATED (SKIP present; NOT a pass)
+  A SKIP here usually means an ENVIRONMENT PRECONDITION was not met
+  (no credential, or the calling account cannot CreateProcessWithLogonW
+  e.g. running as nt authority\system). This is NOT a security result.
