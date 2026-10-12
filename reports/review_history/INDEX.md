@@ -171,3 +171,16 @@ Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
 
 > 安全：worker 凭据**不得入库**（运行时 env 注入 `AFTERGLOW_WORKER_PASSWORD`）。
 > 曾误将口令写入代码/报告——已轮换并经 `filter-repo` 清除历史（详见 Q3-5）。
+
+---
+
+## Q3 DESIGN FREEZE — REGISTERED（2026-10-12）
+
+凌翼 `Q3_DESIGN_FREEZE = AUTHORIZED`（REVIEWED_HEAD `8d09e62`）。
+
+- **登记**: `../frozen/Q3_DESIGN_FREEZE_REGISTRATION_20261012.md`
+- **冻结引用（detached，不可随意移动）**: `../frozen/Q3_FROZEN_REFERENCE_2c92074.txt`
+- **机器可读角色表**: `../frozen/Q3_FROZEN_ROLES_2c92074.json`
+- **验证器**: `../../afterglow_harness/verify_q3_freeze.py`（`Q3_FROZEN_IDENTITY = OK`）
+- **FROZEN_CODE_COMMIT** = `2c92074a9808b1c9acd5ad5a36cba7a34e472892`；**10 角色**；**DIGEST** = `450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36`
+- 自此刻起 **10 个 Q3 冻结源码不得修改**；`SCIENTIFIC_EXECUTION = MAY NOT START`。
