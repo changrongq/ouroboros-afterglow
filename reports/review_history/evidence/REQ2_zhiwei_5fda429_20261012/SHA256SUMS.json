@@ -1,0 +1,14 @@
+{
+  "给Coder_REQ2当前提交复跑_20261012.md": "ca3b2e8ffaa2d5819e612e9f64b27e79d87f0790ea92e887104f9dccb356d78e",
+  "snapshot.json": "3fc7da71827861d7e895ac0502e150e1ee781c08282895dc15c5d689aff85c93",
+  "results.json": "18c86027395eb6f5e278cf9fe52b6b368a235defe628103e3bdffe3a57dadd31",
+  "source_hashes_before.json": "b072e04435fed7455eede5398464f2d787cb5c61c11d7fe1bdafacb38b5890da",
+  "full_valid_with_credential.json": "89a4f2bd1c6ae92428136ab8c1ed8d0d00e3d9a686272b16de2c64c256622fef",
+  "run_req2.py": "364ef4381b46b37c5fecbdfeaf2e9e1d50b8c92c024d13fe4a20afeb34a2f35f",
+  "logs/binding.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/binding.stdout.log": "88800b22d62b7e53538c4eeb3220bed48d3d76a02f2e7cf4be79a58813e22ed1",
+  "logs/with_credential.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/with_credential.stdout.log": "7f3ca199834e836f40b92243b69f7f56f3eedcb89cdb09f5f7cefc6d91f3ae88",
+  "logs/without_credential.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/without_credential.stdout.log": "cd6a528274e2e872fdf12dda4eee0e93deaf3d1fee98a1d32311a58efc3abf98"
+}

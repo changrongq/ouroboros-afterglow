@@ -1,0 +1,60 @@
+{
+  "snapshot": {
+    "commit": "5fda4298772a69d850d0d3bfe898c5cce546dcc8",
+    "root": "D:\\qcr\\afterglow-req2-5fda4298772a",
+    "commit_subject": "Q3 review materials: file Jie original signed report (REQ-1 RECEIVED), Rongxian raw replay log @1db6286, Zhiwei Windows replay @1db6286 + permission clarification. INDEX.md: REQ-1 RECEIVED; REQ-2 PARTIAL (originals predate d836ffc; still need latest-commit byte-exact replay via AFTERGLOW_PUBLIC_PYTHON). RC11 MANIFEST unchanged.",
+    "retrieval": "GitHub API pinned SHA and codeload archive; git transport unavailable"
+  },
+  "python": "D:\\Python\\python.exe",
+  "python_version": "Python 3.9.8",
+  "admin_token": false,
+  "source_edited": false,
+  "public_python_env": "D:\\Python\\python.exe",
+  "artifact_existed_before_run": false,
+  "runs": [
+    {
+      "name": "binding",
+      "command": [
+        "D:\\Python\\python.exe",
+        "verify_manifest_binding.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-req2-5fda4298772a\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 0,
+      "elapsed_s": 0.12,
+      "q3_run_id": null,
+      "full_valid_line": null
+    },
+    {
+      "name": "with_credential",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_qualify.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-req2-5fda4298772a\\afterglow_harness",
+      "credential_present": true,
+      "exit_code": 2,
+      "elapsed_s": 41.31,
+      "q3_run_id": "2d17082df94649f199945f6ecc0acc57",
+      "full_valid_line": "[PASS] FULL_VALID_SUCCESS_PATH  profile=API_NO_INHERIT_PROFILE v=1.0 audit=HANDLE_AUDIT_CLEAN run_id=2d17082df94649f199945f6ecc0acc57",
+      "artifact_run_id_matches": true
+    },
+    {
+      "name": "without_credential",
+      "command": [
+        "D:\\Python\\python.exe",
+        "q3_qualify.py"
+      ],
+      "cwd": "D:\\qcr\\afterglow-req2-5fda4298772a\\afterglow_harness",
+      "credential_present": false,
+      "exit_code": 2,
+      "elapsed_s": 3.44,
+      "q3_run_id": "92a1c997ecad4b2aa46be943e75ce7a0",
+      "full_valid_line": "[SKIP] FULL_VALID_SUCCESS_PATH  no credential (valid path not exercised)"
+    }
+  ],
+  "all_snapshot_files_unchanged": true,
+  "new_files": [
+    "afterglow_harness\\q3_full_valid_result.json"
+  ]
+}

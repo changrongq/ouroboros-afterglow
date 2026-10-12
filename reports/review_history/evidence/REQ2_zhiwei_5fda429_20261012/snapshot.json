@@ -1,0 +1,6 @@
+{
+  "commit": "5fda4298772a69d850d0d3bfe898c5cce546dcc8",
+  "root": "D:\\qcr\\afterglow-req2-5fda4298772a",
+  "commit_subject": "Q3 review materials: file Jie original signed report (REQ-1 RECEIVED), Rongxian raw replay log @1db6286, Zhiwei Windows replay @1db6286 + permission clarification. INDEX.md: REQ-1 RECEIVED; REQ-2 PARTIAL (originals predate d836ffc; still need latest-commit byte-exact replay via AFTERGLOW_PUBLIC_PYTHON). RC11 MANIFEST unchanged.",
+  "retrieval": "GitHub API pinned SHA and codeload archive; git transport unavailable"
+}
