@@ -1,0 +1,90 @@
+{
+  "commit": "6afe56a37865e965eebcdb1ee81b5e7c051b2767",
+  "role_count": 10,
+  "all_roles_match": true,
+  "computed_digest": "10c4548e6192490aafc156e0d354c2ace93334bcfddb1d9c4d2e71cd5292ccc6",
+  "declared_digest": "10c4548e6192490aafc156e0d354c2ace93334bcfddb1d9c4d2e71cd5292ccc6",
+  "digest_match": true,
+  "roles": [
+    {
+      "role": "q3_contract.py",
+      "actual_bytes": 13460,
+      "expected_bytes": 13460,
+      "sha256": "90a136065ad38fe72c143fef347096eff929fdd67c45a88034f5f14323959ff5",
+      "expected_sha256": "90a136065ad38fe72c143fef347096eff929fdd67c45a88034f5f14323959ff5",
+      "matches": true
+    },
+    {
+      "role": "q3_access_matrix.py",
+      "actual_bytes": 14221,
+      "expected_bytes": 14221,
+      "sha256": "f9f6969516a25c64964430967654662d82645d9d6557d9b983e917a0e6c10a1f",
+      "expected_sha256": "f9f6969516a25c64964430967654662d82645d9d6557d9b983e917a0e6c10a1f",
+      "matches": true
+    },
+    {
+      "role": "q3_dacl.py",
+      "actual_bytes": 16085,
+      "expected_bytes": 16085,
+      "sha256": "d2a0c58ac0a9f54da0dad5a158113bef4af1b08475d7bf58940b54c65f745dad",
+      "expected_sha256": "d2a0c58ac0a9f54da0dad5a158113bef4af1b08475d7bf58940b54c65f745dad",
+      "matches": true
+    },
+    {
+      "role": "q3_handle_audit.py",
+      "actual_bytes": 17116,
+      "expected_bytes": 17116,
+      "sha256": "7abfa23364dbdaf8268b824b96d852b9567c1d25976d065a534c68e6b3505591",
+      "expected_sha256": "7abfa23364dbdaf8268b824b96d852b9567c1d25976d065a534c68e6b3505591",
+      "matches": true
+    },
+    {
+      "role": "q3_reset_chain.py",
+      "actual_bytes": 91193,
+      "expected_bytes": 91193,
+      "sha256": "4278e314485aa9d87709215b12d1f46827b80295c6a41369dcad22191c29b1e2",
+      "expected_sha256": "4278e314485aa9d87709215b12d1f46827b80295c6a41369dcad22191c29b1e2",
+      "matches": true
+    },
+    {
+      "role": "win32_isolation.py",
+      "actual_bytes": 30287,
+      "expected_bytes": 30287,
+      "sha256": "9108066fda402ac137aaa7ce258e7fb9349b59f37950f5a3f8f82d88c7dace7b",
+      "expected_sha256": "9108066fda402ac137aaa7ce258e7fb9349b59f37950f5a3f8f82d88c7dace7b",
+      "matches": true
+    },
+    {
+      "role": "win32_worker_process.py",
+      "actual_bytes": 26530,
+      "expected_bytes": 26530,
+      "sha256": "9c8fbd93d82d7aa6b5c212ddfa5274f1384d89ba2c4520c37edf49ecb1e40915",
+      "expected_sha256": "9c8fbd93d82d7aa6b5c212ddfa5274f1384d89ba2c4520c37edf49ecb1e40915",
+      "matches": true
+    },
+    {
+      "role": "q3_qualify.py",
+      "actual_bytes": 13653,
+      "expected_bytes": 13653,
+      "sha256": "804101a45e3598b20b1c240d0f6aca8f03f023f4af456b87dc7895f70cac9b69",
+      "expected_sha256": "804101a45e3598b20b1c240d0f6aca8f03f023f4af456b87dc7895f70cac9b69",
+      "matches": true
+    },
+    {
+      "role": "q3_adversarial.py",
+      "actual_bytes": 16045,
+      "expected_bytes": 16045,
+      "sha256": "344daf77b0825da08cd7978eb6b24c0071178d188794347e09a4997421d6a308",
+      "expected_sha256": "344daf77b0825da08cd7978eb6b24c0071178d188794347e09a4997421d6a308",
+      "matches": true
+    },
+    {
+      "role": "q3_provenance.py",
+      "actual_bytes": 11369,
+      "expected_bytes": 11369,
+      "sha256": "a0a89f3c140e500216b58d90687a006d2888f90b3e2143c0c21e4fb5e79ba5f0",
+      "expected_sha256": "a0a89f3c140e500216b58d90687a006d2888f90b3e2143c0c21e4fb5e79ba5f0",
+      "matches": true
+    }
+  ]
+}

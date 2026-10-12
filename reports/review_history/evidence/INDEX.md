@@ -78,3 +78,16 @@ reports/review_history/evidence/
 - 知微包 `SHA256SUMS.json`：**12/12 匹配**（复核通过）。
 - 全目录口令扫描：**无字面命中**（仅变量名）。
 - 本目录为**只读归档**；不修改任何 Q3 执行源码。
+
+---
+
+## V5 复跑证据（固定提交 `6afe56a`）
+
+| 目录 | 执行 | 证据层 | 结果 |
+|---|---|---|---|
+| `REQ2_captain_admin_6afe56a_20261012/` | 船长（管理员） | `TERMINAL_TEXT` | `Q3_QUALIFICATION = PASS`（run_id `7fb2b985…`） |
+| `REQ2_zhiwei_6afe56a_20261012/` | 知微（未提升） | `NATIVE_JSON + ORIGINAL_ZIP` | `NOT_EVALUATED`；十角色 **10/10 匹配**，digest `10c4548e…` |
+
+- 固定对象：`6afe56a37865e965eebcdb1ee81b5e7c051b2767`（v5 候选）。
+- 计数：`access_matrix 14 · dacl 14 · adversarial 61 · provenance 13 · isolation 21(管理员)/20+N-A(未提升) · worker 4 · audit 5 · reset_chain 113 · consumer 17`。
+- 两种权限上下文**分别如实保留，互不替代**。

@@ -1,0 +1,8 @@
+{
+  "requested_commit": "6afe56a",
+  "commit": "6afe56a37865e965eebcdb1ee81b5e7c051b2767",
+  "root": "D:\\qcr\\afterglow-review-6afe56a37865",
+  "commit_subject": "Q3 freeze candidate v5 (Lingyi V4 review): UNIFIED pre-spawn failure gate -- before ANY new worker is created, check (i) reset-mode contract requirements (ii) old-worker lifecycle (iii) required clear_action present+ran (iv) clear verified complete (action actually ran; target-absent != cleared). Any failure => PRESPAWN_STOP, return, NO new worker. Clear-necessity is now a CONTRACT CLASS (FIRST_START vs REAL_RESET), not post-hoc. 3 negative regressions assert attestation is None. reset_chain 102->113; new 10-role digest 10c4548e... RC11 MANIFEST unchanged.",
+  "retrieval": "GitHub API pinned SHA and codeload archive",
+  "archive_sha256": "3b588c05877a3de7030704ee7940f2f34ceefac17e696830a14383f63c03bc32"
+}

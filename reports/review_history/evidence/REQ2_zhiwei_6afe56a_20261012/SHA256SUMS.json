@@ -1,0 +1,15 @@
+{
+  "给Coder_固定6afe56a复跑记录_20261012.md": "3fcab806afff53c572fa30ea71eb214f346fa6ba4ff32d1801c668468135e858",
+  "snapshot.json": "8804da939d32ce7b80eab6b9b565cb8a49f73d3f6e6a493b9fe1bcfa2cf2d711",
+  "independent_role_hashes.json": "c87a567308978fba4e2034e91243f345ad11f4110e93d0495433c0206e37c984",
+  "source_hashes_before.json": "146a7b25e36ee1a84e175565da1c64dd550c6f08029c94f5935d3cffe1dda2ac",
+  "results.json": "599176b7be5e2ec7b8ac63419fff326f0ef95dc3a0cf7213e7cc3cd333e19e65",
+  "full_valid_with_credential.json": "db9c7ec3566395618972b87d5c51d8c978287933fd808624ea8c488352939818",
+  "run_fixed_replay.py": "327dd9c291e664ad23f915bae9087b96b0b7448b3145d50f2e2a0deee2cad646",
+  "logs/binding.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/binding.stdout.log": "88800b22d62b7e53538c4eeb3220bed48d3d76a02f2e7cf4be79a58813e22ed1",
+  "logs/with_credential.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/with_credential.stdout.log": "825fd05d8d78a9d6e02b158da940da417b0811dd1b362010156944ec118d227f",
+  "logs/without_credential.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "logs/without_credential.stdout.log": "fccbb113d58e7467ce540d5b1388808f1b07a928c608160cd41bb6fc936d4362"
+}

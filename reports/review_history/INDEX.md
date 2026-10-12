@@ -130,9 +130,9 @@ RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 | 槽位 | 内容 | 状态 |
 |---|---|---|
 | REQ-1 | **睫 2026-10-12 独立核验签署完整原文**（含 OBS-1～4 风险评级、RC11 字节核验命令与执行结果） | ✅ **RECEIVED**（`睫_独立核验签署_20261012.md`，原件落位） |
-| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | ✅ **RECEIVED**（当前固定提交 `5fda429`）— 管理员轮：`REQ2_当前提交复跑_船长管理员_5fda429_20261012.md`（完整 **PASS**，run_id `f1e7d604…`）；未提升轮：`知微_REQ2当前提交复跑_5fda429_20261012.md`（`NOT_EVALUATED`，唯一未评估项=旧 DACL 恢复权限前提）。两轮计数 `50/50 · 85/85 · 17/17` 与 `5fda429` 代码吻合；**未改源码字节**（仅 `AFTERGLOW_PUBLIC_PYTHON`）。 |
+| REQ-2 | **最新固定 commit 的独立 Windows 复跑原始日志**（`q3_qualify` 输出、run-id、FULL_VALID 产物、Profile B 六字段、真实 FAIL/SKIP） | ✅ **RECEIVED**（多轮）— `5fda429`：管理员 `REQ2_当前提交复跑_船长管理员_5fda429_20261012.md`（PASS，run_id `f1e7d604…`）+ 知微 `知微_REQ2当前提交复跑_5fda429_20261012.md`（NOT_EVALUATED）。**`6afe56a`（v5）**：船长 `evidence/REQ2_captain_admin_6afe56a_20261012/`（**PASS**，run_id `7fb2b985…`）+ 知微 `evidence/REQ2_zhiwei_6afe56a_20261012/`（**NOT_EVALUATED**；`independent_role_hashes` 十角色 **10/10 匹配**，digest `10c4548e…`）。两轮均**未改源码字节**（仅 `AFTERGLOW_PUBLIC_PYTHON`）。 |
 
-> REQ-1 / REQ-2 均已满足。`1db6286` 旧版原始件（`荣弦复跑原始记录_1db6286_20261012.txt` 等）保留在册，不删。
+> REQ-1 / REQ-2 均已满足（含 v5 `6afe56a` 独立复跑）。
 > 复跑无需改源码：设 `AFTERGLOW_PUBLIC_PYTHON=<本机公共解释器>` 即可。两种权限上下文（管理员 PASS / 未提升 NOT_EVALUATED）**分别如实记录，互不替代**。
 
 **RC12（OBS-2 定向加固候选）**：见 `../RC12_README.md` 与
@@ -163,6 +163,9 @@ Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
   LATEST-COMMIT EXACT REPLAY (5fda429) = RECEIVED
     管理员(船长)  Q3_QUALIFICATION = PASS         (run_id f1e7d604…)
     未提升(知微)  Q3_QUALIFICATION = NOT_EVALUATED (仅旧 DACL 恢复权限前提 N/A)
+  V5 EXACT REPLAY (6afe56a) = RECEIVED
+    管理员(船长)  Q3_QUALIFICATION = PASS         (run_id 7fb2b985…; reset_chain 113/113)
+    未提升(知微)  Q3_QUALIFICATION = NOT_EVALUATED (十角色 10/10 + digest 10c4548e… MATCH)
   NATIVE EVIDENCE BUNDLE = ARCHIVED (evidence/ ; 见 evidence/INDEX.md)
 ```
 
