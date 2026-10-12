@@ -44,7 +44,14 @@ WORKER_ACCOUNT_DEFAULT = "afterglow_worker"
 
 #: A python interpreter readable by the worker account. Must be global (Users:RX),
 #: NOT an admin-private venv path.
-PUBLIC_PYTHON_DEFAULT = r"D:\Python39\python.exe"
+#:
+#: INDEPENDENT-REPLAY note (凌翼 Q7/Q8): reviewers on a different host may have the
+#: public interpreter at another path. So the frozen source is NOT edited; instead
+#: the path may be overridden by the env var AFTERGLOW_PUBLIC_PYTHON. The default
+#: below is the Coder-host path. An override is an ENVIRONMENT fact, not a rule
+#: change: no threshold/gate/logic is affected, and the run must RECORD which path
+#: was actually used.
+PUBLIC_PYTHON_DEFAULT = os.environ.get("AFTERGLOW_PUBLIC_PYTHON") or r"D:\Python39\python.exe"
 
 
 class WorkerSpawnError(Exception):
