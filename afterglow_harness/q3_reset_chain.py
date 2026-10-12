@@ -557,6 +557,7 @@ class ResetChainResult:
     pre_reset_observed: object = None            # the raw pre-reset RESULT string
     pre_reset_attestation: object = None
     clear_action_ran: object = UNEVALUATED       # 凌翼 B2: the reset actually cleared
+    clear_verified: object = UNEVALUATED         # B2: targets GONE before new worker
     real_reset_required: object = UNEVALUATED    # B2: a REAL reset was demanded
     real_reset_ok: object = UNEVALUATED          # B2: real reset actually demonstrated
     s_handoff: bytes | None = None
@@ -568,8 +569,12 @@ class ResetChainResult:
     @property
     def valid(self) -> bool:
         # EVERY gate must be literally True. UNEVALUATED/False/anything else => invalid.
-        # 凌翼 B2: when a REAL reset was demanded, real_reset_ok must also be True
-        # (a first-start N/A run is valid ONLY if no real reset was required).
+        # 凌翼 B2 fix (tri-state, STRICT): real_reset_required must be a LITERAL bool.
+        # Anything else (incl. "UNEVALUATED"/None) is UNKNOWN => INVALID. Only a
+        # preregistered first-start may legitimately be False; unknown is never
+        # "no reset needed".
+        if self.real_reset_required is not True and self.real_reset_required is not False:
+            return False
         gates = [self.clear_ok, self.preserve_ok, self.access_ok,
                  self.handle_ok, self.identity_ok, self.lifecycle_ok,
                  self.matrix_ok, self.dacl_restore_ok]
@@ -766,6 +771,31 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
 
     deny_read(account, protected)
 
+    # 3b. 凌翼 B2 fix: the RESET ORDER must be 旧 worker 终止 → clear 完成 → 新 worker 启动.
+    #     So the clear action runs HERE — AFTER the old worker is terminated and the
+    #     access is locked, but BEFORE the new worker is spawned. If the clear does not
+    #     COMPLETE (targets still present), we STOP and do NOT start the new worker
+    #     (fail-closed), rather than writing an invalid result after it already ran.
+    out.clear_action_ran = False
+    out.clear_verified = UNEVALUATED
+    if clear_action is not None:
+        try:
+            clear_action(clear_targets_by_category)
+            out.clear_action_ran = True
+        except Exception as e:
+            out.clear_action_ran = False
+            out.reason = out.reason or f"CLEAR_ACTION_FAILED: {type(e).__name__}: {e}"
+        # independent completion check: every declared target must now be GONE
+        _map = dict(clear_targets_by_category or {})
+        _remaining = [str(t) for t in _map.values() if Path(str(t)).exists()]
+        out.clear_verified = (len(_remaining) == 0)
+        if out.clear_verified is not True:
+            out.reason = out.reason or f"CLEAR_NOT_COMPLETED_BEFORE_NEW_WORKER: {_remaining}"
+            # STOP: do not spawn the new worker if the reset did not complete.
+            out.real_reset_required = True
+            out.real_reset_ok = False
+            return out
+
     # 4. bound probe (F4: fixed code, target sha bound, strict verdict schema).
     #    知微 P1-3: the probe is TRUSTED CODE; the worker must not be able to
     #    modify it. We place it in a dedicated CODE dir that the worker gets
@@ -895,19 +925,6 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
         out.access_ok = False
         out.reason = out.reason or f"VERDICT_INVALID: {att.verdict_raw!r}"
 
-    # 7.5 凌翼 B2: the RESET must ACTUALLY clear the targets (not have them
-    #     pre-deleted by the caller). If a clear_action is supplied, we run it HERE
-    #     (the reset operation), then the clear gate (step 10) verifies the targets
-    #     are gone BY the action — a real reset, observable by an independent read.
-    out.clear_action_ran = False
-    if clear_action is not None:
-        try:
-            clear_action(clear_targets_by_category)
-            out.clear_action_ran = True
-        except Exception as e:
-            out.clear_action_ran = False
-            out.reason = out.reason or f"CLEAR_ACTION_FAILED: {type(e).__name__}: {e}"
-
     # 8. observer reads S_restored (independent post-reset observation)
     try:
         out.s_restored = protected.read_bytes()
@@ -955,24 +972,25 @@ def _q3_reset_chain_impl(account: str, password: str, work_dir: Path, python_exe
                 out.reason = out.reason or "CLEAR_TARGETS_NOT_REMOVED"
 
     # 10b. 凌翼 B2: a REAL reset means (i) an old worker was actually replaced, AND
-    #      (ii) targets EXISTED before and were removed BY the reset action. We
-    #      demand a real reset whenever a clear_action or an old_worker_pid was
-    #      given. real_reset_ok = clear_action ran AND lifecycle proven AND the
-    #      targets are now gone (which the action — not the caller — removed).
+    #      (ii) targets EXISTED before and were removed BY the reset action BEFORE the
+    #      new worker started (verified in step 3b), AND (iii) the clear gate agrees.
+    #      real_reset_ok = clear_action ran AND clear verified pre-worker AND
+    #      lifecycle proven AND the clear gate is True.
     out.real_reset_required = bool(clear_action is not None or old_worker_pid is not None)
     if out.real_reset_required:
         out.real_reset_ok = bool(
             out.clear_action_ran is True
+            and out.clear_verified is True
             and out.lifecycle_ok is True
             and out.clear_ok is True
         )
         if out.real_reset_ok is not True:
             out.reason = out.reason or (
                 f"REAL_RESET_NOT_DEMONSTRATED: clear_action_ran={out.clear_action_ran} "
-                f"lifecycle_ok={out.lifecycle_ok} clear_ok={out.clear_ok}")
+                f"clear_verified={out.clear_verified} lifecycle_ok={out.lifecycle_ok} "
+                f"clear_ok={out.clear_ok}")
     else:
-        # no real reset demanded (first-start N/A) -> gate not applicable
-        out.real_reset_ok = out.real_reset_ok if out.real_reset_ok is not UNEVALUATED else UNEVALUATED
+        out.real_reset_ok = UNEVALUATED
 
     # 11. EXECUTABLE ACCESS MATRIX consumption (凌翼 step 2): every row's declared
     #     witness must map to a gate that is ACTUALLY True. This is what stops a
@@ -1280,9 +1298,20 @@ def _selftest() -> int:
             b2_map[cat] = p
         chk("B2: clear targets EXIST before reset",
             all(Path(str(v)).exists() for v in b2_map.values()))
-        # a REAL old worker process (live, then terminated by the chain)
-        old_proc = subprocess.Popen([py, "-c", "import time; time.sleep(30)"])
-        chk("B2: old worker is a LIVE process before reset", old_proc.poll() is None)
+        # 凌翼 B2: a REAL old worker process — spawned AS the worker account (so its
+        # SID is the worker's), not a bare same-account subprocess.
+        old_sleeper = b2d / "old_worker_sleeper.py"
+        old_sleeper.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+        old_pi = _spawn(_mk_si_pi(), WORKER_ACCOUNT_DEFAULT, pw, py, old_sleeper, b2d)
+        old_pid = old_pi.dwProcessId
+        chk("B2: old worker is a LIVE process before reset", old_pid > 0)
+        # verify the old worker's token SID == the worker account's SID
+        try:
+            _old_sid = process_token_sid(old_pid)
+        except Exception:
+            _old_sid = "<unavailable>"
+        chk("B2: old worker token SID == afterglow_worker SID",
+            expected_sid is not None and _old_sid == expected_sid)
 
         clear_calls = {"n": 0}
 
@@ -1305,17 +1334,22 @@ def _selftest() -> int:
         res_b2 = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, b2_work, py, b2_protected,
                                 clear_targets_by_category=b2_map,
                                 expected_sid=expected_sid,
-                                old_worker_pid=old_proc.pid,
+                                old_worker_pid=old_pid,
                                 terminate_old_worker=_old_terminator,
                                 clear_action=_real_clear)
-        old_proc.poll()
+        # make sure the old worker handle is released
+        try:
+            _k32 = __import__("ctypes").windll.kernel32
+            _k32.CloseHandle(old_pi.hThread); _k32.CloseHandle(old_pi.hProcess)
+        except Exception:
+            pass
         chk("B2: clear ACTION actually ran", res_b2.clear_action_ran is True and clear_calls["n"] == 1)
+        chk("B2: clear VERIFIED before new worker (targets gone)", res_b2.clear_verified is True)
         chk("B2: targets GONE after reset (removed by the action)", res_b2.clear_ok is True
             and all(not Path(str(v)).exists() for v in b2_map.values()))
-        chk("B2: old worker terminated (real lifecycle)", res_b2.lifecycle_ok is True
-            and old_proc.poll() is not None)
+        chk("B2: old worker terminated (real lifecycle)", res_b2.lifecycle_ok is True)
         chk("B2: real_reset_required True", res_b2.real_reset_required is True)
-        chk("B2: real_reset_ok True (action + lifecycle + clear)", res_b2.real_reset_ok is True)
+        chk("B2: real_reset_ok True (action+verified+lifecycle+clear)", res_b2.real_reset_ok is True)
         chk("B2: reset reached FULL VALID (real reset path)", res_b2.valid is True)
         # negative: WITHOUT the clear action, the same targets would still exist =>
         # a caller that pre-deletes proves nothing. Show that a real reset is REQUIRED.
@@ -1327,6 +1361,30 @@ def _selftest() -> int:
                                         clear_action=None)
         chk("B2: no clear_action + no old worker -> real_reset not required (N/A ok)",
             res_b2_noclear.real_reset_required is False)
+
+        # ---- B2 negative: clear that does NOT complete must STOP before new worker
+        b2n = d / "b2neg"; b2n.mkdir()
+        b2n_protected = b2n / "sub.bin"; b2n_protected.write_bytes(b"payload")
+        b2n_work = b2n / "work"; b2n_work.mkdir()
+        grant(WORKER_ACCOUNT_DEFAULT, b2n_work, "(OI)(CI)(F)")
+        grant(WORKER_ACCOUNT_DEFAULT, b2n, "(OI)(CI)(RX)")
+        b2n_map = {}
+        for cat in REQUIRED_CLEAR_CATEGORIES:
+            p = b2n / f"nclear_{cat}.bin"; p.write_bytes(b"stays")
+            b2n_map[cat] = p
+
+        def _noop_clear(mapping):
+            pass    # deliberately does NOT remove targets
+
+        res_b2n = q3_reset_chain(WORKER_ACCOUNT_DEFAULT, pw, b2n_work, py, b2n_protected,
+                                 clear_targets_by_category=b2n_map,
+                                 expected_sid=expected_sid,
+                                 old_worker_pid=None, terminate_old_worker=None,
+                                 clear_action=_noop_clear)
+        chk("B2: incomplete clear -> clear_verified False", res_b2n.clear_verified is False)
+        chk("B2: incomplete clear -> chain INVALID (no new worker)", res_b2n.valid is False)
+        chk("B2: incomplete clear -> new worker NOT started (no attestation)",
+            res_b2n.attestation is None)
 
         # ---- BD-65 negatives (unit-level on the gate logic) ----
         from q3_reset_chain import ResetChainResult as R, HANDLE_STATUS_PASS
@@ -1465,32 +1523,38 @@ def _selftest() -> int:
         chk("preserve: different restored bytes -> not valid",
             R(clear_ok=True, preserve_ok=False, access_ok=True, handle_ok=True,
               identity_ok=True, lifecycle_ok=True,
-              matrix_ok=True, dacl_restore_ok=True).valid is False)
+              matrix_ok=True, dacl_restore_ok=True,
+              real_reset_required=False).valid is False)
 
         # ---- 凌翼 step 2: access matrix is CONSUMED by the chain ----
         # a full VALID (positive) result must set matrix_ok True
         chk("MATRIX: full valid result -> matrix_ok True",
             R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
               identity_ok=True, lifecycle_ok=True,
-              matrix_ok=True, dacl_restore_ok=True).valid is True)
+              matrix_ok=True, dacl_restore_ok=True,
+              real_reset_required=False).valid is True)
         # matrix_ok missing/False must invalidate even if every other gate is True
         chk("MATRIX: matrix_ok False -> valid False despite all else True",
             R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
               identity_ok=True, lifecycle_ok=True,
-              matrix_ok=False, dacl_restore_ok=True).valid is False)
+              matrix_ok=False, dacl_restore_ok=True,
+              real_reset_required=False).valid is False)
         chk("MATRIX: matrix_ok default UNEVALUATED -> valid False",
             R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
               identity_ok=True, lifecycle_ok=True,
-              dacl_restore_ok=True).valid is False)
+              dacl_restore_ok=True,
+              real_reset_required=False).valid is False)
         # DACL restore gate: a failed restore must invalidate the chain
         chk("DACL: dacl_restore_ok False -> valid False despite all else True",
             R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
               identity_ok=True, lifecycle_ok=True,
-              matrix_ok=True, dacl_restore_ok=False).valid is False)
+              matrix_ok=True, dacl_restore_ok=False,
+              real_reset_required=False).valid is False)
         chk("DACL: dacl_restore_ok default UNEVALUATED -> valid False",
             R(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
               identity_ok=True, lifecycle_ok=True,
-              matrix_ok=True).valid is False)
+              matrix_ok=True,
+              real_reset_required=False).valid is False)
         # a defective matrix (bad code) must make the chain INVALID (fail-closed)
         import q3_access_matrix as _qam
         _orig_m = _qam.ACCESS_MATRIX

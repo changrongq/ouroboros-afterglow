@@ -387,7 +387,13 @@ def leak_positive_control(account: str, password: str, python_exe: str,
     # ---- RUN-NEGATIVE : same inheritable handle, registered API (no inherit) --
     h2 = k32.CreateFileW(str(forbidden_path), GENERIC_READ, SHARE_RW, ctypes.byref(sa),
                          OPEN_EXISTING, 0, None)
+    # 凌翼 B1 fix: the negative run is only meaningful if the controller ACTUALLY
+    # held an inheritable handle during it. If h2 failed to open, the control did
+    # not run -> NOT proven.
+    h2_opened = (h2 is not None and h2 != INVALID and h2 != 0)
     neg_status = None
+    if not h2_opened:
+        return False, f"leak control: negative run could not open handle (err={k32.GetLastError()})"
     try:
         adv, _ = _adv_k32()
         si2, pi2 = _startupinfo()
@@ -409,10 +415,16 @@ def leak_positive_control(account: str, password: str, python_exe: str,
     finally:
         k32.CloseHandle(wintypes.HANDLE(h2))
 
-    neg_clean = (neg_status != HANDLE_AUDIT_FOUND_TARGET)
+    # 凌翼 B1 fix: the negative verdict must be STRICTLY CLEAN. A FOUND_TARGET,
+    # UNRESOLVED, ERROR, or None must NOT count as "no leak". (This strict CLEAN
+    # applies ONLY to this controlled B1 experiment — it does NOT remove Profile
+    # B's limited runtime exemption for a formal UNRESOLVED result.)
+    from q3_handle_audit import HANDLE_AUDIT_CLEAN
+    neg_clean = (neg_status == HANDLE_AUDIT_CLEAN) and h2_opened
     ok = bool(detected and neg_clean)
     detail = (f"positive(inheriting child) detected={detected} [{pos_status}]; "
-              f"negative(registered API) clean={neg_clean} [{neg_status}]")
+              f"negative(registered API) clean={neg_clean} [{neg_status}]; "
+              f"negative_handle_opened={h2_opened}")
     return ok, detail
 
 

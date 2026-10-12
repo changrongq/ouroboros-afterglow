@@ -86,7 +86,8 @@ def _selftest() -> int:
     def _full_valid(**over):
         base = dict(clear_ok=True, preserve_ok=True, access_ok=True, handle_ok=True,
                     identity_ok=True, lifecycle_ok=True,
-                    matrix_ok=True, dacl_restore_ok=True)
+                    matrix_ok=True, dacl_restore_ok=True,
+                    real_reset_required=False)
         base.update(over)
         return ResetChainResult(**base)
 
@@ -282,8 +283,12 @@ def _selftest() -> int:
         _R2(**{**_base, "real_reset_required": True, "real_reset_ok": True}).valid is True)
     chk("A33c B2 real_reset not required -> real_reset_ok ignored",
         _R2(**{**_base, "real_reset_required": False, "real_reset_ok": False}).valid is True)
-    chk("A33d B2 real_reset_required UNEVALUATED -> gate not applied (valid)",
-        _R2(**{**_base, "real_reset_required": "UNEVALUATED"}).valid is True)
+    # 凌翼 B2 fix: real_reset_required must be a LITERAL bool. UNKNOWN (UNEVALUATED/
+    # None/"true") is NOT "no reset needed" -> INVALID. (Previously A33d wrongly
+    # accepted UNEVALUATED as valid.)
+    for _bad3 in ("UNEVALUATED", None, "true", 1, 0):
+        chk(f"A33d B2 real_reset_required={_bad3!r} -> INVALID (strict tri-state)",
+            _R2(**{**_base, "real_reset_required": _bad3}).valid is False)
     # B3: lineage boundary — RC12 must never fold into Q3 roles
     import q3_provenance as _qp
     chk("A34 B3: Q3 lineage boundary ok", _qp.assert_lineage_boundary()[0] is True)

@@ -92,6 +92,9 @@ RC11_FROZEN_BYTES = DO NOT MODIFY
 - OBS-1 勘误：`../RC11_DETACHED_RECORD_ERRATUM_OBS1_20261012.md`（外部记录，不动冻结字节）。
 - OBS-2 加固：`../RC12_README.md` + `afterglow_harness/qualification_binding_rc12.py`（RC12 候选）。
 - 睫原始签署原件：`睫_独立核验签署_20261012.md`（REQ-1，已收）。
+- **RC 编号勘误（衔环发现 → 凌翼处置 B）**：`../RC11_MANIFEST_RC_NUMBER_ERRATUM_20261012.md`
+  （头 RC11 / 底 RC9 / changelog 缺 RC10·RC11；**不动冻结字节**；依据
+  `RC11_MANIFEST_头尾RC编号核对_20261012.md`）。
 
 ---
 
