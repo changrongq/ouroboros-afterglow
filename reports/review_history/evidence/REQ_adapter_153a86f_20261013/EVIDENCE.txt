@@ -1,0 +1,21 @@
+ADAPTER_EVIDENCE_BUNDLE
+DATE=2026-10-13
+GIT_HEAD=153a86f84ee747ff99f51a3bac94c9136b450c5b
+LINEAGE=Q3_RESET_ADAPTER_INTEGRATION_V1
+
+== source file hashes (LF-canonical) ==
+q3_reset_adapter.py  sha256=4e5a48287439eb6bb1ef744ba36a88d8867da99ff4b175b5da42840359f01e3d  bytes=33303  crlf=0
+test_q3_reset_adapter.py  sha256=6f6cff26a2d93802225c6fad0494c928b892c06caae6e26f1cbeb4fbe7a381c6  bytes=16549  crlf=0
+q3_business_worker_entry.py  sha256=3b3ba34f875d669fa6197493c208b51e4fcd12c20185616573ba08dba5e2e79b  bytes=3699  crlf=0
+
+== frozen parent identity (unchanged) ==
+RC11_MANIFEST_SHA256=78bdb90f7a56b5da0c9b37ce7f454fa98a64530800f9d0727cf773e120e23059
+RC11_MANIFEST_BYTES=28142
+Q3_FROZEN_DIGEST=450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36
+FROZEN_CODE_COMMIT=2c92074a9808b1c9acd5ad5a36cba7a34e472892
+
+== verify_q3_freeze output ==
+Q3_FROZEN_IDENTITY = OK
+  roles=10 digest=450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36
+  DECLARATION<->DERIVATION cross-check: OK (appendix digest == derived; DERIVED_FROM == FROZEN_CODE_COMMIT)
+

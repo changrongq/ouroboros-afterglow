@@ -117,3 +117,25 @@ reports/review_history/evidence/
 - 固定对象：`2c92074a9808b1c9acd5ad5a36cba7a34e472892`（BD-76 修复后）。
 - 计数：`adversarial 65 · provenance 18 · reset_chain 120 · isolation 21(管理员)/20+N-A(未提升) · consumer 17`。
 - 两种权限上下文**分别如实保留，互不替代**。
+
+---
+
+## 适配器隔离原型证据（lineage `Q3_RESET_ADAPTER_INTEGRATION_V1`；提交 `153a86f`）
+
+> **独立血统**：与上面 REQ-2 的 Q3 冻结资格**不同血统**。此包针对**新增适配器 + 真实业务 worker**，
+> **不**重跑冻结 Q3（凌翼）。父身份 **不变**：RC11 `78bdb90f…`、Q3 `45034911…`。
+
+| 目录 | 内容 | 结果 |
+|---|---|---|
+| `REQ_adapter_153a86f_20261013/` | 三层回归原始输出 + `verify_q3_freeze` 原始输出 + 文件哈希 | `ADAPTER_REGRESSION = PASS`（23/23，exit 0） |
+
+**新增源码哈希（LF-canonical）**：
+| 文件（`afterglow_harness/`） | bytes | sha256 |
+|---|---|---|
+| `q3_reset_adapter.py` | 33303 | `4e5a48287439eb6bb1ef744ba36a88d8867da99ff4b175b5da42840359f01e3d` |
+| `test_q3_reset_adapter.py` | 16549 | `6f6cff26a2d93802225c6fad0494c928b892c06caae6e26f1cbeb4fbe7a381c6` |
+| `q3_business_worker_entry.py` | 3699 | `3b3ba34f875d669fa6197493c208b51e4fcd12c20185616573ba08dba5e2e79b` |
+
+- 固定对象：`153a86f84ee747ff99f51a3bac94c9136b450c5b`（v3 原型）。
+- 授权：凌翼 `ISOLATED_PROTOTYPE_IMPLEMENTATION = AUTHORIZED`；`REAL_EXECUTION_WIRING = NOT AUTHORIZED`。
+- 待定向复核：**睫**（证明语义/冻结边界）· **知微**（独立 Windows 重放）· **钳星**（生命周期/失败安全）。
