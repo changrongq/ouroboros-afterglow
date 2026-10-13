@@ -2,11 +2,15 @@
 
 **Issued by**: Coder
 **Date**: 2026-10-13
-**Authority**: 凌翼 LINGYI DETACHED RECORD VERSION RULING (2026-10-13)
-> "XIANHUAN_SUGGESTION = ACCEPTED IN PRINCIPLE; CODER_EXTERNAL_METADATA_APPROACH = APPROVED.
->  ACTION = ADD EXTERNAL VERSION METADATA; BIND TO EXISTING RECORD + FREEZE IDENTITY.
->  MODIFY_Q3_PROVENANCE_PY = NO; MODIFY_EXISTING_DETACHED_RECORD = NO;
->  MODIFY_FROZEN_REFERENCE = NO; NEW_Q3_LINEAGE_REQUIRED = NO."
+**Authority**:
+- 凌翼 LINGYI DETACHED RECORD VERSION RULING (2026-10-13)
+- 凌翼 LINGYI GENERATED_AT REVIEW (2026-10-13):
+  > `JIE_SELF_REFERENCE_ARGUMENT = ACCEPTED`; `CODER_SOURCE_INSPECTION = CONFIRMED`;
+  > `FIELD_SEMANTICS: FROZEN_CODE_COMMIT = SOURCE IDENTITY / GENERATED_AT = GENERATION TIME
+  >  (DO NOT CONFUSE THEM)`; `DISPOSITION = ROUTE_2`; `EXTERNAL_METADATA_APPENDIX = AUTHORITATIVE
+  >  REFERENCE`; `MODIFY_Q3_PROVENANCE_PY = NO`; `MODIFY_DETACHED_RECORD = NO`;
+  > `MODIFY_FROZEN_REFERENCE = NO`; `NEW_Q3_LINEAGE_REQUIRED = NO`;
+  > `Q3_REQUALIFICATION_REQUIRED = NO`; `FUTURE_NATIVE_GENERATOR_CHANGE = SEPARATE VERSIONED PROPOSAL`.
 
 **Scope**: EXTERNAL metadata only. This file **does not** modify `q3_provenance.py`,
 the existing detached record, or the frozen reference. It **references** them by hash.
@@ -23,9 +27,10 @@ the existing detached record, or the frozen reference. It **references** them by
 RECORD_METADATA_VERSION = 1
 RECORD_FORMAT_STATUS    = LEGACY_V1
 
-Q3_LINEAGE_ID           = Q3_OS_ISOLATION_LINEAGE_V1
+GENERATED_AT            = 0e3fbb9c7289dcdc3844c10a8ebc659a21df9d33   # GENERATION TIME (this appendix's own commit-at-generation)
+FROZEN_CODE_COMMIT      = 2c92074a9808b1c9acd5ad5a36cba7a34e472892   # SOURCE IDENTITY (the frozen Q3 bytes)
 
-FROZEN_CODE_COMMIT      = 2c92074a9808b1c9acd5ad5a36cba7a34e472892
+Q3_LINEAGE_ID           = Q3_OS_ISOLATION_LINEAGE_V1
 
 Q3_LINEAGE_DIGEST       = 450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36
 
@@ -39,6 +44,18 @@ FROZEN_REFERENCE_SHA256 = 97c3065f0a970ba8a8cd3208a9cacf378d1ca39565b739669becf4
 FROZEN_REGISTRATION_PATH        = reports/frozen/Q3_DESIGN_FREEZE_REGISTRATION_20261012.md
 FROZEN_ROLES_JSON_PATH          = reports/frozen/Q3_FROZEN_ROLES_2c92074.json
 ```
+
+## 字段语义（凌翼 2026-10-13：**不可混用**）
+
+| 字段 | 语义 | 值 | 说明 |
+|---|---|---|---|
+| **`FROZEN_CODE_COMMIT`** | **SOURCE IDENTITY**（来源身份） | `2c92074…` | 被冻结的 Q3 字节是谁 —— 全局唯一 |
+| **`GENERATED_AT`** | **GENERATION TIME**（生成时刻） | `0e3fbb9…` | 本附录自身在其生成时的 commit —— 与来源身份**不同** |
+
+> 凌翼：`FROZEN_CODE_COMMIT = SOURCE IDENTITY`；`GENERATED_AT = GENERATION TIME`；**DO NOT CONFUSE THEM**。
+> 睫的洞见（本附录已实测确认）：一份文档不能命名自己的 commit，故 `GENERATED_AT` 记的是
+> **"本附录在其生成时刻所处的那份字节的 commit"**，由外部给出，**不产生自指**。
+> 它与 `FROZEN_CODE_COMMIT` 是两个字段、两个概念：前者回答"何时生成"，后者回答"冻结的是谁"。
 
 ## 重要区分（不可混用）
 
@@ -57,3 +74,5 @@ FROZEN_ROLES_JSON_PATH          = reports/frozen/Q3_FROZEN_ROLES_2c92074.json
 - `Q3_LINEAGE_DIGEST` 与冻结身份一致（`Q3_FROZEN_IDENTITY = OK`）。
 - **将来**若要让资格校验器**强制消费** record schema version,那属**新的接口合同**,
   须放入**新版本**的记录生成与验证流程,**单独审查**,**不得**追溯修改冻结的 V1。
+- **将来**若要由**生成器原生写出** `GENERATED_AT`（改 `q3_provenance.py`）,
+  按凌翼 = `FUTURE_NATIVE_GENERATOR_CHANGE = SEPARATE VERSIONED PROPOSAL` —— **单独版本化提案**,不追溯。
