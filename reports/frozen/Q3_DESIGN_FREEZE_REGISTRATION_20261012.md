@@ -49,12 +49,21 @@
 
 ## §5 两份独立复跑索引（设计冻结的有效证据）
 
+> **勘误（2026-10-13，可追溯；凌翼发现）**：本表原先把 `a47970b`(v6) 两行的 run-id
+> **误写成了先前 `6afe56a`(v5) 的值**。现按**证据包实测**更正如下（不改其他字段、不重跑、不触碰冻结对象）：
+> - `a47970b`(v6) 船长：`7fb2b985…` → **`208d760fc96b4f9b8b740df0373df371`**
+> - `a47970b`(v6) 知微：`2f16f3af…` → **`07251e7445b740c0843941551140e5b1`**
+> （`7fb2b985…`/`2f16f3af…` 分别为 `6afe56a`(v5) 船长/知微的值，属历史引用串行。）
+
 | 提交 | 执行 | 结果 | run-id | 证据目录 |
 |---|---|---|---|---|
-| `a47970b` (v6) | 船长（管理员） | `Q3_QUALIFICATION = PASS` | `7fb2b985067048c7a1e1e531b4aea8b1` | `review_history/evidence/REQ2_captain_admin_a47970b_20261012/` |
-| `a47970b` (v6) | 知微（未提升） | `NOT_EVALUATED`（DACL 权限前提 N/A） | `2f16f3aff9e741b6ada3323bea5cc51e` | `review_history/evidence/REQ2_zhiwei_a47970b_20261012/` |
+| `a47970b` (v6) | 船长（管理员） | `Q3_QUALIFICATION = PASS` | `208d760fc96b4f9b8b740df0373df371` | `review_history/evidence/REQ2_captain_admin_a47970b_20261012/` |
+| `a47970b` (v6) | 知微（未提升） | `NOT_EVALUATED`（DACL 权限前提 N/A） | `07251e7445b740c0843941551140e5b1` | `review_history/evidence/REQ2_zhiwei_a47970b_20261012/` |
 | `2c92074` (BD-76) | 船长（管理员） | `Q3_QUALIFICATION = PASS` | `6a87237eaca74a99b966b804fbef7625` | `review_history/evidence/REQ2_captain_admin_2c92074_20261012/` |
 | `2c92074` (BD-76) | 知微（未提升） | `NOT_EVALUATED`（DACL 权限前提 N/A） | `ecf37248756346cdaeb35e73eb6aab11` | `review_history/evidence/REQ2_zhiwei_2c92074_20261012/` |
+
+- run-id 出处（实测）：`a47970b` 船长 `REQ2_captain_admin_a47970b_20261012/raw_terminal_output.txt` = `208d760f…`；
+  `a47970b` 知微 `REQ2_zhiwei_a47970b_20261012/results.json` runs.with_credential = `07251e74…`。
 
 - 计数（两轮一致）: `access_matrix 14 · dacl 14 · adversarial 65 · provenance 18 · reset_chain 120 · isolation 21(管理员)/20+N-A(未提升) · worker 4 · audit 5 · consumer 17`。
 - 十角色独立哈希：知微 `independent_role_hashes.json` **10/10 MATCH**；凌翼独立重算 **10/10 MATCH**。
