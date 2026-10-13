@@ -8,6 +8,31 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 
 ---
 
+## CURRENT Q3 FREEZE — 现行指针（指向，不复制值）
+
+> 约定（凌翼 2026-10-13）：**现行是【裁决】的结果，不是排序的结果**。
+> 每个会变的值旁写**两个**字段：
+> **`FROZEN_CODE_COMMIT = SOURCE IDENTITY`**（冻结的是谁，全局唯一一处）
+> **`GENERATED_AT = GENERATION TIME`**（何时生成，各自撰写）。
+> **现行 = 那份 `GENERATED_AT == FROZEN_CODE_COMMIT` 的**。**二者不可混用。**
+
+```text
+CURRENT_DIGEST     = 450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36   # 指向下面
+FROZEN_CODE_COMMIT = 2c92074a9808b1c9acd5ad5a36cba7a34e472892
+
+权威来源（不在此处复制，请直视下列文件）：
+  冻结引用   = ../frozen/Q3_FROZEN_REFERENCE_2c92074.txt          （detached，不可随意移动）
+  冻结登记   = ../frozen/Q3_DESIGN_FREEZE_REGISTRATION_20261012.md
+  角色表     = ../frozen/Q3_FROZEN_ROLES_2c92074.json
+  元数据附录 = ../frozen/Q3_DETACHED_RECORD_METADATA_APPENDIX_20261013.md   （含 GENERATED_AT / 字段语义）
+  验证器     = ../../afterglow_harness/verify_q3_freeze.py          （Q3_FROZEN_IDENTITY=OK）
+```
+
+> ⚠️ 历史冻结申请（`Q3_FREEZE_APPLICATION*.md`，含 v3/v4/v5/v6）正文各写**当时**的 digest，
+> **均非现行**；`CURRENT_DIGEST` 只在 `frozen/`。读申请时勿以其正文 digest 为现行。
+
+---
+
 ## The review chain (most recent last)
 
 | # | Date | Who | Artifact | What it found / did |
@@ -142,6 +167,9 @@ RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 Q3 代码（`afterglow_harness/`）：`win32_isolation.py`、`win32_worker_process.py`、
 `q3_handle_audit.py`、`q3_reset_chain.py`、`q3_contract.py`、`q3_access_matrix.py`、
 `q3_dacl.py`、`q3_qualify.py`、`q3_adversarial.py`、`q3_provenance.py`（均自测 PASS，未接入 frozen Phase A）。
+
+> **共 10 个执行角色** —— 权威名单见 `Q3_EXECUTION_CRITICAL`（`afterglow_harness/q3_provenance.py`）
+> 与冻结申请 §4 / `../frozen/Q3_FROZEN_ROLES_2c92074.json`；此处仅列全部主模块。
 
 Q3 状态：
 
