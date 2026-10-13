@@ -11,25 +11,30 @@ that produced RC7 (failed) → RC8, plus the reproduction scripts.
 ## CURRENT Q3 FREEZE — 现行指针（指向，不复制值）
 
 > 约定（凌翼 2026-10-13）：**现行是【裁决】的结果，不是排序的结果**。
-> 每个会变的值旁写**两个**字段：
+> 每个会变的值旁写**两/三个**字段：
 > **`FROZEN_CODE_COMMIT = SOURCE IDENTITY`**（冻结的是谁，全局唯一一处）
-> **`GENERATED_AT = GENERATION TIME`**（何时生成，各自撰写）。
-> **现行 = 那份 `GENERATED_AT == FROZEN_CODE_COMMIT` 的**。**二者不可混用。**
+> **`GENERATED_AT = GENERATION TIME`**（何时生成，各自撰写）
+> **`DERIVED_FROM`**（由**机器反查**：哪个 commit 的字节算出这份 digest）。
+> **现行 = 那份 `GENERATED_AT == FROZEN_CODE_COMMIT` 的**。三者**不可混用**。
+> （睫 2026-10-13：仅声明 `GENERATED_AT` 而无机器反查，`GENERATED_AT` 会恒等于
+>  `FROZEN_CODE_COMMIT` ⇒ 检查恒真。故须声明(截至) + 推导(机器反查)互校。）
 
 ```text
-CURRENT_DIGEST     = 450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36   # 指向下面
+# 本文件【不复制任何 digest 值】—— 全部指向 frozen/（第一百八十七句：指向者不得自带值）
+CURRENT_DIGEST     = 见 ../frozen/Q3_FROZEN_REFERENCE_2c92074.txt
 FROZEN_CODE_COMMIT = 2c92074a9808b1c9acd5ad5a36cba7a34e472892
 
 权威来源（不在此处复制，请直视下列文件）：
-  冻结引用   = ../frozen/Q3_FROZEN_REFERENCE_2c92074.txt          （detached，不可随意移动）
+  冻结引用   = ../frozen/Q3_FROZEN_REFERENCE_2c92074.txt          （detached，不可随意移动；唯一有值处）
   冻结登记   = ../frozen/Q3_DESIGN_FREEZE_REGISTRATION_20261012.md
   角色表     = ../frozen/Q3_FROZEN_ROLES_2c92074.json
-  元数据附录 = ../frozen/Q3_DETACHED_RECORD_METADATA_APPENDIX_20261013.md   （含 GENERATED_AT / 字段语义）
-  验证器     = ../../afterglow_harness/verify_q3_freeze.py          （Q3_FROZEN_IDENTITY=OK）
+  元数据附录 = ../frozen/Q3_DETACHED_RECORD_METADATA_APPENDIX_20261013.md   （含 GENERATED_AT / DERIVED_FROM / 字段语义）
+  验证器     = ../../afterglow_harness/verify_q3_freeze.py          （Q3_FROZEN_IDENTITY=OK；反查 + 一致性）
 ```
 
 > ⚠️ 历史冻结申请（`Q3_FREEZE_APPLICATION*.md`，含 v3/v4/v5/v6）正文各写**当时**的 digest，
-> **均非现行**；`CURRENT_DIGEST` 只在 `frozen/`。读申请时勿以其正文 digest 为现行。
+> **均非现行**；现行只在 `frozen/`。读申请时勿以其正文 digest 为现行。
+> （第一百八十四句：历史保持它是历史。**加**指向行可以；**改**其正文值为现行 —— 不可以。）
 
 ---
 

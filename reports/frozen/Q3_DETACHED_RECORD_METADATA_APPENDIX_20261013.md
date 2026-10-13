@@ -29,6 +29,7 @@ RECORD_FORMAT_STATUS    = LEGACY_V1
 
 GENERATED_AT            = 0e3fbb9c7289dcdc3844c10a8ebc659a21df9d33   # GENERATION TIME (this appendix's own commit-at-generation)
 FROZEN_CODE_COMMIT      = 2c92074a9808b1c9acd5ad5a36cba7a34e472892   # SOURCE IDENTITY (the frozen Q3 bytes)
+DERIVED_FROM            = 2c92074a9808b1c9acd5ad5a36cba7a34e472892   # MACHINE re-derivation: which commit's bytes yield this digest
 
 Q3_LINEAGE_ID           = Q3_OS_ISOLATION_LINEAGE_V1
 
@@ -45,17 +46,19 @@ FROZEN_REGISTRATION_PATH        = reports/frozen/Q3_DESIGN_FREEZE_REGISTRATION_2
 FROZEN_ROLES_JSON_PATH          = reports/frozen/Q3_FROZEN_ROLES_2c92074.json
 ```
 
-## 字段语义（凌翼 2026-10-13：**不可混用**）
+## 字段语义（凌翼 2026-10-13 + 睫 2026-10-13：**不可混用**）
 
 | 字段 | 语义 | 值 | 说明 |
 |---|---|---|---|
 | **`FROZEN_CODE_COMMIT`** | **SOURCE IDENTITY**（来源身份） | `2c92074…` | 被冻结的 Q3 字节是谁 —— 全局唯一 |
-| **`GENERATED_AT`** | **GENERATION TIME**（生成时刻） | `0e3fbb9…` | 本附录自身在其生成时的 commit —— 与来源身份**不同** |
+| **`GENERATED_AT`** | **GENERATION TIME**（生成时刻） | `0e3fbb9…` | 本附录生成时所在 commit —— 与来源身份**不同** |
+| **`DERIVED_FROM`** | **机器反查** | `2c92074…` | 哪个 commit 的字节**算出**这份 digest（`verify_q3_freeze.py` 反查） |
 
 > 凌翼：`FROZEN_CODE_COMMIT = SOURCE IDENTITY`；`GENERATED_AT = GENERATION TIME`；**DO NOT CONFUSE THEM**。
-> 睫的洞见（本附录已实测确认）：一份文档不能命名自己的 commit，故 `GENERATED_AT` 记的是
-> **"本附录在其生成时刻所处的那份字节的 commit"**，由外部给出，**不产生自指**。
-> 它与 `FROZEN_CODE_COMMIT` 是两个字段、两个概念：前者回答"何时生成"，后者回答"冻结的是谁"。
+> 睫 2026-10-13：仅声明 `GENERATED_AT` 而**无机器反查**，`GENERATED_AT`（外部传入时）会**恒等于**
+> `FROZEN_CODE_COMMIT` ⇒ **检查恒真（第 186 句）**。故须 **声明(`GENERATED_AT`) + 推导(`DERIVED_FROM`)** 互校：
+> **`DERIVED_FROM` 必须 = 能算出本 digest 的那个 commit**；不等 ⇒ FAIL。
+> （第 187 句：**指向者不得自带值**。故 `INDEX.md` 顶部的现行指针**不复制 digest**，只指向本文件。）
 
 ## 重要区分（不可混用）
 

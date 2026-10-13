@@ -88,6 +88,34 @@ def main() -> int:
         if recomputed != ref_digest:
             problems.append(f"DIGEST: ref={ref_digest} actual={recomputed}")
 
+    # 睫 2026-10-13 §5: 声明 + 推导互校 (declaration <-> derivation cross-check).
+    # The external metadata appendix declares FROZEN_CODE_COMMIT / DERIVED_FROM / a digest;
+    # verify_q3_freeze MACHINE-derives the digest from actual bytes. They must agree, AND
+    # DERIVED_FROM must equal FROZEN_CODE_COMMIT (else the declaration is self-consistent-only).
+    appendix = HERE.parent / "reports" / "frozen" / "Q3_DETACHED_RECORD_METADATA_APPENDIX_20261013.md"
+    if not appendix.exists():
+        problems.append(f"APPENDIX_MISSING: {appendix.as_posix()}")
+    else:
+        at = appendix.read_text(encoding="utf-8")
+        def _a(field, pat=r"[0-9a-f]{64}"):
+            m = re.search(rf"^{field}\s*=\s*({pat})", at, re.MULTILINE)
+            return m.group(1) if m else None
+        a_frozen = _a("FROZEN_CODE_COMMIT", r"[0-9a-f]{40}")
+        a_derived = _a("DERIVED_FROM", r"[0-9a-f]{40}")
+        a_digest = _a("Q3_LINEAGE_DIGEST")
+        if a_frozen is None or a_derived is None or a_digest is None:
+            problems.append("APPENDIX_FIELDS_MISSING (FROZEN_CODE_COMMIT/DERIVED_FROM/Q3_LINEAGE_DIGEST)")
+        else:
+            # (a) appendix digest == machine-derived digest from actual bytes
+            if len(hashes) == 10 and a_digest != recomputed:
+                problems.append(f"APPENDIX_DIGEST vs DERIVED: appendix={a_digest} derived={recomputed}")
+            # (b) appendix digest == frozen reference digest
+            if a_digest != ref_digest:
+                problems.append(f"APPENDIX_DIGEST vs REFERENCE: appendix={a_digest} reference={ref_digest}")
+            # (c) DERIVED_FROM must equal FROZEN_CODE_COMMIT (declaration+derivation agree)
+            if a_derived != a_frozen:
+                problems.append(f"DERIVED_FROM != FROZEN_CODE_COMMIT: derived={a_derived} frozen={a_frozen}")
+
     if problems:
         print("Q3_FROZEN_IDENTITY = DRIFT")
         for p in problems:
@@ -95,6 +123,7 @@ def main() -> int:
         return 1
     print("Q3_FROZEN_IDENTITY = OK")
     print(f"  roles=10 digest={ref_digest}")
+    print("  DECLARATION<->DERIVATION cross-check: OK (appendix digest == derived; DERIVED_FROM == FROZEN_CODE_COMMIT)")
     return 0
 
 
