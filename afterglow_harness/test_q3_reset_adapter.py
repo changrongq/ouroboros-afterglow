@@ -630,32 +630,70 @@ def layer_d_real_success() -> str:
     _grant_worker_write(fx)
     acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker")
 
-    # real terminate callback for the old worker (verified by the supervisor side)
-    def _terminate_old():
+    # 知微 D3-02: the frozen chain contract is `category -> path STRING`
+    # (q3_reset_chain.py: `_map = dict(...); Path(str(t)).exists()` for each value).
+    # Normalize the descriptor to that shape: if a value is a list, require it to have
+    # exactly ONE entry and collapse to the string; reject/whitelist extra shapes.
+    def _norm_map(m):
+        out = {}
+        for cat, val in (m or {}).items():
+            if isinstance(val, (list, tuple)):
+                if len(val) != 1:
+                    raise ValueError(
+                        f"clear category {cat!r} has {len(val)} paths; the frozen "
+                        f"contract takes ONE path per category (D3-02)")
+                out[cat] = str(val[0])
+            else:
+                out[cat] = str(val)
+        return out
+
+    clear_targets = _norm_map(clear_targets)
+
+    # 知微 D3-01: the frozen chain calls `terminator(old_pid)` — the callback MUST
+    # accept the pid. It performs identity/terminate; the frozen chain waits+confirms
+    # exit on ITS OWN handle, so we must not claim success from an unchecked wait.
+    def _terminate_old(old_pid):
         import ctypes
         from ctypes import wintypes
         k32 = ctypes.windll.kernel32
+        PROCESS_TERMINATE = 0x0001
         k32.OpenProcess.restype = wintypes.HANDLE
-        h = k32.OpenProcess(0x0001, False, int(old_worker_pid))   # PROCESS_TERMINATE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.TerminateProcess.restype = wintypes.BOOL
+        k32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        h = k32.OpenProcess(PROCESS_TERMINATE, False, int(old_pid))
         if not h:
-            return False
+            return False                       # no handle => cannot terminate => False
         try:
-            k32.TerminateProcess(h, 1)
-            k32.WaitForSingleObject(h, 10000)
+            ok = k32.TerminateProcess(h, 1)    # the frozen chain confirms exit itself
+            return bool(ok)
         finally:
             k32.CloseHandle(h)
+
+    # 知微 D3-01/D3-02: the frozen chain calls `clear_action(clear_targets_by_category)`
+    # — accept the mapping and remove every declared target path.
+    def _clear_action(mapping):
+        import os as _os
+        for cat, path in (mapping or {}).items():
+            try:
+                _os.remove(str(path))
+            except FileNotFoundError:
+                pass
         return True
 
-    # real clear action: remove the declared clear targets (counterfeit signal removal)
-    def _clear_action():
-        import os as _os
-        for cat, paths in clear_targets.items():
-            for pth in paths:
-                try:
-                    _os.remove(pth)
-                except FileNotFoundError:
-                    pass
-        return True
+    # 知微 D3-01: assert BOTH callbacks can bind the EXACT arity the frozen chain uses
+    # (`terminator(old_pid)` and `clear_action(mapping)`), so a signature mismatch is
+    # caught here rather than as a TypeError deep inside the frozen chain.
+    import inspect
+    try:
+        inspect.signature(_terminate_old).bind(0)                 # terminator(old_pid)
+        inspect.signature(_clear_action).bind({})                 # clear_action(mapping)
+        _chk("D1 callbacks bind the frozen arity (terminate(old_pid), clear_action(map))",
+             True)
+    except TypeError as e:
+        _chk("D1 callbacks bind the frozen arity", False, str(e))
+        return FAIL
 
     sup = A.BusinessWorkerSupervisor(
         account=acct, entry_script=HERE / "q3_business_worker_entry.py",

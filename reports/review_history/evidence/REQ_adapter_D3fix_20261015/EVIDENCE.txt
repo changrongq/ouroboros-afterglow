@@ -1,0 +1,11 @@
+ADAPTER D3-01/D3-02 FIX EVIDENCE BUNDLE
+DATE=2026-10-15
+POLICY=知微 116edb4 D2 review (D3-01 callback arity, D3-02 mapping shape)
+
+q3_reset_adapter.py sha256=93be7c2469b52e18e91c0babea5c7425fefe179d26d19037481098b9b9c169a7 bytes=60752 crlf=0
+test_q3_reset_adapter.py sha256=80fc20a9fe6d1a1e735f62e50806a8a84998a9afbe035e880005e4604bec3678 bytes=39892 crlf=0
+q3_business_worker_entry.py sha256=59910647ec689d831855f7dab4258f4bf0e1eb554542a9e75d3f662753f1dad5 bytes=4194 crlf=0
+RC11_MANIFEST_SHA256=78bdb90f7a56b5da0c9b37ce7f454fa98a64530800f9d0727cf773e120e23059
+
+CHANGE: only test_q3_reset_adapter.py (Layer D callbacks+mapping). Frozen q3_reset_chain.py UNCHANGED.
+LOCAL SMOKE (with real old worker): old-worker lifecycle gate PASSED (D3-01), no clear error (D3-02); D1 then blocks at frozen probe-worker READY (env).
