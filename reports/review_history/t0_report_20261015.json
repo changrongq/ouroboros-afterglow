@@ -1,0 +1,196 @@
+{
+  "worker_pid_spawned": 34340,
+  "worker_pid_enumerated": 34340,
+  "worker_create_time": 1792079308.7181034,
+  "target_path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\t0_enum\\target.bin",
+  "target_identity": [
+    3891913100,
+    393216,
+    791068
+  ],
+  "worker_reported_handles": {
+    "pid": 34340,
+    "ha": 300,
+    "hb": 324
+  },
+  "controller_verified_handles": [
+    {
+      "label": "ha",
+      "handle_value": 300,
+      "duplicated": true,
+      "identity": [
+        3891913100,
+        393216,
+        791068
+      ],
+      "is_target": true
+    },
+    {
+      "label": "hb",
+      "handle_value": 324,
+      "duplicated": true,
+      "identity": [
+        3891913100,
+        393216,
+        791068
+      ],
+      "is_target": true
+    }
+  ],
+  "class16_count": 83,
+  "class64_count": 83,
+  "class16_saw_ha": true,
+  "class16_saw_hb": true,
+  "class64_saw_ha": true,
+  "class64_saw_hb": true,
+  "class16_sample": [
+    {
+      "handle_value": 4,
+      "type_index": 16,
+      "access": 2031619,
+      "stride": 24
+    },
+    {
+      "handle_value": 8,
+      "type_index": 16,
+      "access": 2031619,
+      "stride": 24
+    },
+    {
+      "handle_value": 12,
+      "type_index": 36,
+      "access": 1,
+      "stride": 24
+    },
+    {
+      "handle_value": 16,
+      "type_index": 35,
+      "access": 2031619,
+      "stride": 24
+    },
+    {
+      "handle_value": 20,
+      "type_index": 30,
+      "access": 983295,
+      "stride": 24
+    },
+    {
+      "handle_value": 24,
+      "type_index": 21,
+      "access": 1048578,
+      "stride": 24
+    },
+    {
+      "handle_value": 28,
+      "type_index": 36,
+      "access": 1,
+      "stride": 24
+    },
+    {
+      "handle_value": 32,
+      "type_index": 21,
+      "access": 1048578,
+      "stride": 24
+    },
+    {
+      "handle_value": 36,
+      "type_index": 36,
+      "access": 1,
+      "stride": 24
+    },
+    {
+      "handle_value": 40,
+      "type_index": 50,
+      "access": 2052,
+      "stride": 24
+    },
+    {
+      "handle_value": 44,
+      "type_index": 50,
+      "access": 2052,
+      "stride": 24
+    },
+    {
+      "handle_value": 48,
+      "type_index": 50,
+      "access": 2052,
+      "stride": 24
+    }
+  ],
+  "class64_sample": [
+    {
+      "handle_value": 4,
+      "type_index": 16,
+      "access": 2031619,
+      "stride": 40
+    },
+    {
+      "handle_value": 8,
+      "type_index": 16,
+      "access": 2031619,
+      "stride": 40
+    },
+    {
+      "handle_value": 12,
+      "type_index": 36,
+      "access": 1,
+      "stride": 40
+    },
+    {
+      "handle_value": 16,
+      "type_index": 35,
+      "access": 2031619,
+      "stride": 40
+    },
+    {
+      "handle_value": 20,
+      "type_index": 30,
+      "access": 983295,
+      "stride": 40
+    },
+    {
+      "handle_value": 24,
+      "type_index": 21,
+      "access": 1048578,
+      "stride": 40
+    },
+    {
+      "handle_value": 28,
+      "type_index": 36,
+      "access": 1,
+      "stride": 40
+    },
+    {
+      "handle_value": 32,
+      "type_index": 21,
+      "access": 1048578,
+      "stride": 40
+    },
+    {
+      "handle_value": 36,
+      "type_index": 36,
+      "access": 1,
+      "stride": 40
+    },
+    {
+      "handle_value": 40,
+      "type_index": 50,
+      "access": 2052,
+      "stride": 40
+    },
+    {
+      "handle_value": 44,
+      "type_index": 50,
+      "access": 2052,
+      "stride": 40
+    },
+    {
+      "handle_value": 48,
+      "type_index": 50,
+      "access": 2052,
+      "stride": 40
+    }
+  ],
+  "class16_raw_error": null,
+  "class64_raw_error": null
+}

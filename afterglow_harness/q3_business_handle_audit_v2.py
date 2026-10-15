@@ -44,10 +44,36 @@ V2_CLEAN = "CLEAN"
 V2_UNRESOLVED = "UNRESOLVED"
 V2_ERROR = "ERROR"
 
-# device name prefixes we can POSITIVELY recognise as non-disk-file device objects.
-# This is a DEVICE-TYPE recognition (not a name-guess skip): membership is only used
-# to say "this is a known non-file device", and every such handle still counts as a
-# 'relevant candidate' that was POSITIVELY classified (so it does not force UNRESOLVED).
+
+@dataclass
+class EnumeratorEvidence:
+    """TRUSTED evidence that the handle enumerator is complete for a given pid
+    (凌翼: 'CALLER BOOLEAN IS NOT SUFFICIENT; REQUIRE TRUSTED BOUND EVIDENCE').
+
+    It must be PRODUCED by a trusted verification (see q3_t0_enumerator_experiment)
+    that: spawned a real worker, read its OS-verified pid/create_time, had the
+    controller DuplicateHandle+identity-verify the worker's held handles, and showed
+    the enumerator returns those exact values. A caller cannot simply assert it.
+    """
+    pid: int
+    create_time: float
+    verified_handle_values: list          # the OS-verified held handles that WERE seen
+    all_verified_seen: bool               # enumerator returned ALL of them
+    method: str = "q3_t0_enumerator_experiment"
+    raw_ref: str = ""                     # path/ref to the raw T0 observation
+
+    @property
+    def trusted(self) -> bool:
+        return (isinstance(self.pid, int) and self.pid > 0
+                and self.create_time > 0.0
+                and bool(self.verified_handle_values)
+                and self.all_verified_seen is True)
+
+
+# device name prefixes: 凌翼 says these names are DIAGNOSTIC ONLY and NOT sufficient
+# for CLEAN without a reliable OS device-property corroboration. We keep the prefixes
+# ONLY for the diagnostic record; they no longer downgrade a handle to 'positively
+# non-file' for the CLEAN verdict.
 _KNOWN_NON_FILE_DEVICE_PREFIXES = (
     "\\Device\\ConDrv",      # console driver
     "\\Device\\NamedPipe\\",
@@ -177,13 +203,15 @@ def _identity_from_handle(dup, k) -> tuple:
 
 
 def audit_business_worker_handles(pid: int, target_path: str,
-                                  enumerator_verified: bool = False) -> V2AuditResult:
+                                  enumerator_evidence: "EnumeratorEvidence | None" = None
+                                  ) -> V2AuditResult:
     """V2 audit: classify each File-type handle of `pid` against the target file.
 
-    `enumerator_verified`: MUST be True only when the caller has POSITIVELY verified
-    that the handle enumerator sees this process's real file handles (see the
-    CROSS-ACCOUNT BLIND SPOT note). When False (default), the CLEAN verdict is
-    downgraded to UNRESOLVED (凌翼: UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN).
+    凌翼: `CALLER BOOLEAN IS NOT SUFFICIENT`. A CLEAN verdict requires
+    `enumerator_evidence` — a TRUSTED, pid-bound EnumeratorEvidence produced by a
+    trusted completeness check (q3_t0_enumerator_experiment), NOT a caller's own
+    assertion. Without it, a would-be CLEAN is DOWNGRADED to UNRESOLVED
+    (UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN).
 
     Returns a V2AuditResult whose `status` is one of the four V2_* verdicts.
     """
@@ -276,21 +304,19 @@ def audit_business_worker_handles(pid: int, target_path: str,
                         rec.name = HA._name_of_remote_handle(pid, hv)
                     except Exception:                             # noqa: BLE001
                         rec.name = None
-                    # POSITIVELY-recognised non-file device (device-TYPE recognition,
-                    # not a name-guess skip): counted as a KNOWN non-file candidate.
-                    if rec.name and any(rec.name.startswith(p)
-                                        for p in _KNOWN_NON_FILE_DEVICE_PREFIXES):
-                        rec.classification = "non_target_known_device"
-                        counts["known_non_file"] += 1
-                        res.records.append(rec)
-                        continue
-                    # directory objects: try identity via a BACKUP-SEMANTICS reopen of
-                    # the SAME object BY NAME is FORBIDDEN as identity. So a directory
-                    # we cannot prove from the handle stays UNRESOLVED.
-                    rec.classification = "unresolved"
-                    rec.unresolved_reason = ("no identity from handle (both APIs failed) "
-                                             f"and not a positively-known non-file device "
-                                             f"(name={rec.name!r})")
+                    # 凌翼: NAME-ONLY DEVICE CLASSIFICATION IS NOT SUFFICIENT FOR CLEAN.
+                    # A console-device / pipe / dir NAME is DIAGNOSTIC ONLY and cannot,
+                    # by itself, prove the handle is non-target. Such a handle without a
+                    # reliable OS identity is therefore UNRESOLVED (fail-closed), NOT a
+                    # 'positively non-file' skip.
+                    if rec.name:
+                        rec.classification = "unresolved"
+                        rec.unresolved_reason = (
+                            f"no identity from handle (both APIs failed); name={rec.name!r} "
+                            f"is diagnostic only and cannot alone prove non-target")
+                    else:
+                        rec.classification = "unresolved"
+                        rec.unresolved_reason = "no identity from handle and no name"
                     counts["unresolved"] += 1
                     res.records.append(rec)
                 finally:
@@ -307,25 +333,25 @@ def audit_business_worker_handles(pid: int, target_path: str,
             res.detail = (f"{counts['unresolved']} relevant handle(s) could not be "
                           f"reliably classified (fail-closed)")
         else:
-            # 凌翼 UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN. IMPORTANT CAVEAT (2026-10-15):
-            # the frozen _iter_handles() has a measured CROSS-ACCOUNT BLIND SPOT — a
-            # worker that genuinely holds the target can show ZERO target handles (the
-            # enumeration simply does not yield them). So "no target found" here is only
-            # trustworthy IF the enumerator is trustworthy for this process. Until that
-            # precondition is ruled on (see 给凌翼_枚举器跨账户盲区 report), we DO NOT
-            # claim CLEAN; we downgrade to UNRESOLVED unless the caller asserts the
-            # enumerator is verified for this pid (enumerator_verified=True).
-            if not enumerator_verified:
+            # 凌翼 UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN, and CALLER BOOLEAN IS NOT
+            # SUFFICIENT: CLEAN requires TRUSTED BOUND EVIDENCE that the enumerator is
+            # complete for THIS pid (see q3_t0_enumerator_experiment). The caller cannot
+            # assert it; only a trusted verification object with `trusted == True` and a
+            # matching pid+create_time qualifies.
+            ev = enumerator_evidence
+            ev_ok = bool(ev is not None and getattr(ev, "trusted", False)
+                         and ev.pid == pid)
+            if not ev_ok:
                 res.status = V2_UNRESOLVED
-                res.detail = ("would be CLEAN on the handles seen, BUT the frozen "
-                              "enumerator has a known cross-account blind spot and is "
-                              "NOT verified for this pid => fail-closed (not CLEAN)")
+                res.detail = ("would be CLEAN on the handles seen, BUT no TRUSTED "
+                              "enumerator evidence is bound to this pid => fail-closed "
+                              "(not CLEAN; 凌翼: caller boolean not sufficient)")
             else:
                 res.status = V2_CLEAN
                 res.detail = (f"all {counts['file_type_total']} File-type handles positively "
-                              f"classified non-target (known_non_file="
-                              f"{counts['known_non_file']}, proven_non_target="
-                              f"{counts['non_target_proven']})")
+                              f"classified non-target (proven_non_target="
+                              f"{counts['non_target_proven']}); enumerator completeness "
+                              f"verified via {ev.method} for pid {pid}")
         return res
     except Exception as e:                                        # noqa: BLE001
         res.status = V2_ERROR
