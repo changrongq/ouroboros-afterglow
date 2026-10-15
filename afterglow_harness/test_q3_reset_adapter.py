@@ -123,7 +123,13 @@ def _base_adapter(tmp: Path, *, chain_override=None, supervisor=None, **kw):
     if isinstance(supervisor, _SwitchSupervisor):
         adapter._save_boundary_dacl = lambda: "STUBBED-DACL"
         adapter._install_boundary = lambda sid: None
-        adapter._rollback_boundary = lambda: None
+        def _stub_rollback():
+            # honors supervisor.fail_restore so D2-01 (restore-pending retry) is testable
+            if getattr(supervisor, "fail_restore", False):
+                adapter._audit["boundary_restored"] = False
+            else:
+                adapter._audit["boundary_restored"] = True
+        adapter._rollback_boundary = _stub_rollback
         # the switch supervisor's SID must equal the PRESPAWN resolved account SID so
         # the R3 equality gate is satisfied on the success path (unless a test sets a
         # deliberately-different SID, e.g. B4).
@@ -251,22 +257,34 @@ def layer_a_logic() -> None:
         first = ad.run_reset_transaction(_mk_state(), _mk_state())
         second = ad.run_reset_transaction(_mk_state(), _mk_state())
         _chk("A3b success path reached (assert integration_valid is True)", first.integration_valid is True, first.reason)
-        # 睫点1: "didn't fail" != "was called". Assert EACH of the six stages left its
-        # own unique trace, so silently skipping a stage (e.g. commenting out
-        # self._stage_bind()) would turn A3b RED.
+        # 睫点1 / 知微 D2-05: "didn't fail" != "was called". Assert EACH stage emitted
+        # its OWN ordered event, so silently skipping a stage (e.g. no-op boundary)
+        # turns A3b RED.
         _chk("A3b state == TX_DONE", first.state == A.TX_DONE)
-        b = first.bindings or {}
-        six = (b.get("q3_result_valid") is True            # ① q3
-               and b.get("protected_os_identity") is not None   # ② boundary target id
-               and b.get("worker_pid") is not None
-               and bool(b.get("worker_entry_sha256"))    # ③ worker
-               and b.get("access_witness_target")        # ④ isolation
-               and first.rc11_outcome is not None        # ⑤ rc11
-               and b.get("literal_os_identity") is not None)     # ⑥ bind
-        _chk("A3b six stages each left evidence (skip a stage => RED)", bool(six),
-             f"traces={ {k: (v is not None) for k,v in b.items()} }")
+        ev = first.stage_events or []
+        def _ran(stage, what=None):
+            return any(s == stage and (what is None or w == what) for s, w in ev)
+        six = (_ran("q3", "begin") and _ran("boundary", "installed")
+               and _ran("worker", "begin") and _ran("isolation", "begin")
+               and _ran("rc11", "verified") and _ran("bind", "begin")
+               and _ran("release", "acked"))
+        _chk("A3b six stages each emitted their OWN event (skip a stage => RED)",
+             bool(six), f"events={ev}")
         _chk("A3c second call after SUCCESS refused / INVALID",
              second.integration_valid is False, second.reason)
+
+        # A3b-neg (知微 D2-05): if _stage_boundary is a no-op (never emits its event),
+        # the success path must NOT still pass. Replace boundary with a no-op that
+        # emits nothing, and require integration_valid is False OR the six-stage
+        # assertion to fail — i.e. the boundary trace must not be back-filled.
+        sup2 = _SwitchSupervisor(tmp, ok=True)
+        ad2 = _base_adapter(tmp, supervisor=sup2, chain_override=lambda a: _FakeQ3Result(valid=True))
+        ad2._stage_boundary = lambda: None          # no-op boundary (emits no event)
+        out2 = ad2.run_reset_transaction(_mk_state(), _mk_state())
+        ev2 = out2.stage_events or []
+        has_boundary_ev = any(s == "boundary" for s, _ in ev2)
+        _chk("A3b-neg no-op boundary => boundary event absent (trace not back-filled)",
+             has_boundary_ev is False, f"events={ev2}")
 
         # A4: exception in the Q3 stage is converged to INVALID (single failure contract).
         def chain_raises(adapter):
@@ -300,6 +318,23 @@ def layer_a_logic() -> None:
         sup.fail_terminate = False
         ad._cleanup()                                   # retry now succeeds
         _chk("A6 retry cleanup confirms exit", ad._cleaned is True)
+
+        # A7 (知微 D2-01): after an EXIT_CONFIRMED, a FAILED ACL restore must remain
+        #     RETRYABLE (restore-only) — not locked by _cleaned=True.
+        sup = _SwitchSupervisor(tmp, ok=True)
+        sup.fail_restore = True
+        ad = _base_adapter(tmp, chain_override=lambda a: _FakeQ3Result(valid=False),
+                           supervisor=sup)
+        ad.run_reset_transaction(_mk_state(), _mk_state())
+        _chk("A7 exit confirmed but restore FAILED => cleanup NOT complete",
+             ad._audit.get("cleanup_complete") is not True
+             and ad._audit.get("boundary_restore_pending") is True, str(ad._audit))
+        _chk("A7 still retryable (_cleaned False)", ad._cleaned is False)
+        sup.fail_restore = False
+        ad._cleanup()                                   # restore-only retry
+        _chk("A7 retry restores => cleanup complete",
+             ad._audit.get("cleanup_complete") is True
+             and ad._audit.get("boundary_restore_confirmed") is True, str(ad._audit))
 
 
 # ===========================================================================
@@ -366,32 +401,36 @@ def layer_b_controlled() -> None:
             _skip("B2 hardlink alias => same OS file => accepted",
                   "os.link unavailable (privilege) — NOT a pass")
 
-        # B3: every gate must bridge to integration INVALID, AND the failure must be
-        #     the NAMED gate (not an earlier unrelated error). Each case breaks the
-        #     CONJUNCTION at a DIFFERENT gate; the fake result carries its field so the
-        #     case actually exercises THAT gate (睫: 7 names, 1 case before). With the
-        #     fixed _FakeQ3Result, `valid=False` is the derived conjunction, and the
-        #     reason must name the specific field.
-        gates = [
-            ("real_reset_ok", dict(valid=False, real_reset_ok=False), "real_reset_ok"),
-            ("clear_ok", dict(valid=False, clear_ok=False), "clear_ok"),
-            ("access_ok", dict(valid=False, access_ok=False), "access_ok"),
-            ("handle_ok", dict(valid=False, handle_ok=False), "handle_ok"),
-            ("matrix_ok", dict(valid=False, matrix_ok=False), "matrix_ok"),
-            ("dacl_restore_ok", dict(valid=False, dacl_restore_ok=False), "dacl_restore_ok"),
-            ("preserve_ok", dict(valid=False, preserve_ok=False), "preserve_ok"),
-        ]
-        for name, kw, token in gates:
+        # B3 (知微 D2-05): the adapter consumes the FROZEN r.valid CONJUNCTION, not the
+        # individual gate fields. So this is honestly a COMPARATOR test: for EACH gate
+        # broken ALONE, `valid` (the conjunction) is False => the adapter must reject.
+        # It is NOT seven independent real-gate traces. Compute `valid` the same way
+        # the frozen ResetChainResult.valid does, so the case genuinely varies the gate.
+        def _frozen_valid(**fields):
+            # mirrors q3_reset_chain.ResetChainResult.valid
+            if fields.get("real_reset_required") not in (True, False):
+                return False
+            gates = [fields.get(k) for k in ("clear_ok", "preserve_ok", "access_ok",
+                     "handle_ok", "identity_ok", "lifecycle_ok", "matrix_ok",
+                     "dacl_restore_ok")]
+            if fields.get("real_reset_required") is True:
+                gates.append(fields.get("real_reset_ok"))
+            return all(x is True for x in gates)
+
+        base = dict(real_reset_required=True, real_reset_ok=True, clear_ok=True,
+                    preserve_ok=True, access_ok=True, handle_ok=True, identity_ok=True,
+                    lifecycle_ok=True, matrix_ok=True, dacl_restore_ok=True)
+        gates = ["clear_ok", "preserve_ok", "access_ok", "handle_ok", "identity_ok",
+                 "lifecycle_ok", "matrix_ok", "dacl_restore_ok", "real_reset_ok"]
+        for g in gates:
+            fields = dict(base); fields[g] = False
+            valid = _frozen_valid(**fields)
             sup = _SwitchSupervisor(tmp, ok=True)
             ad = _base_adapter(tmp, supervisor=sup,
-                               chain_override=lambda a, _kw=kw: _FakeQ3Result(**_kw))
+                               chain_override=lambda a, _v=valid: _FakeQ3Result(valid=_v))
             out = ad.run_reset_transaction(_mk_state(), _mk_state())
-            # the failure reason must be the Q3-valid conjunction (all these gates are
-            # INSIDE r.valid), never an earlier stage
-            got = f"INVALID by {name}" if out.integration_valid is False else "??"
-            _chk(f"B3 gate {name} fails => integration INVALID",
-                 out.integration_valid is False
-                 and "Q3 not valid" in (out.reason or ""), out.reason)
+            _chk(f"B3 gate {g} false => conjunction invalid => integration INVALID",
+                 valid is False and out.integration_valid is False, out.reason)
 
         # B4: a same-account/same-SID worker must be REJECTED (R3 SID equality):
         #     supervisor returns a SID != the prespawn resolved account SID.
@@ -544,58 +583,106 @@ def layer_c_real() -> str:
 # ===========================================================================
 def layer_d_real_success() -> str:
     """凌翼: at least ONE real, complete success path through run_reset_transaction()
-    asserting integration_valid is True, with a REAL adapter (not the logic helper),
-    a real old-worker/clear-action contract, controller-captured snapshots, and a
-    finally-cleanup. Requires the REAL frozen Q3 to pass. If the environment cannot
-    supply a real fixture, SKIP honestly (exit 2). 知微 ZW-R2-04.
+    asserting integration_valid is True, with a REAL adapter and the REAL replacement
+    contract (真实旧 worker + 非空 clear categories/action), controller-captured
+    snapshots with CORRECT timing (restored AFTER reset). 知微 D2-02/D2-03.
 
-    Required environment:
-      AFTERGLOW_Q3_FULL_FIXTURE = a directory containing:
-        protected.bin (SUBSTRATE_SIZE), literal.bin (LITERAL_SIZE),
-        and optionally a clear-action descriptor the caller wires in.
-      AFTERGLOW_WORKER_PASSWORD = the worker credential.
+    Required environment (all three, else SKIP — NOT a pass):
+      AFTERGLOW_Q3_FULL_FIXTURE   = a directory containing:
+          protected.bin (SUBSTRATE_SIZE), literal.bin (LITERAL_SIZE),
+          and `fixture.json` (an EXECUTABLE descriptor) with keys:
+            old_worker_pid       : int (a REAL live old worker to terminate), or null
+            clear_targets_by_category : {category: [paths]} (NON-EMPTY)
+            (the controller wires terminate_old_worker/clear_action from this)
+      AFTERGLOW_WORKER_PASSWORD   = the worker credential.
     """
     print("\n=== LAYER D: real success path (run_reset_transaction) ===")
     fp = os.environ.get("AFTERGLOW_Q3_FULL_FIXTURE")
     if not fp:
         print("  SKIP: AFTERGLOW_Q3_FULL_FIXTURE not set (needs a real Q3-passable")
-        print("        fixture + clear action). NOT a pass.")
+        print("        fixture + executable descriptor). NOT a pass.")
+        _skip("D1 real success path", "AFTERGLOW_Q3_FULL_FIXTURE not set")
         return SKIP
     from pathlib import Path as _P
+    import json as _json
     fx = _P(fp)
     files = {p.name: p for p in fx.iterdir()}
-    if not {"protected.bin", "literal.bin"}.issubset(files):
-        print(f"  SKIP: fixture missing protected.bin/literal.bin (has {sorted(files)})")
+    if not {"protected.bin", "literal.bin", "fixture.json"}.issubset(files):
+        print(f"  SKIP: fixture missing protected.bin/literal.bin/fixture.json "
+              f"(has {sorted(files)})")
+        _skip("D1 real success path", "fixture incomplete")
         return SKIP
+
+    # 知微 D2-02: read the EXECUTABLE descriptor — do NOT hardcode an empty clear map.
+    desc = _json.loads(files["fixture.json"].read_text(encoding="utf-8"))
+    clear_targets = desc.get("clear_targets_by_category") or {}
+    old_worker_pid = desc.get("old_worker_pid")
+    if not clear_targets:
+        print("  SKIP: descriptor clear_targets_by_category is EMPTY => cannot prove a "
+              "REAL reset (would be FIRST_START). NOT a pass.")
+        _skip("D1 real success path", "clear_targets_by_category empty => not a real reset")
+        return SKIP
+    if old_worker_pid is None:
+        print("  SKIP: descriptor has no old_worker_pid => cannot prove REAL_RESET. NOT a pass.")
+        _skip("D1 real success path", "no old_worker_pid => not a real replacement")
+        return SKIP
+
     _grant_worker_write(fx)
+    acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker")
+
+    # real terminate callback for the old worker (verified by the supervisor side)
+    def _terminate_old():
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = wintypes.HANDLE
+        h = k32.OpenProcess(0x0001, False, int(old_worker_pid))   # PROCESS_TERMINATE
+        if not h:
+            return False
+        try:
+            k32.TerminateProcess(h, 1)
+            k32.WaitForSingleObject(h, 10000)
+        finally:
+            k32.CloseHandle(h)
+        return True
+
+    # real clear action: remove the declared clear targets (counterfeit signal removal)
+    def _clear_action():
+        import os as _os
+        for cat, paths in clear_targets.items():
+            for pth in paths:
+                try:
+                    _os.remove(pth)
+                except FileNotFoundError:
+                    pass
+        return True
 
     sup = A.BusinessWorkerSupervisor(
-        account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
-        entry_script=HERE / "q3_business_worker_entry.py",
+        account=acct, entry_script=HERE / "q3_business_worker_entry.py",
         work_dir=fx, python_exe=A._direct_interpreter(),
         password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"),
         expected_entry_sha256=A._sha256_file(HERE / "q3_business_worker_entry.py"))
-
-    # Build the REAL adapter DIRECTLY (never via the logic helper — no duplicate-kwarg,
-    # no fixture overwrite). Objects come from the fixture; the controller captures the
-    # snapshots from the REAL objects.
-    acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker")
     ad = A.Q3ResetAdapter(
         account=acct, password=os.environ.get("AFTERGLOW_WORKER_PASSWORD", ""),
         work_dir=fx, protected=files["protected.bin"],
         literal_path=files["literal.bin"], substrate_path=files["protected.bin"],
-        python_exe=A._direct_interpreter(), clear_targets_by_category={},
+        python_exe=A._direct_interpreter(),
+        clear_targets_by_category=clear_targets,          # from the descriptor (non-empty)
         expected_sid=None, transaction_id=uuid.uuid4().hex, supervisor=sup,
         forbidden_path=files.get("forbidden.bin", files["protected.bin"]),
-        proving_real_replacement=True)
-    # controller-captured snapshots from the REAL objects (handoff before, restored after)
+        old_worker_pid=old_worker_pid, terminate_old_worker=_terminate_old,
+        clear_action=_clear_action, proving_real_replacement=True)
     handoff = ad.capture_handoff()
+    # 知微 D2-03: pass a PROVIDER so restored is captured AFTER reset, before RC11.
     try:
-        out = ad.run_reset_transaction(handoff, ad.capture_restored())
+        out = ad.run_reset_transaction(handoff, restored_provider=ad.capture_restored)
     finally:
         ad._cleanup()
     _chk("D1 real success path integration_valid is True",
          out.integration_valid is True, out.reason)
+    _chk("D1 restored captured AFTER reset (provider)",
+         (out.bindings or {}).get("restored_capture_timing") == "provider_after_reset",
+         str((out.bindings or {}).get("restored_capture_timing")))
     return PASS
 
 

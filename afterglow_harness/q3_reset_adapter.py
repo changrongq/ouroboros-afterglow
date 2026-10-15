@@ -184,6 +184,10 @@ class BusinessWorkerSupervisor:
         self._released = False
         self._release_token = ""
         self._ready_file = self.work_dir / ".afterglow_worker_ready"
+        # 知微 D2-04: the supervisor owns its OWN audit dict (it is a different class
+        # from Q3ResetAdapter, which has its own `_audit`). Failure exits must not
+        # reference an attribute that does not exist here.
+        self.audit: dict = {}
 
     # ---- start (but do not let the worker process real input yet) ----------
     def start_business_worker_holding(self) -> BusinessWorkerWitness:
@@ -486,11 +490,16 @@ class BusinessWorkerSupervisor:
         return True
 
     def _confirmed_exit_or_raise(self, msg: str) -> "NoReturn":  # noqa: F821
-        """Terminate + confirm exit, THEN RAISE the original failure (知微 ZW-R2-06:
-        this is a failure exit; it must ALWAYS raise after cleanup, whether or not the
-        terminate succeeded). The cleanup status is recorded for the audit."""
-        status = self.terminate()
-        self._audit["terminate_status"] = status
+        """Terminate + confirm exit, THEN RAISE the original failure, preserving the
+        original reason (知微 ZW-R2-06 / D2-04). This is a failure exit: it ALWAYS
+        raises after cleanup. The cleanup status is recorded on the SUPERVISOR's own
+        audit (this class has no `_audit` of the adapter — D2-04)."""
+        try:
+            status = self.terminate()
+        except Exception as e:                                   # noqa: BLE001
+            self.audit["terminate_error"] = f"{type(e).__name__}: {e}"
+            status = "ERROR"
+        self.audit["terminate_status"] = status
         raise NotIsolatedError(f"{msg} (cleanup status={status})")
 
     # ---- idempotent terminate: REQUESTED vs EXIT_CONFIRMED (凌翼 R-CLEANUP) --
@@ -586,6 +595,7 @@ class IntegrationOutcome:
     worker_witness: BusinessWorkerWitness | None = None
     bindings: dict = field(default_factory=dict)
     audit: dict = field(default_factory=dict)
+    stage_events: list = field(default_factory=list)   # ordered [(stage, what), ...]
 
 
 # ===========================================================================
@@ -658,6 +668,13 @@ class Q3ResetAdapter(ResetController):
         self._bindings: dict = {}
         self._cleaned = False
         self._audit: dict = {}
+        # 知微 D2-05: an ordered log of stage events, so a test can prove each stage
+        # ACTUALLY RAN (not back-filled by a later stage). e.g. a no-op boundary would
+        # leave no "boundary:installed" event => detectable.
+        self._stage_events: list[tuple[str, str]] = []
+
+    def _event(self, stage: str, what: str) -> None:
+        self._stage_events.append((stage, what))
 
     # -- constraint #3: OS file identity (not merely normalized string) ------
     @staticmethod
@@ -699,42 +716,77 @@ class Q3ResetAdapter(ResetController):
         raise NotIsolatedError(msg) from exc
 
     def _cleanup(self) -> None:
-        """Idempotent (constraint #5) + 凌翼 FAILURE_CLEANUP_ORDER (BLOCKING):
-        STOP the business worker and CONFIRM its exit FIRST; only THEN restore the
-        original ACL. While the worker may still be alive, the boundary is KEPT.
-        Also consumes the terminate result and the restore result."""
-        if self._cleaned:
-            return
-        # (1) FIRST: terminate + confirm exit. Do NOT touch the boundary yet.
-        try:
-            status = self._supervisor.terminate()
-        except Exception as e:  # noqa: BLE001
-            self._audit["terminate_error"] = f"{type(e).__name__}: {e}"
-            status = "ERROR"
-        self._audit["terminate_status"] = status
+        """Idempotent (constraint #5) + 凌翼 FAILURE_CLEANUP_ORDER (BLOCKING).
 
-        if status != "EXIT_CONFIRMED":
-            # Worker NOT confirmed dead (STILL_ALIVE/ERROR/NOT_STARTED-with-live-handle).
-            # 凌翼: keep the protection that the still-live worker needs. Do NOT restore.
+        知微 D2-01: `_cleaned` must NOT conflate two independent facts. Track them
+        separately:
+          · worker_exit_confirmed  — the business worker is CONFIRMED gone.
+          · boundary_restore_confirmed — the original ACL is CONFIRMED restored.
+        Cleanup is COMPLETE only when BOTH hold. A failed restore after a confirmed
+        exit REMAINS RETRYABLE (restore-only), even though the worker is gone. A
+        boundary that was installed but never had a worker may also be rolled back.
+
+        Order: stop the worker + confirm exit FIRST; only THEN restore the ACL.
+        """
+        # Already fully complete => nothing to do.
+        if self._audit.get("cleanup_complete") is True:
+            return
+
+        # (0) If we never started a worker, "worker exited" is trivially true.
+        worker_started = (self._witness is not None)
+        # (1) Worker exit: only re-run if not already confirmed.
+        if self._audit.get("worker_exit_confirmed") is not True:
+            try:
+                status = self._supervisor.terminate()
+            except Exception as e:  # noqa: BLE001
+                self._audit["terminate_error"] = f"{type(e).__name__}: {e}"
+                status = "ERROR"
+            self._audit["terminate_status"] = status
+            if status == "EXIT_CONFIRMED":
+                self._audit["worker_exit_confirmed"] = True
+            elif status == "NOT_STARTED":
+                # 知微: NOT_STARTED is NOT an exit proof for something that started.
+                # If a worker was never started, it is trivially "exited"; else unknown.
+                if not worker_started:
+                    self._audit["worker_exit_confirmed"] = True
+                else:
+                    self._audit["worker_exit_confirmed"] = False
+            else:
+                # STILL_ALIVE / ERROR: keep the boundary; retain control; retryable.
+                self._audit["worker_exit_confirmed"] = False
+
+        if self._audit.get("worker_exit_confirmed") is not True:
+            # Protect the (possibly) still-live worker: DO NOT restore the boundary.
             self._audit["cleanup_confirmed"] = False
             self._audit["boundary_retained"] = True
-            self._cleaned = False           # retain control; retryable
-            if status == "NOT_STARTED" and self._state == TX_NEW:
+            self._cleaned = False                 # retain control; retryable
+            if (self._audit.get("terminate_status") == "NOT_STARTED"
+                    and self._state == TX_NEW):
                 self._state = TX_CLOSED
             else:
                 self._state = TX_FAILED
             return
 
-        # (2) worker exit CONFIRMED -> now it is safe to restore the original ACL.
-        self._rollback_boundary()
-        restored = self._audit.get("boundary_restored")
+        # (2) Worker exit CONFIRMED -> it is now safe to restore the original ACL.
+        if self._audit.get("boundary_restore_confirmed") is not True:
+            self._rollback_boundary()
+            restored = self._audit.get("boundary_restored")
+            if restored is False:
+                # exit confirmed but ACL restore NOT confirmed: retry restore-only,
+                # DO NOT mark cleanup complete (知微 D2-01: keep it retryable).
+                self._audit["cleanup_confirmed"] = False
+                self._audit["boundary_restore_pending"] = True
+                self._cleaned = False             # still retryable (restore-only)
+                if self._state not in (TX_DONE,):
+                    self._state = TX_FAILED if self._state != TX_NEW else TX_CLOSED
+                return
+            self._audit["boundary_restore_confirmed"] = True
+            self._audit["boundary_restore_pending"] = False
+
+        # (3) BOTH confirmed => cleanup complete.
+        self._audit["cleanup_complete"] = True
+        self._audit["cleanup_confirmed"] = True
         self._cleaned = True
-        if restored is False:
-            # exit confirmed but ACL restore not confirmed: retryable restore only.
-            self._audit["cleanup_confirmed"] = False
-            self._audit["boundary_restore_pending"] = True
-        else:
-            self._audit["cleanup_confirmed"] = True
         if self._state not in (TX_DONE,):
             self._state = TX_FAILED if self._state != TX_NEW else TX_CLOSED
 
@@ -754,6 +806,7 @@ class Q3ResetAdapter(ResetController):
             clear_action=self._clear_action)
 
     def _stage_q3(self) -> None:
+        self._event("q3", "begin")
         if self._state != TX_NEW:
             raise NotIsolatedError(f"transaction not reusable (state={self._state})")
         try:
@@ -779,6 +832,7 @@ class Q3ResetAdapter(ResetController):
         The boundary SID is the PRESPAWN OS-resolved account SID (not a caller string).
         The actual ACL primitives go through _save_boundary_dacl / _install_boundary,
         which the logic-layer tests may override (the real layers use the OS)."""
+        self._event("boundary", "begin")
         sid = self._resolved_account_sid
         if not sid:
             self._fail("resolved account SID missing: cannot build durable boundary")
@@ -791,6 +845,7 @@ class Q3ResetAdapter(ResetController):
         except Exception as e:                                   # noqa: BLE001
             self._rollback_boundary()
             self._fail(f"durable boundary install failed: {e}", e)
+        self._event("boundary", "installed")
         self._state = TX_BOUNDARY_OK
 
     # -- boundary primitive seams (overridable in the logic layer) -----------
@@ -827,6 +882,7 @@ class Q3ResetAdapter(ResetController):
         凌翼 R3: BEFORE any access/release, verify the worker's REAL token SID equals
         the PRESPAWN OS-resolved account SID. A mismatch fails immediately and closes
         the configuration-vs-observation window (睫第201句)."""
+        self._event("worker", "begin")
         try:
             w = self._supervisor.start_business_worker_holding()
         except Exception as e:                                   # noqa: BLE001
@@ -845,6 +901,7 @@ class Q3ResetAdapter(ResetController):
         corroborated witness (凌翼 R2). Does NOT install the boundary (that already
         happened in _stage_boundary) and does NOT release the worker (which now
         happens only after ALL gates — see _stage_release)."""
+        self._event("isolation", "begin")
         try:
             witness = self._supervisor.prove_persistent_isolation(self._protected_target())
         except Exception as e:                                   # noqa: BLE001
@@ -863,11 +920,29 @@ class Q3ResetAdapter(ResetController):
         protected object itself)."""
         return self._protected
 
+    def _capture_restored_now(self, fallback: StateSnapshot | None) -> StateSnapshot:
+        """Capture the restored snapshot at the correct point (after reset, before
+        RC11/release). 知微 D2-03. Prefer the controller-supplied provider; a direct
+        `restored` arg is used only as a flagged fallback."""
+        prov = getattr(self, "_restored_provider", None)
+        if prov is not None:
+            snap = prov()
+            self._audit["restored_capture_timing"] = "provider_after_reset"
+        elif fallback is not None:
+            snap = fallback
+            self._audit["restored_capture_timing"] = "caller_precomputed"
+        else:
+            self._fail("no restored snapshot: neither provider nor precomputed arg given")
+        if not isinstance(snap, StateSnapshot):
+            self._fail(f"restored provider returned non-StateSnapshot: {type(snap).__name__}")
+        return snap
+
     def _stage_rc11_verify(self, handoff: StateSnapshot, restored: StateSnapshot) -> None:
         """Frozen reset.py.verify() — an INDEPENDENT necessary condition.
 
         RC11 access_side_ok is derived from THIS transaction's REAL access witness
         object (凌翼 m1: not a constant bleached through a state check)."""
+        self._event("rc11", "begin")
         if self._r is None:
             self._fail("RC11 verify before Q3 result")
         aw = self._access_witness
@@ -878,18 +953,21 @@ class Q3ResetAdapter(ResetController):
             access_side_ok=rc11_access_ok)
         if self._rc11.reset_valid is not True:
             self._fail(f"RC11 verify not VALID: {self._rc11.reason}")
+        self._event("rc11", "verified")
         self._state = TX_RC11_OK
 
     def _stage_release(self) -> None:
         """凌翼: RELEASE_AFTER_ALL_PREREQUISITE_GATES + VERIFY_RELEASE_ACK. Only after
         Q3, boundary, worker, isolation, RC11 and binding all passed do we let the
         business worker process real input — AND we verify the ACK."""
+        self._event("release", "begin")
         try:
             self._supervisor.release_into_execution()
         except Exception as e:                                   # noqa: BLE001
             self._fail(f"worker release failed: {e}", e)
         if not getattr(self._supervisor, "_release_acked", False):
             self._fail("release ACK not confirmed (fail-closed)")
+        self._event("release", "acked")
         self._state = TX_RELEASED
 
     def _stage_bind(self, handoff: StateSnapshot, restored: StateSnapshot) -> None:
@@ -897,6 +975,7 @@ class Q3ResetAdapter(ResetController):
         Re-reads the OS identity + content binding of the protected/substrate/literal
         objects, and the access target, and FAILS CLOSED on any drift / unreadable /
         substitution. (凌翼: _stage_bind must be a rejecting gate; canary != protected.)"""
+        self._event("bind", "begin")
         # -- protected must still be the SAME OS file as substrate (re-check) --
         id_p = file_identity(self._protected)
         id_s = file_identity(self.substrate_path)
@@ -933,6 +1012,7 @@ class Q3ResetAdapter(ResetController):
             "access_witness_handle_status": aw.handle_audit_status,
             "handoff_digest": handoff.digest,
             "restored_digest": restored.digest,
+            "restored_capture_timing": self._audit.get("restored_capture_timing"),
             "worker_pid": self._witness.pid if self._witness else None,
             "worker_sid": self._witness.token_sid if self._witness else None,
             "worker_create_time": self._witness.create_time if self._witness else None,
@@ -944,20 +1024,32 @@ class Q3ResetAdapter(ResetController):
 
     # ---------------------------------------------- the SINGLE adjudicator
     def run_reset_transaction(self, handoff: StateSnapshot,
-                              restored: StateSnapshot) -> IntegrationOutcome:
+                              restored: StateSnapshot | None = None,
+                              restored_provider=None) -> IntegrationOutcome:
         """The ONLY entry that may produce integration success (TX_DONE).
 
-        Order (凌翼): Q3 → boundary → worker → isolation → RC11 → binding → RELEASE →
-        DONE. Release happens only AFTER every gate, and DONE only after the release
-        ACK is confirmed.
+        Order (凌翼): Q3 → boundary → worker → isolation → [capture restored] → RC11 →
+        binding → RELEASE → DONE.
+
+        知微 D2-03: `restored` MUST be captured AFTER the real reset and BEFORE RC11 /
+        release. To guarantee ordering, prefer `restored_provider` (a callable the
+        controller uses to capture restored from the bound objects at the correct
+        moment). Passing `restored` directly is kept for back-compat but is flagged in
+        the audit as `restored_capture_timing="caller_precomputed"` (the caller may
+        have evaluated it before the reset — D2-03); the fixture entry must use the
+        provider form.
 
         凌翼 constraint #3: the snapshots are captured/verified by the trusted
         controller and bound to this one transaction (provenance recorded in bindings)."""
+        self._restored_provider = restored_provider
+        self._restored_precomputed = restored is not None
         try:
             self._stage_q3()
             self._stage_boundary()          # durable boundary BEFORE business exec
             self._stage_business_worker()   # worker starts but HOLDS
             self._stage_persistent_isolation()
+            # 知微 D2-03: capture restored HERE (after reset/Q3, before RC11/release).
+            restored = self._capture_restored_now(restored)
             self._stage_rc11_verify(handoff, restored)
             self._stage_bind(handoff, restored)
             self._stage_release()           # ONLY after ALL prerequisite gates + ACK
@@ -974,7 +1066,8 @@ class Q3ResetAdapter(ResetController):
             transaction_id=self._transaction_id,
             state=self._state,
             q3_result=self._r, rc11_outcome=self._rc11,
-            worker_witness=self._witness, bindings=self._bindings, audit=self._audit)
+            worker_witness=self._witness, bindings=self._bindings, audit=self._audit,
+            stage_events=list(self._stage_events))
 
     def _failure_outcome(self, reason: str) -> IntegrationOutcome:
         if self._state not in _TERMINAL:
@@ -1001,7 +1094,8 @@ class Q3ResetAdapter(ResetController):
             q3_result=self._r,
             rc11_outcome=(None if unadopted else self._rc11),   # don't present a
             #   stand-alone VALID rc11 inside a False verdict (睫: unadopted子结论)
-            worker_witness=self._witness, bindings=self._bindings, audit=self._audit)
+            worker_witness=self._witness, bindings=self._bindings, audit=self._audit,
+            stage_events=list(self._stage_events))
 
     # ---------------------------------------------- ResetController hooks
     def restart_worker(self) -> None:
