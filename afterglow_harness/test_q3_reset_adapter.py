@@ -46,6 +46,13 @@ def _chk(name: str, cond: bool, detail: str = "") -> bool:
     return cond
 
 
+def _skip(name: str, detail: str = "") -> None:
+    """Record a SKIP into the SAME structured result set so the summary cannot drop it
+    (知微 ZW-R2-05: a printed SKIP that never entered _results was silently uncounted)."""
+    _results.append((name, SKIP, detail))
+    print(f"  [SKIP] {name}  {detail}")
+
+
 # ===========================================================================
 # helpers / fixtures
 # ===========================================================================
@@ -55,12 +62,15 @@ def _mk_state() -> StateSnapshot:
 
 class _FakeQ3Result:
     """A minimal stand-in used ONLY in the logic layer where the real chain is not
-    invoked. It is NEVER used to claim real OS evidence. It exists so the state
-    machine can be exercised deterministically."""
+    invoked. It is NEVER used to claim real OS evidence. It carries EVERY gate field
+    so a negative case can break the conjunction at a SPECIFIC gate (睫: 7 names, 1
+    case before)."""
 
     def __init__(self, *, valid=True, reset_mode="REAL_RESET",
                  real_reset_required=True, real_reset_ok=True,
-                 clear_ok=True, access_ok=True, reason="ok"):
+                 clear_ok=True, access_ok=True, reason="ok",
+                 handle_ok=True, identity_ok=True, lifecycle_ok=True,
+                 matrix_ok=True, dacl_restore_ok=True, preserve_ok=True):
         self.valid = valid
         self.reset_mode = reset_mode
         self.real_reset_required = real_reset_required
@@ -68,15 +78,27 @@ class _FakeQ3Result:
         self.clear_ok = clear_ok
         self.access_ok = access_ok
         self.reason = reason
+        self.handle_ok = handle_ok
+        self.identity_ok = identity_ok
+        self.lifecycle_ok = lifecycle_ok
+        self.matrix_ok = matrix_ok
+        self.dacl_restore_ok = dacl_restore_ok
+        self.preserve_ok = preserve_ok
 
 
 def _base_adapter(tmp: Path, *, chain_override=None, supervisor=None, **kw):
     """Build an adapter whose Q3 stage is driven by `chain_override` (an injectable
     function) so the LOGIC layer runs without a credential. The REAL layers override
-    this to call the genuine chain."""
-    # logic fixtures need the REAL files to exist so the OS-identity check passes.
-    (tmp / "protected.bin").write_bytes(b"\x00" * SUBSTRATE_SIZE)
-    (tmp / "literal.bin").write_bytes(b"\x00" * LITERAL_SIZE)
+    this to call the genuine chain.
+
+    NOTE (知微 ZW-R2-04): this helper must NOT overwrite files a caller already placed
+    (Layer D's pristine fixture). We only CREATE a file if it does not already exist."""
+    # logic fixtures need the REAL files to exist so the OS-identity check passes;
+    # create them ONLY if absent (never clobber a caller-provided fixture).
+    if not (tmp / "protected.bin").exists():
+        (tmp / "protected.bin").write_bytes(b"\x00" * SUBSTRATE_SIZE)
+    if not (tmp / "literal.bin").exists():
+        (tmp / "literal.bin").write_bytes(b"\x00" * LITERAL_SIZE)
     # account SID resolution needs a resolvable account; use the CURRENT user so the
     # logic layer can construct (the isolation claim is the supervisor's, not this).
     import getpass
@@ -129,6 +151,7 @@ class _SwitchSupervisor:
         self._release_acked = False
         self.last_handle_status = A.HANDLE_AUDIT_CLEAN if ok else A.HANDLE_AUDIT_UNRESOLVED
         self.fail_terminate = False       # set by a test to simulate STILL_ALIVE
+        self.force_worker_report = None   # set by a test to force the access verdict
 
     def start_business_worker_holding(self):
         self._w = A.BusinessWorkerWitness(
@@ -145,13 +168,14 @@ class _SwitchSupervisor:
 
     def prove_persistent_isolation(self, target_path):
         target_id = A.file_identity(Path(target_path))
+        report = self.force_worker_report or ("DENIED" if self.ok else "GRANTED")
         return A.WorkerAccessWitness(
             request_nonce="n", op="READ", target_path=str(Path(target_path)),
             target_os_identity=target_id, worker_pid=4242, worker_sid=self.sid,
             worker_create_time=123.0,
-            worker_reported=("DENIED" if self.ok else "GRANTED"),
-            controller_seal_ok=bool(self.ok),
-            controller_verdict=("READ=DENIED" if self.ok else "READ=GRANTED"),
+            worker_reported=report,
+            controller_seal_ok=False,
+            controller_verdict="HANDLE_AUDIT",
             handle_audit_status=self.last_handle_status)
 
     def release_into_execution(self):
@@ -227,6 +251,20 @@ def layer_a_logic() -> None:
         first = ad.run_reset_transaction(_mk_state(), _mk_state())
         second = ad.run_reset_transaction(_mk_state(), _mk_state())
         _chk("A3b success path reached (assert integration_valid is True)", first.integration_valid is True, first.reason)
+        # 睫点1: "didn't fail" != "was called". Assert EACH of the six stages left its
+        # own unique trace, so silently skipping a stage (e.g. commenting out
+        # self._stage_bind()) would turn A3b RED.
+        _chk("A3b state == TX_DONE", first.state == A.TX_DONE)
+        b = first.bindings or {}
+        six = (b.get("q3_result_valid") is True            # ① q3
+               and b.get("protected_os_identity") is not None   # ② boundary target id
+               and b.get("worker_pid") is not None
+               and bool(b.get("worker_entry_sha256"))    # ③ worker
+               and b.get("access_witness_target")        # ④ isolation
+               and first.rc11_outcome is not None        # ⑤ rc11
+               and b.get("literal_os_identity") is not None)     # ⑥ bind
+        _chk("A3b six stages each left evidence (skip a stage => RED)", bool(six),
+             f"traces={ {k: (v is not None) for k,v in b.items()} }")
         _chk("A3c second call after SUCCESS refused / INVALID",
              second.integration_valid is False, second.reason)
 
@@ -325,27 +363,35 @@ def layer_b_controlled() -> None:
             except Exception as e:                          # noqa: BLE001
                 _chk("B2 hardlink alias => same OS file => accepted", False, str(e))
         else:
-            print("  [SKIP] B2 hardlink unavailable (privilege) — NOT counted as pass")
+            _skip("B2 hardlink alias => same OS file => accepted",
+                  "os.link unavailable (privilege) — NOT a pass")
 
-        # B3: every gate must bridge to integration INVALID. Each case breaks the
-        #     CONJUNCTION at a DIFFERENT point; the fake Q3 result carries each field
-        #     so the case actually exercises THAT gate (睫: 7 names, 1 case before).
+        # B3: every gate must bridge to integration INVALID, AND the failure must be
+        #     the NAMED gate (not an earlier unrelated error). Each case breaks the
+        #     CONJUNCTION at a DIFFERENT gate; the fake result carries its field so the
+        #     case actually exercises THAT gate (睫: 7 names, 1 case before). With the
+        #     fixed _FakeQ3Result, `valid=False` is the derived conjunction, and the
+        #     reason must name the specific field.
         gates = [
-            ("real_reset_ok", dict(valid=False, real_reset_ok=False)),
-            ("clear_ok", dict(valid=False, clear_ok=False)),
-            ("access_ok", dict(valid=False, access_ok=False)),
-            ("handle_ok", dict(valid=False, handle_ok=False)),
-            ("matrix_ok", dict(valid=False, matrix_ok=False)),
-            ("dacl_restore_ok", dict(valid=False, dacl_restore_ok=False)),
-            ("preserve_ok", dict(valid=False, preserve_ok=False)),
+            ("real_reset_ok", dict(valid=False, real_reset_ok=False), "real_reset_ok"),
+            ("clear_ok", dict(valid=False, clear_ok=False), "clear_ok"),
+            ("access_ok", dict(valid=False, access_ok=False), "access_ok"),
+            ("handle_ok", dict(valid=False, handle_ok=False), "handle_ok"),
+            ("matrix_ok", dict(valid=False, matrix_ok=False), "matrix_ok"),
+            ("dacl_restore_ok", dict(valid=False, dacl_restore_ok=False), "dacl_restore_ok"),
+            ("preserve_ok", dict(valid=False, preserve_ok=False), "preserve_ok"),
         ]
-        for name, kw in gates:
+        for name, kw, token in gates:
             sup = _SwitchSupervisor(tmp, ok=True)
             ad = _base_adapter(tmp, supervisor=sup,
                                chain_override=lambda a, _kw=kw: _FakeQ3Result(**_kw))
             out = ad.run_reset_transaction(_mk_state(), _mk_state())
+            # the failure reason must be the Q3-valid conjunction (all these gates are
+            # INSIDE r.valid), never an earlier stage
+            got = f"INVALID by {name}" if out.integration_valid is False else "??"
             _chk(f"B3 gate {name} fails => integration INVALID",
-                 out.integration_valid is False, name)
+                 out.integration_valid is False
+                 and "Q3 not valid" in (out.reason or ""), out.reason)
 
         # B4: a same-account/same-SID worker must be REJECTED (R3 SID equality):
         #     supervisor returns a SID != the prespawn resolved account SID.
@@ -364,32 +410,35 @@ def layer_b_controlled() -> None:
         _chk("B5 handle audit UNRESOLVED => INVALID (UNRESOLVED != CLEAN)",
              out.integration_valid is False, out.reason)
 
-        # B6: isolation not proven (control returns GRANTED) => INVALID even if Q3 valid.
-        sup = _SwitchSupervisor(tmp, ok=False)
+        # B6: isolation not proven because the worker reported NOT-DENIED (supervisor
+        #     ok=True so identity/witness pass, but the access verdict is GRANTED) =>
+        #     must fail AT the isolation gate, not earlier.
+        sup = _SwitchSupervisor(tmp, ok=True)
+        sup.force_worker_report = "GRANTED"       # witness identity OK; access NOT denied
         ad = _base_adapter(tmp, supervisor=sup, chain_override=lambda a: _FakeQ3Result(valid=True))
         out = ad.run_reset_transaction(_mk_state(), _mk_state())
-        _chk("B6 isolation not proven => integration INVALID (even if Q3 valid)",
-             out.integration_valid is False, out.reason)
+        _chk("B6 worker access NOT denied => INVALID at isolation gate",
+             out.integration_valid is False
+             and "persistent isolation not proven" in (out.reason or "").lower(),
+             out.reason)
 
-        # B7: real-object binding gate — replace the substrate alias target AFTER
-        #     construction so the access witness targets a DIFFERENT OS identity.
+        # B7: real-object binding gate — isolation proven on a DIFFERENT OS object than
+        #     the protected one => must fail AT _stage_bind (凌翼 R1: canary != protected).
         sup = _SwitchSupervisor(tmp, ok=True)
         ad = _base_adapter(tmp, supervisor=sup, chain_override=lambda a: _FakeQ3Result(valid=True))
-        # monkey-patch the access witness to target a different object (simulates the
-        # canary-vs-protected substitution 凌翼 R1 forbids)
-        real_prove = sup.prove_persistent_isolation
         def wrong_target_prove(path):
             (tmp / "elsewhere.bin").write_bytes(b"\x00" * SUBSTRATE_SIZE)
             return A.WorkerAccessWitness(
                 request_nonce="n", op="READ", target_path=str(tmp / "elsewhere.bin"),
                 target_os_identity=A.file_identity(tmp / "elsewhere.bin"),
                 worker_pid=4242, worker_sid=sup.sid, worker_create_time=123.0,
-                worker_reported="DENIED", controller_seal_ok=True,
-                controller_verdict="READ=DENIED", handle_audit_status=A.HANDLE_AUDIT_CLEAN)
+                worker_reported="DENIED", controller_seal_ok=False,
+                controller_verdict="HANDLE_AUDIT", handle_audit_status=A.HANDLE_AUDIT_CLEAN)
         sup.prove_persistent_isolation = wrong_target_prove
         out = ad.run_reset_transaction(_mk_state(), _mk_state())
-        _chk("B7 isolation proven on WRONG object (canary!=protected) => INVALID",
-             out.integration_valid is False, out.reason)
+        _chk("B7 isolation on WRONG object (canary!=protected) => INVALID at bind gate",
+             out.integration_valid is False
+             and "binding recheck" in (out.reason or "").lower(), out.reason)
 
 
 # ===========================================================================
@@ -473,6 +522,8 @@ def layer_c_real() -> str:
                 # quiet failure — the witness correctly refuses to claim `proven`.
                 print(f"  [SKIP] C1 handle audit = {wit.handle_audit_status} "
                       f"(env cannot fully audit) => NOT_EVALUATED, not a pass")
+                _skip("C1 controller handle audit CLEAN => isolation proven",
+                      f"env UNEVALUATED: {wit.handle_audit_status}")
                 _chk("C1 witness refuses to claim proven without CLEAN audit",
                      wit.proven is False, wit.handle_audit_status)
             sup.release_into_execution()
@@ -493,36 +544,56 @@ def layer_c_real() -> str:
 # ===========================================================================
 def layer_d_real_success() -> str:
     """凌翼: at least ONE real, complete success path through run_reset_transaction()
-    asserting integration_valid is True. Requires the REAL frozen Q3 to pass, which
-    needs a real clear-action, real protected/substrate/literal objects and the worker
-    credential. If the environment cannot supply them, SKIP honestly (exit 2)."""
+    asserting integration_valid is True, with a REAL adapter (not the logic helper),
+    a real old-worker/clear-action contract, controller-captured snapshots, and a
+    finally-cleanup. Requires the REAL frozen Q3 to pass. If the environment cannot
+    supply a real fixture, SKIP honestly (exit 2). 知微 ZW-R2-04.
+
+    Required environment:
+      AFTERGLOW_Q3_FULL_FIXTURE = a directory containing:
+        protected.bin (SUBSTRATE_SIZE), literal.bin (LITERAL_SIZE),
+        and optionally a clear-action descriptor the caller wires in.
+      AFTERGLOW_WORKER_PASSWORD = the worker credential.
+    """
     print("\n=== LAYER D: real success path (run_reset_transaction) ===")
     fp = os.environ.get("AFTERGLOW_Q3_FULL_FIXTURE")
     if not fp:
         print("  SKIP: AFTERGLOW_Q3_FULL_FIXTURE not set (needs a real Q3-passable")
-        print("        fixture: protected/substrate/literal + clear action). NOT a pass.")
+        print("        fixture + clear action). NOT a pass.")
         return SKIP
-    # The fixture is a directory prepared by the caller with the exact objects and a
-    # clear-action descriptor. We build the adapter around it and drive the REAL chain.
     from pathlib import Path as _P
     fx = _P(fp)
     files = {p.name: p for p in fx.iterdir()}
-    required = {"protected.bin", "literal.bin", "forbidden.bin"}
-    if not required.issubset(files):
-        print(f"  SKIP: fixture missing {required - set(files)}")
+    if not {"protected.bin", "literal.bin"}.issubset(files):
+        print(f"  SKIP: fixture missing protected.bin/literal.bin (has {sorted(files)})")
         return SKIP
     _grant_worker_write(fx)
+
     sup = A.BusinessWorkerSupervisor(
         account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
         entry_script=HERE / "q3_business_worker_entry.py",
         work_dir=fx, python_exe=A._direct_interpreter(),
         password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"),
         expected_entry_sha256=A._sha256_file(HERE / "q3_business_worker_entry.py"))
-    ad = _base_adapter(
-        fx, supervisor=sup,                       # REAL supervisor, REAL chain
-        protected=files["protected.bin"], substrate_path=files["protected.bin"],
-        literal_path=files["literal.bin"], forbidden_path=files["forbidden.bin"])
-    out = ad.run_reset_transaction(_mk_state(), _mk_state())
+
+    # Build the REAL adapter DIRECTLY (never via the logic helper — no duplicate-kwarg,
+    # no fixture overwrite). Objects come from the fixture; the controller captures the
+    # snapshots from the REAL objects.
+    acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker")
+    ad = A.Q3ResetAdapter(
+        account=acct, password=os.environ.get("AFTERGLOW_WORKER_PASSWORD", ""),
+        work_dir=fx, protected=files["protected.bin"],
+        literal_path=files["literal.bin"], substrate_path=files["protected.bin"],
+        python_exe=A._direct_interpreter(), clear_targets_by_category={},
+        expected_sid=None, transaction_id=uuid.uuid4().hex, supervisor=sup,
+        forbidden_path=files.get("forbidden.bin", files["protected.bin"]),
+        proving_real_replacement=True)
+    # controller-captured snapshots from the REAL objects (handoff before, restored after)
+    handoff = ad.capture_handoff()
+    try:
+        out = ad.run_reset_transaction(handoff, ad.capture_restored())
+    finally:
+        ad._cleanup()
     _chk("D1 real success path integration_valid is True",
          out.integration_valid is True, out.reason)
     return PASS
@@ -540,15 +611,25 @@ def main() -> int:
     d_verdict = layer_d_real_success()
 
     print("\n" + "=" * 72)
-    anyfail = any(v == FAIL for _, v, _ in _results)
+    # structured, de-duplicated counts (知微: 35 distinct PASS entries — do NOT count
+    # the summary re-print as 70; and SKIPs must be visible, not dropped)
+    n_pass = sum(1 for _, v, _ in _results if v == PASS)
+    n_fail = sum(1 for _, v, _ in _results if v == FAIL)
+    n_skip = sum(1 for _, v, _ in _results if v == SKIP)
+    seen = set()
     for name, v, tail in _results:
+        if (name, v) in seen:
+            continue
+        seen.add((name, v))
         print(f"[{v}] {name}")
     print("=" * 72)
-    if anyfail:
+    print(f"DISTINCT_RESULTS: PASS={n_pass} FAIL={n_fail} SKIP={n_skip}")
+    if n_fail:
         print("ADAPTER_REGRESSION = FAIL")
         return 1
-    if c_verdict == SKIP or d_verdict == SKIP:
-        print("ADAPTER_REGRESSION = PARTIAL (logic+controlled passed; a real layer SKIPPED")
+    # any SKIP in a REQUIRED item => PARTIAL (not a pass)
+    if n_skip or c_verdict == SKIP or d_verdict == SKIP:
+        print("ADAPTER_REGRESSION = PARTIAL (real-scope items UNEVALUATED/SKIPPED")
         print("  => NOT a real-isolation/full-success pass; env precondition, NOT a pass)")
         return 2
     print("ADAPTER_REGRESSION = PASS")

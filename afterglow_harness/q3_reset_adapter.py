@@ -128,18 +128,25 @@ class WorkerAccessWitness:
 
     @property
     def proven(self) -> bool:
-        """Strict (凌翼 R2): the REAL worker attempted and reported DENIED on THIS
-        target, the target's OS identity was bound, and the CONTROLLER-run handle
-        audit for THIS worker+target is exactly CLEAN.
+        """Strict (凌翼 R2): the CONTROLLER's independent handle audit for THIS worker
+        + the REAL target is exactly CLEAN. That is the necessary, non-substitutable
+        condition (凌翼: WORKER_SELF_REPORT IS NOT INDEPENDENT OS EVIDENCE).
 
-        NOTE (凌翼 R2 caveat): the controller must NOT substitute its OWN read for the
-        worker's — a controller with read rights would always 'succeed', which proves
-        nothing about the worker. The controller's independent contribution is the
-        HANDLE AUDIT (does the worker hold a handle to the target?) + object-identity
-        binding, NOT its own access verdict."""
-        return (self.worker_reported == "DENIED"
-                and self.target_os_identity is not None
-                and self.handle_audit_status == HANDLE_AUDIT_CLEAN)
+        The worker's self-reported attempt is kept ONLY as a CONSISTENCY CROSS-CHECK:
+        a non-DENIED self-report can VETO (fail-closed), but a DENIED self-report can
+        NOT establish the proof on its own. `controller_seal_ok` is NOT part of the
+        success predicate (it is not a real independent seal — 睫第202句)."""
+        # necessary: controller-side handle audit CLEAN (UNRESOLVED/ERROR/FOUND != CLEAN)
+        if self.handle_audit_status != HANDLE_AUDIT_CLEAN:
+            return False
+        # necessary: the observed target identity is bound
+        if self.target_os_identity is None:
+            return False
+        # consistency cross-check (veto only): a non-DENIED self-report fails closed,
+        # but a DENIED self-report does not by itself satisfy the proof.
+        if self.worker_reported != "DENIED":
+            return False
+        return True
 
 
 class BusinessWorkerSupervisor:
@@ -429,11 +436,14 @@ class BusinessWorkerSupervisor:
             request_nonce=nonce, op="READ", target_path=str(target.resolve()),
             target_os_identity=target_id, worker_pid=w.pid, worker_sid=w.token_sid,
             worker_create_time=w.create_time, worker_reported=worker_reported,
-            controller_seal_ok=True,                     # controller ran the audit itself
-            controller_verdict="HANDLE_AUDIT",           # controller's real contribution
+            # 凌翼 R2 / 睫第202句: we did NOT run any controller-side read (a privileged
+            # controller's read would be a cannot-fail check => wall-door). The
+            # controller's REAL independent contribution is the handle audit below.
+            controller_seal_ok=False,                    # not a real independent seal
+            controller_verdict="HANDLE_AUDIT",           # controller's actual contribution
             handle_audit_status=handle_status,
-            detail=f"worker={worker_reported} handles={handle_status} "
-                   f"target={target_id}")
+            detail=f"worker_self_report={worker_reported} (consistency only) "
+                   f"handle_audit={handle_status} target={target_id}")
 
     def _ask_worker_to_attempt_read(self, path: Path, nonce: str,
                                     w: BusinessWorkerWitness) -> str:
@@ -475,12 +485,13 @@ class BusinessWorkerSupervisor:
             return self._process_gone(self._witness.pid)
         return True
 
-    def _confirmed_exit_or_raise(self, msg: str) -> None:
-        """Terminate and CONFIRM exit; if we cannot confirm, raise (never silently
-        drop the handle)."""
+    def _confirmed_exit_or_raise(self, msg: str) -> "NoReturn":  # noqa: F821
+        """Terminate + confirm exit, THEN RAISE the original failure (知微 ZW-R2-06:
+        this is a failure exit; it must ALWAYS raise after cleanup, whether or not the
+        terminate succeeded). The cleanup status is recorded for the audit."""
         status = self.terminate()
-        if status != "EXIT_CONFIRMED":
-            raise NotIsolatedError(f"{msg} (cleanup status={status})")
+        self._audit["terminate_status"] = status
+        raise NotIsolatedError(f"{msg} (cleanup status={status})")
 
     # ---- idempotent terminate: REQUESTED vs EXIT_CONFIRMED (凌翼 R-CLEANUP) --
     def terminate(self) -> str:
@@ -503,23 +514,37 @@ class BusinessWorkerSupervisor:
         k32.CloseHandle.restype = wintypes.BOOL
         k32.CloseHandle.argtypes = [wintypes.HANDLE]
         WAIT_OBJECT_0 = 0x00000000
+        WAIT_TIMEOUT = 0x00000102
         STILL_ACTIVE = 259
         pid = self._witness.pid if self._witness else None
 
         if self._handle is not None:
-            # cross-account path: terminate via the held handle, then confirm exit
+            # cross-account path: terminate via the held handle, then CONFIRM exit.
+            # 凌翼 TERMINATE_WIN32_RESULTS: a FAILED OS call is NOT exit evidence.
             try:
                 code = wintypes.DWORD(0)
-                if k32.GetExitCodeProcess(self._handle, ctypes.byref(code)) and code.value == STILL_ACTIVE:
+                got1 = k32.GetExitCodeProcess(self._handle, ctypes.byref(code))
+                if not got1:
+                    # cannot even query: keep the handle, report honest failure
+                    return f"ERROR:GetExitCodeProcess1:{k32.GetLastError()}"
+                if code.value == STILL_ACTIVE:
                     k32.TerminateProcess(self._handle, 1)      # TERMINATION_REQUESTED
-                k32.WaitForSingleObject(self._handle, 10000)
-                # EXIT_CONFIRMED: read the exit code again; only close the handle once
-                # the process is truly not STILL_ACTIVE.
+                wait_rc = k32.WaitForSingleObject(self._handle, 10000)
+                # EXIT_CONFIRMED requires WAIT_OBJECT_0 (signaled) AND a readable
+                # exit code that is NOT STILL_ACTIVE. Anything else => not confirmed.
+                if wait_rc == WAIT_TIMEOUT:
+                    return "STILL_ALIVE"                        # keep handle
+                if wait_rc != WAIT_OBJECT_0:
+                    return f"ERROR:WaitForSingleObject:{wait_rc}"   # WAIT_FAILED etc.
                 code2 = wintypes.DWORD(0)
-                if k32.GetExitCodeProcess(self._handle, ctypes.byref(code2)) and code2.value == STILL_ACTIVE:
-                    # not confirmed: KEEP the handle for a later retry, report honestly
-                    return "STILL_ALIVE"
-                k32.CloseHandle(self._handle)
+                if not k32.GetExitCodeProcess(self._handle, ctypes.byref(code2)):
+                    return f"ERROR:GetExitCodeProcess2:{k32.GetLastError()}"
+                if code2.value == STILL_ACTIVE:
+                    return "STILL_ALIVE"                        # keep handle for retry
+                if not k32.CloseHandle(self._handle):
+                    # exit confirmed but handle close failed: report but do not claim
+                    # the handle is gone.
+                    return f"ERROR:CloseHandle:{k32.GetLastError()}"
                 self._handle = None
             except Exception as e:                               # noqa: BLE001
                 return f"ERROR:{type(e).__name__}:{e}"
@@ -674,37 +699,44 @@ class Q3ResetAdapter(ResetController):
         raise NotIsolatedError(msg) from exc
 
     def _cleanup(self) -> None:
-        """Idempotent (constraint #5) + 凌翼 R-CLEANUP: CONSUME the terminate result,
-        record it, and only mark cleaned when exit is confirmed (or nothing started).
-        Never silently drop a live process."""
+        """Idempotent (constraint #5) + 凌翼 FAILURE_CLEANUP_ORDER (BLOCKING):
+        STOP the business worker and CONFIRM its exit FIRST; only THEN restore the
+        original ACL. While the worker may still be alive, the boundary is KEPT.
+        Also consumes the terminate result and the restore result."""
         if self._cleaned:
             return
-        # roll back the durable boundary to its original DACL if we still hold a save
-        self._rollback_boundary()
+        # (1) FIRST: terminate + confirm exit. Do NOT touch the boundary yet.
         try:
             status = self._supervisor.terminate()
         except Exception as e:  # noqa: BLE001
             self._audit["terminate_error"] = f"{type(e).__name__}: {e}"
             status = "ERROR"
-        if status == "EXIT_CONFIRMED":
-            self._cleaned = True
-            self._audit["terminate_status"] = status
-            if self._state not in (TX_DONE,):
-                self._state = TX_FAILED if self._state != TX_NEW else TX_CLOSED
-            return
-        if status == "NOT_STARTED":
-            self._cleaned = True
-            self._audit["terminate_status"] = status
-            if self._state not in (TX_DONE,):
-                self._state = TX_CLOSED if self._state == TX_NEW else TX_FAILED
-            return
-        # STILL_ALIVE / ERROR: cleanup NOT confirmed. Record it and DO NOT mark
-        # cleaned — the handle is retained for a retry. (凌翼: distinction
-        # TERMINATION_REQUESTED vs EXIT_CONFIRMED; no claiming done while alive.)
         self._audit["terminate_status"] = status
-        self._audit["cleanup_confirmed"] = False
+
+        if status != "EXIT_CONFIRMED":
+            # Worker NOT confirmed dead (STILL_ALIVE/ERROR/NOT_STARTED-with-live-handle).
+            # 凌翼: keep the protection that the still-live worker needs. Do NOT restore.
+            self._audit["cleanup_confirmed"] = False
+            self._audit["boundary_retained"] = True
+            self._cleaned = False           # retain control; retryable
+            if status == "NOT_STARTED" and self._state == TX_NEW:
+                self._state = TX_CLOSED
+            else:
+                self._state = TX_FAILED
+            return
+
+        # (2) worker exit CONFIRMED -> now it is safe to restore the original ACL.
+        self._rollback_boundary()
+        restored = self._audit.get("boundary_restored")
+        self._cleaned = True
+        if restored is False:
+            # exit confirmed but ACL restore not confirmed: retryable restore only.
+            self._audit["cleanup_confirmed"] = False
+            self._audit["boundary_restore_pending"] = True
+        else:
+            self._audit["cleanup_confirmed"] = True
         if self._state not in (TX_DONE,):
-            self._state = TX_FAILED
+            self._state = TX_FAILED if self._state != TX_NEW else TX_CLOSED
 
     # ------------------------------------------------------------------ stages
     def _call_q3_chain(self) -> ResetChainResult:
@@ -762,20 +794,32 @@ class Q3ResetAdapter(ResetController):
         self._state = TX_BOUNDARY_OK
 
     # -- boundary primitive seams (overridable in the logic layer) -----------
+    # 凌翼 R1: the ACL deny, the isolation observation, and the restore MUST all
+    # operate on the SAME real protected object. `_boundary_target()` and
+    # `_protected_target()` are therefore the same object by construction.
+    def _boundary_target(self) -> Path:
+        return self._protected_target()
+
     def _save_boundary_dacl(self) -> str | None:
-        return save_dacl(self._forbidden_path)
+        return save_dacl(self._boundary_target())
 
     def _install_boundary(self, sid: str) -> None:
-        deny_read_for_sid(self._forbidden_path, sid)
+        deny_read_for_sid(self._boundary_target(), sid)
 
     def _rollback_boundary(self) -> None:
-        """Restore the original DACL (used if boundary install / later stages fail)."""
+        """Restore the original DACL. CONSUMES the restore result (知微 ZW-R2-02):
+        a False / NOT_APPLICABLE / error is recorded, never silently treated as done."""
         if not self._boundary_saved:
             return
         try:
-            restore_dacl(self._forbidden_path, self._boundary_saved)
+            ok = restore_dacl(self._boundary_target(), self._boundary_saved)
         except Exception as e:                                   # noqa: BLE001
             self._audit["dacl_rollback_error"] = f"{type(e).__name__}: {e}"
+            self._audit["boundary_restored"] = False
+            return
+        self._audit["boundary_restored"] = bool(ok)
+        if not ok:
+            self._audit["dacl_rollback_error"] = "restore_dacl returned False"
 
     def _stage_business_worker(self) -> None:
         """Start the PERSISTENT business worker but HOLD it (task not begun).
@@ -939,10 +983,24 @@ class Q3ResetAdapter(ResetController):
                 self._cleanup()
             except Exception as ce:                              # noqa: BLE001
                 self._audit["cleanup_error"] = f"{type(ce).__name__}: {ce}"
+        # 睫: do NOT let a sub-conclusion (RC11 said VALID) sit inside a False verdict
+        # as if adopted. If the failure happened after RC11 ran, mark it UNADOPTED
+        # explicitly so no downstream reader can mistake the part for the whole.
+        unadopted = None
+        if self._rc11 is not None and self._rc11.reset_valid is True:
+            unadopted = {
+                "rc11_outcome_UNADOPTED": True,
+                "note": "RC11 verify ran and returned VALID, but the WHOLE integration "
+                        "verdict is INVALID (a later gate failed); do NOT consume "
+                        "rc11_outcome.reset_valid as a stand-alone pass",
+            }
+            self._audit.update(unadopted)
         return IntegrationOutcome(
             integration_valid=False, reason=f"INTEGRATION_INVALID: {reason}",
             transaction_id=self._transaction_id, state=self._state,
-            q3_result=self._r, rc11_outcome=self._rc11,
+            q3_result=self._r,
+            rc11_outcome=(None if unadopted else self._rc11),   # don't present a
+            #   stand-alone VALID rc11 inside a False verdict (睫: unadopted子结论)
             worker_witness=self._witness, bindings=self._bindings, audit=self._audit)
 
     # ---------------------------------------------- ResetController hooks
