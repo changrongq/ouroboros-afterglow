@@ -53,6 +53,7 @@ def main() -> int:
     work = Path(args.work_dir).resolve()
     ready = work / ".afterglow_worker_ready"
     release = work / ".afterglow_release"
+    ack = work / ".afterglow_release_ack"
     stop = work / ".afterglow_stop"
     req = work / ".afterglow_access_request.json"
     resp = work / ".afterglow_access_response.json"
@@ -74,6 +75,12 @@ def main() -> int:
             if tok and tok == args.release_token:
                 released = True
                 processing = True
+                # ACK the release, bound to THIS pid + THIS token (凌翼 VERIFY_RELEASE_ACK)
+                try:
+                    ack.write_text(json.dumps({"pid": os.getpid(), "token": tok}),
+                                   encoding="utf-8")
+                except OSError:
+                    pass
                 sys.stdout.write("RELEASED_INTO_EXECUTION\n")
                 sys.stdout.flush()
         # serve an access attempt regardless of released state (isolation must hold
@@ -82,10 +89,12 @@ def main() -> int:
             try:
                 body = json.loads(req.read_text(encoding="utf-8"))
                 target = body.get("path", "")
+                nonce = body.get("nonce", "")
                 verdict = _attempt_read(target) if target else "NO_TARGET"
-                
-                resp.write_text(json.dumps({"result": verdict, "pid": os.getpid()}),
-                                encoding="utf-8")
+                # echo the request nonce + our pid so the controller can bind the response
+                resp.write_text(json.dumps(
+                    {"result": verdict, "pid": os.getpid(), "nonce": nonce}),
+                    encoding="utf-8")
             except (OSError, ValueError) as e:
                 try:
                     resp.write_text(json.dumps({"result": f"ERROR:{type(e).__name__}"}),

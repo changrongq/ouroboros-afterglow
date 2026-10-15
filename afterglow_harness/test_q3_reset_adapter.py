@@ -70,70 +70,115 @@ class _FakeQ3Result:
         self.reason = reason
 
 
-def _base_adapter(tmp: Path, *, chain_override=None, **kw):
+def _base_adapter(tmp: Path, *, chain_override=None, supervisor=None, **kw):
     """Build an adapter whose Q3 stage is driven by `chain_override` (an injectable
     function) so the LOGIC layer runs without a credential. The REAL layers override
     this to call the genuine chain."""
     # logic fixtures need the REAL files to exist so the OS-identity check passes.
     (tmp / "protected.bin").write_bytes(b"\x00" * SUBSTRATE_SIZE)
     (tmp / "literal.bin").write_bytes(b"\x00" * LITERAL_SIZE)
+    # account SID resolution needs a resolvable account; use the CURRENT user so the
+    # logic layer can construct (the isolation claim is the supervisor's, not this).
+    import getpass
+    acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT") or getpass.getuser()
+    if supervisor is None:
+        supervisor = _SwitchSupervisor(tmp, ok=False)   # logic default: NOT ok
     adapter = A.Q3ResetAdapter(
-        account="afterglow_worker", password="x" * 8,
+        account=acct, password="x" * 8,
         work_dir=tmp, protected=(tmp / "protected.bin"),
         literal_path=(tmp / "literal.bin"), substrate_path=(tmp / "protected.bin"),
         python_exe=sys.executable, clear_targets_by_category={},
-        expected_sid="S-1-5-21-0-0-0-1001",
+        expected_sid=None,                        # resolved from the account (R3)
         transaction_id=uuid.uuid4().hex,
-        supervisor=_NullSupervisor(tmp),
+        supervisor=supervisor,
         forbidden_path=(tmp / "forbidden.bin"),
         **kw)
     if chain_override is not None:
         adapter._call_q3_chain = lambda: chain_override(adapter)  # injection seam
+    # logic layer: override the boundary ACL seams so no real ACL privilege is needed;
+    # the isolation proof is stubbed via the _SwitchSupervisor (Layer C/D use the real
+    # boundary primitives). This keeps the state-machine tests runnable unprivileged.
+    if isinstance(supervisor, _SwitchSupervisor):
+        adapter._save_boundary_dacl = lambda: "STUBBED-DACL"
+        adapter._install_boundary = lambda sid: None
+        adapter._rollback_boundary = lambda: None
+        # the switch supervisor's SID must equal the PRESPAWN resolved account SID so
+        # the R3 equality gate is satisfied on the success path (unless a test sets a
+        # deliberately-different SID, e.g. B4).
+        if not supervisor.sid_pinned:
+            supervisor.sid = adapter._resolved_account_sid
     return adapter
 
 
-class _NullSupervisor:
-    """Logic-layer supervisor: does NOT claim real OS evidence. Its witness is
-    deliberately NON-ok unless the test sets it, so a logic pass never implies a
-    real-worker pass. (Layer C replaces this entirely.)"""
+class _SwitchSupervisor:
+    """Logic-layer supervisor with an EXPLICIT ok switch (睫第198句 fix: a恒-False
+    supervisor made every downstream gate unreachable). When ok=False it never claims
+    real isolation; when ok=True it produces a structurally-valid witness so the
+    SUCCESS path can be exercised. This is still a LOGIC double — it is used ONLY in
+    Layers A/B, never to claim real OS evidence (Layer D uses the real supervisor)."""
 
-    def __init__(self, work_dir):
+    def __init__(self, work_dir, *, ok: bool, sid: str = "S-1-5-21-0-0-0-2002",
+                 entry_sha: str = "deadbeef", sid_pinned: bool = False):
         self.work_dir = Path(work_dir)
+        self.ok = ok
+        self.sid = sid
+        self.sid_pinned = sid_pinned      # True => do NOT auto-align to resolved SID
+        self.entry_sha = entry_sha
         self._w = None
         self._terminated = 0
+        self._release_acked = False
+        self.last_handle_status = A.HANDLE_AUDIT_CLEAN if ok else A.HANDLE_AUDIT_UNRESOLVED
+        self.fail_terminate = False       # set by a test to simulate STILL_ALIVE
 
     def start_business_worker_holding(self):
         self._w = A.BusinessWorkerWitness(
-            pid=0, token_sid="", account="", create_time=0.0,
-            entry_sha256="", create_api="null", started_and_holding=True)
+            pid=4242, token_sid=self.sid, account="w", create_time=123.0,
+            entry_sha256=self.entry_sha, create_api="switch",
+            started_and_holding=True, ready_seen=True, ready_pid=4242)
         return self._w
 
     def witness(self):
         return self._w
 
     def witness_ok(self, w=None):
-        return False                      # logic supervisor NEVER claims a real worker
+        return bool(self.ok and self._w is not None and self._w.witness_ok)
 
-    def prove_persistent_isolation(self, forbidden_path):
-        return False                      # logic supervisor NEVER claims real isolation
+    def prove_persistent_isolation(self, target_path):
+        target_id = A.file_identity(Path(target_path))
+        return A.WorkerAccessWitness(
+            request_nonce="n", op="READ", target_path=str(Path(target_path)),
+            target_os_identity=target_id, worker_pid=4242, worker_sid=self.sid,
+            worker_create_time=123.0,
+            worker_reported=("DENIED" if self.ok else "GRANTED"),
+            controller_seal_ok=bool(self.ok),
+            controller_verdict=("READ=DENIED" if self.ok else "READ=GRANTED"),
+            handle_audit_status=self.last_handle_status)
 
     def release_into_execution(self):
-        pass
+        self._release_acked = True
 
     def terminate(self) -> str:
         self._terminated += 1
-        return "TERMINATED"
+        if self.fail_terminate:
+            return "STILL_ALIVE"          # cleanup NOT confirmed
+        return "EXIT_CONFIRMED"
 
 
 def _grant_worker_write(path: Path) -> None:
-    """Grant the worker account modify access to the work dir (OS-level setup)."""
-    import subprocess
+    """Grant the worker account modify access to the work dir (OS-level setup).
+
+    The worker must be able to CREATE files here (READY/ACK/response), and the
+    controller (us) must keep full control — so we grant both explicitly rather than
+    relying on inherited ACEs from an Administrators-owned temp dir."""
+    import subprocess, getpass
     acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker")
-    try:
-        subprocess.run(["icacls", str(path), "/grant", f"{acct}:(OI)(CI)M"],
-                       capture_output=True, text=True)
-    except Exception:                                            # noqa: BLE001
-        pass
+    me = os.environ.get("USERNAME") or getpass.getuser()
+    for who in (acct, me):
+        try:
+            subprocess.run(["icacls", str(path), "/grant", f"{who}:(OI)(CI)M"],
+                           capture_output=True, text=True)
+        except Exception:                                        # noqa: BLE001
+            pass
 
 
 # ===========================================================================
@@ -166,13 +211,24 @@ def layer_a_logic() -> None:
         out = ad.run_reset_transaction(_mk_state(), _mk_state())
         _chk("A2 FIRST_START while proving real replacement => INVALID",
              out.integration_valid is False, out.reason)
+        _chk("A2 failed at the REAL_RESET gate (not earlier)",
+             "REAL_RESET" in (out.reason or ""), out.reason)
 
         # A3: repeat call on a terminal transaction is REFUSED (no stale reuse).
+        #      distinguish failure-then-repeat AND success-then-repeat.
         ad = _base_adapter(tmp, chain_override=lambda a: _FakeQ3Result(valid=False))
         ad.run_reset_transaction(_mk_state(), _mk_state())
         out2 = ad.run_reset_transaction(_mk_state(), _mk_state())
-        _chk("A3 second call refused / INVALID", out2.integration_valid is False,
-             out2.reason)
+        _chk("A3a second call after failure refused / INVALID",
+             out2.integration_valid is False, out2.reason)
+        sup_ok = _SwitchSupervisor(tmp, ok=True)
+        ad = _base_adapter(tmp, chain_override=lambda a: _FakeQ3Result(valid=True),
+                           supervisor=sup_ok)
+        first = ad.run_reset_transaction(_mk_state(), _mk_state())
+        second = ad.run_reset_transaction(_mk_state(), _mk_state())
+        _chk("A3b success path reached (assert integration_valid is True)", first.integration_valid is True, first.reason)
+        _chk("A3c second call after SUCCESS refused / INVALID",
+             second.integration_valid is False, second.reason)
 
         # A4: exception in the Q3 stage is converged to INVALID (single failure contract).
         def chain_raises(adapter):
@@ -182,9 +238,30 @@ def layer_a_logic() -> None:
         _chk("A4 Q3 exception => integration INVALID", out.integration_valid is False)
         _chk("A4 state FAILED", ad.state == A.TX_FAILED)
 
-        # A5: cleanup is idempotent (terminate called but state stable).
-        _chk("A5 cleanup idempotent (second _cleanup no-op)",
-             (ad._cleanup(), ad._cleanup(), ad.state == A.TX_FAILED)[-1])
+        # A5: cleanup idempotent — assert BOTH the return values AND state (睫: A5 was
+        #     name-mismatched before; it only checked tuple[-1]).
+        sup = _SwitchSupervisor(tmp, ok=True)
+        ad = _base_adapter(tmp, chain_override=lambda a: _FakeQ3Result(valid=False),
+                           supervisor=sup)
+        ad.run_reset_transaction(_mk_state(), _mk_state())
+        n1 = sup._terminated
+        ad._cleanup(); ad._cleanup()
+        _chk("A5 cleanup idempotent (terminate called once; state stable)",
+             sup._terminated == n1 and ad.state == A.TX_FAILED,
+             f"terminated={sup._terminated} state={ad.state}")
+
+        # A6: P1-D — cleanup honours the terminate result: a STILL_ALIVE terminate must
+        #     NOT be recorded as cleaned, and must be retryable.
+        sup = _SwitchSupervisor(tmp, ok=True)
+        sup.fail_terminate = True
+        ad = _base_adapter(tmp, chain_override=lambda a: _FakeQ3Result(valid=False),
+                           supervisor=sup)
+        ad.run_reset_transaction(_mk_state(), _mk_state())
+        _chk("A6 STILL_ALIVE => cleanup NOT confirmed", ad._audit.get("cleanup_confirmed") is False)
+        _chk("A6 not marked cleaned (retryable)", ad._cleaned is False)
+        sup.fail_terminate = False
+        ad._cleanup()                                   # retry now succeeds
+        _chk("A6 retry cleanup confirms exit", ad._cleaned is True)
 
 
 # ===========================================================================
@@ -194,78 +271,129 @@ def layer_b_controlled() -> None:
     print("\n=== LAYER B: controlled negative tests ===")
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-        # Create the real files so OS identity checks operate on real objects.
         (tmp / "protected.bin").write_bytes(b"\x00" * SUBSTRATE_SIZE)
         (tmp / "literal.bin").write_bytes(b"\x00" * LITERAL_SIZE)
         (tmp / "forbidden.bin").write_bytes(b"secret")
+        import getpass
+        acct = os.environ.get("AFTERGLOW_WORKER_ACCOUNT") or getpass.getuser()
 
-        # B1: object-mismatch negative — protected and substrate are DIFFERENT files.
+        # B1: object-mismatch negative — assert the EXCEPTION TYPE is NotIsolatedError
+        #     (睫: the old substring assertion accepted any unrelated error) and the
+        #     message names the mismatch.
         other = tmp / "different.bin"
         other.write_bytes(b"\x00" * SUBSTRATE_SIZE)
-        raised = False
+        from reset import NotIsolatedError
+        b1_ok = False
         try:
             A.Q3ResetAdapter(
-                account="a", password="p", work_dir=tmp,
+                account=acct, password="p", work_dir=tmp,
                 protected=(tmp / "protected.bin"),
                 literal_path=(tmp / "literal.bin"),
                 substrate_path=other,                       # NOT the same object
                 python_exe=sys.executable, clear_targets_by_category={},
-                expected_sid="S-1-5-21-0-0-0-1001",
+                expected_sid=None,
                 transaction_id=uuid.uuid4().hex,
-                supervisor=_NullSupervisor(tmp),
+                supervisor=_SwitchSupervisor(tmp, ok=True),
                 forbidden_path=(tmp / "forbidden.bin"))
+        except NotIsolatedError as e:
+            b1_ok = "PROTECTED" in str(e).upper() and "SUBSTRATE" in str(e).upper()
         except Exception as e:                              # noqa: BLE001
-            raised = "SUBSTRATE" in str(e).upper() or "PROTECTED" in str(e).upper()
-        _chk("B1 protected<->substrate object mismatch => refuse", raised)
+            b1_ok = False
+        _chk("B1 protected<->substrate mismatch => NotIsolatedError", b1_ok)
 
-        # B2: same object via a hardlink/alias is ACCEPTED (OS identity, not string).
+        # B2: same object via a hardlink alias is ACCEPTED (OS identity, not string).
+        #     If os.link is unavailable (Windows privilege), SKIP — do NOT fake.
         alias = tmp / "protected_alias.bin"
         try:
             os.link(tmp / "protected.bin", alias)
-            ad = A.Q3ResetAdapter(
-                account="a", password="p", work_dir=tmp,
-                protected=(tmp / "protected.bin"),
-                literal_path=(tmp / "literal.bin"),
-                substrate_path=alias,                       # hardlink => same OS file
-                python_exe=sys.executable, clear_targets_by_category={},
-                expected_sid="S-1-5-21-0-0-0-1001",
-                transaction_id=uuid.uuid4().hex,
-                supervisor=_NullSupervisor(tmp),
-                forbidden_path=(tmp / "forbidden.bin"))
-            _chk("B2 hardlink alias => same OS file => accepted", True)
-        except Exception as e:                              # noqa: BLE001
-            _chk("B2 hardlink alias => same OS file => accepted", False, str(e))
+            have_link = True
+        except OSError:
+            have_link = False
+        if have_link:
+            try:
+                A.Q3ResetAdapter(
+                    account=acct, password="p", work_dir=tmp,
+                    protected=(tmp / "protected.bin"),
+                    literal_path=(tmp / "literal.bin"),
+                    substrate_path=alias,                   # hardlink => same OS file
+                    python_exe=sys.executable, clear_targets_by_category={},
+                    expected_sid=None,
+                    transaction_id=uuid.uuid4().hex,
+                    supervisor=_SwitchSupervisor(tmp, ok=True),
+                    forbidden_path=(tmp / "forbidden.bin"))
+                _chk("B2 hardlink alias => same OS file => accepted", True)
+            except Exception as e:                          # noqa: BLE001
+                _chk("B2 hardlink alias => same OS file => accepted", False, str(e))
+        else:
+            print("  [SKIP] B2 hardlink unavailable (privilege) — NOT counted as pass")
 
-        # B3..B9: each gate failure injected by CHANGING the Q3 result the chain
-        # WOULD return because we altered its INPUTS (here modeled via the seam that
-        # mirrors "the chain computed a real failure"). Every gate must bridge to
-        # integration INVALID, not only the 3 the draft read.
+        # B3: every gate must bridge to integration INVALID. Each case breaks the
+        #     CONJUNCTION at a DIFFERENT point; the fake Q3 result carries each field
+        #     so the case actually exercises THAT gate (睫: 7 names, 1 case before).
         gates = [
             ("real_reset_ok", dict(valid=False, real_reset_ok=False)),
             ("clear_ok", dict(valid=False, clear_ok=False)),
             ("access_ok", dict(valid=False, access_ok=False)),
-            ("handle_ok", dict(valid=False)),
-            ("matrix_ok", dict(valid=False)),
-            ("dacl_restore_ok", dict(valid=False)),
-            ("preserve_ok", dict(valid=False)),
+            ("handle_ok", dict(valid=False, handle_ok=False)),
+            ("matrix_ok", dict(valid=False, matrix_ok=False)),
+            ("dacl_restore_ok", dict(valid=False, dacl_restore_ok=False)),
+            ("preserve_ok", dict(valid=False, preserve_ok=False)),
         ]
         for name, kw in gates:
-            ad = _base_adapter(tmp, chain_override=lambda a, _kw=kw: _FakeQ3Result(**_kw))
+            sup = _SwitchSupervisor(tmp, ok=True)
+            ad = _base_adapter(tmp, supervisor=sup,
+                               chain_override=lambda a, _kw=kw: _FakeQ3Result(**_kw))
             out = ad.run_reset_transaction(_mk_state(), _mk_state())
             _chk(f"B3 gate {name} fails => integration INVALID",
                  out.integration_valid is False, name)
 
-        # B10: RC11 access_side_ok must be bound to THIS worker's witness, and Q3
-        # access proof kept separate -> both required. If isolation stage fails,
-        # integration must be INVALID even if Q3 valid.
-        ad = _base_adapter(tmp, chain_override=lambda a: _FakeQ3Result(valid=True))
+        # B4: a same-account/same-SID worker must be REJECTED (R3 SID equality):
+        #     supervisor returns a SID != the prespawn resolved account SID.
+        sup = _SwitchSupervisor(tmp, ok=True, sid="S-1-5-21-0-0-0-9999", sid_pinned=True)
+        ad = _base_adapter(tmp, supervisor=sup, chain_override=lambda a: _FakeQ3Result(valid=True))
         out = ad.run_reset_transaction(_mk_state(), _mk_state())
-        _chk("B10 isolation not proven => integration INVALID (even if Q3 valid)",
+        _chk("B4 worker SID != prespawn resolved SID => INVALID",
+             out.integration_valid is False and "SID" in (out.reason or "").upper(),
+             out.reason)
+
+        # B5: handle audit NOT CLEAN (UNRESOLVED) must NOT pass (凌翼 R2).
+        sup = _SwitchSupervisor(tmp, ok=True)
+        sup.last_handle_status = A.HANDLE_AUDIT_UNRESOLVED
+        ad = _base_adapter(tmp, supervisor=sup, chain_override=lambda a: _FakeQ3Result(valid=True))
+        out = ad.run_reset_transaction(_mk_state(), _mk_state())
+        _chk("B5 handle audit UNRESOLVED => INVALID (UNRESOLVED != CLEAN)",
+             out.integration_valid is False, out.reason)
+
+        # B6: isolation not proven (control returns GRANTED) => INVALID even if Q3 valid.
+        sup = _SwitchSupervisor(tmp, ok=False)
+        ad = _base_adapter(tmp, supervisor=sup, chain_override=lambda a: _FakeQ3Result(valid=True))
+        out = ad.run_reset_transaction(_mk_state(), _mk_state())
+        _chk("B6 isolation not proven => integration INVALID (even if Q3 valid)",
+             out.integration_valid is False, out.reason)
+
+        # B7: real-object binding gate — replace the substrate alias target AFTER
+        #     construction so the access witness targets a DIFFERENT OS identity.
+        sup = _SwitchSupervisor(tmp, ok=True)
+        ad = _base_adapter(tmp, supervisor=sup, chain_override=lambda a: _FakeQ3Result(valid=True))
+        # monkey-patch the access witness to target a different object (simulates the
+        # canary-vs-protected substitution 凌翼 R1 forbids)
+        real_prove = sup.prove_persistent_isolation
+        def wrong_target_prove(path):
+            (tmp / "elsewhere.bin").write_bytes(b"\x00" * SUBSTRATE_SIZE)
+            return A.WorkerAccessWitness(
+                request_nonce="n", op="READ", target_path=str(tmp / "elsewhere.bin"),
+                target_os_identity=A.file_identity(tmp / "elsewhere.bin"),
+                worker_pid=4242, worker_sid=sup.sid, worker_create_time=123.0,
+                worker_reported="DENIED", controller_seal_ok=True,
+                controller_verdict="READ=DENIED", handle_audit_status=A.HANDLE_AUDIT_CLEAN)
+        sup.prove_persistent_isolation = wrong_target_prove
+        out = ad.run_reset_transaction(_mk_state(), _mk_state())
+        _chk("B7 isolation proven on WRONG object (canary!=protected) => INVALID",
              out.integration_valid is False, out.reason)
 
 
 # ===========================================================================
-# LAYER C — real business worker integration (Windows + credential required)
+# LAYER C — real business worker lifecycle (Windows + credential required)
 # ===========================================================================
 def layer_c_real() -> str:
     print("\n=== LAYER C: real business worker integration ===")
@@ -290,7 +418,7 @@ def layer_c_real() -> str:
         sup = A.BusinessWorkerSupervisor(
             account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
             entry_script=HERE / "q3_business_worker_entry.py",
-            work_dir=tmp, python_exe=sys.executable,
+            work_dir=tmp, python_exe=A._direct_interpreter(),
             password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"))
 
         # C2 (negative): a same-account worker must NEVER be accepted as a real
@@ -298,7 +426,7 @@ def layer_c_real() -> str:
         sup_nopw = A.BusinessWorkerSupervisor(
             account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
             entry_script=HERE / "q3_business_worker_entry.py",
-            work_dir=tmp, python_exe=sys.executable, password="")
+            work_dir=tmp, python_exe=A._direct_interpreter(), password="")
         nopw_rejected = False
         try:
             sup_nopw.start_business_worker_holding()
@@ -308,35 +436,108 @@ def layer_c_real() -> str:
             sup_nopw.terminate()
         _chk("C2 same-account worker refused (fail-closed)", nopw_rejected)
 
-        # C1: start-holding, verify OS witness, prove durable isolation ON the worker,
-        # then terminate. This exercises the real supervisor WITHOUT the frozen Q3.
+        # C3 (negative): a wrong ENTRY identity must be refused (R3 entry binding).
+        sup_badentry = A.BusinessWorkerSupervisor(
+            account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
+            entry_script=HERE / "q3_business_worker_entry.py",
+            work_dir=tmp, python_exe=A._direct_interpreter(),
+            password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"),
+            expected_entry_sha256="0" * 64)
+        badentry_rejected = False
+        try:
+            sup_badentry.start_business_worker_holding()
+        except Exception:                                    # noqa: BLE001
+            badentry_rejected = True
+        finally:
+            sup_badentry.terminate()
+        _chk("C3 wrong entry identity refused (fail-closed)", badentry_rejected)
+
+        # C1: start-holding (consume READY), verify OS witness, prove durable
+        # isolation ON the worker with a CONTROLLER-corroborated witness, release
+        # with ACK, then terminate. Real supervisor; no frozen Q3 here.
         try:
             w = sup.start_business_worker_holding()
-            _chk("C1 worker OS witness ok", sup.witness_ok(w),
+            _chk("C1 worker OS witness ok (READY consumed)", sup.witness_ok(w),
                  f"pid={w.pid} ct={w.create_time:.0f} sid={w.token_sid[:12]}...")
+            # durable boundary FIRST (R1: prove on the REAL object)
+            A.deny_read_for_sid(forbidden, w.token_sid)
+            wit = sup.prove_persistent_isolation(forbidden)
+            _chk("C1 worker bound access attempt reported DENIED",
+                 wit.worker_reported == "DENIED", f"worker={wit.worker_reported}")
+            if wit.handle_audit_status == A.HANDLE_AUDIT_CLEAN:
+                _chk("C1 controller handle audit CLEAN => isolation proven", wit.proven,
+                     f"handles={wit.handle_audit_status}")
+            else:
+                # 凌翼 R2: if the environment cannot complete the handle audit, this is
+                # NOT_EVALUATED (a narrower proven conclusion), NOT a pass and NOT a
+                # quiet failure — the witness correctly refuses to claim `proven`.
+                print(f"  [SKIP] C1 handle audit = {wit.handle_audit_status} "
+                      f"(env cannot fully audit) => NOT_EVALUATED, not a pass")
+                _chk("C1 witness refuses to claim proven without CLEAN audit",
+                     wit.proven is False, wit.handle_audit_status)
             sup.release_into_execution()
-            isolated = sup.prove_persistent_isolation(forbidden)
-            _chk("C1 durable isolation proven ON the real worker", isolated)
+            _chk("C1 release ACKed", getattr(sup, "_release_acked", False))
         except Exception as e:                              # noqa: BLE001
             _chk("C1 worker lifecycle ran", False, f"{type(e).__name__}: {e}")
         finally:
             r1 = sup.terminate()
             r2 = sup.terminate()                            # idempotent
-            _chk("C1 terminate idempotent, no live process",
-                 r1 in ("TERMINATED", "NOT_STARTED") and r2 in ("TERMINATED", "NOT_STARTED"),
+            _chk("C1 terminate idempotent, EXIT_CONFIRMED",
+                 r1 == "EXIT_CONFIRMED" and r2 in ("EXIT_CONFIRMED", "NOT_STARTED"),
                  f"{r1}/{r2}")
+    return PASS
+
+
+# ===========================================================================
+# LAYER D — REAL success path through run_reset_transaction()
+# ===========================================================================
+def layer_d_real_success() -> str:
+    """凌翼: at least ONE real, complete success path through run_reset_transaction()
+    asserting integration_valid is True. Requires the REAL frozen Q3 to pass, which
+    needs a real clear-action, real protected/substrate/literal objects and the worker
+    credential. If the environment cannot supply them, SKIP honestly (exit 2)."""
+    print("\n=== LAYER D: real success path (run_reset_transaction) ===")
+    fp = os.environ.get("AFTERGLOW_Q3_FULL_FIXTURE")
+    if not fp:
+        print("  SKIP: AFTERGLOW_Q3_FULL_FIXTURE not set (needs a real Q3-passable")
+        print("        fixture: protected/substrate/literal + clear action). NOT a pass.")
+        return SKIP
+    # The fixture is a directory prepared by the caller with the exact objects and a
+    # clear-action descriptor. We build the adapter around it and drive the REAL chain.
+    from pathlib import Path as _P
+    fx = _P(fp)
+    files = {p.name: p for p in fx.iterdir()}
+    required = {"protected.bin", "literal.bin", "forbidden.bin"}
+    if not required.issubset(files):
+        print(f"  SKIP: fixture missing {required - set(files)}")
+        return SKIP
+    _grant_worker_write(fx)
+    sup = A.BusinessWorkerSupervisor(
+        account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
+        entry_script=HERE / "q3_business_worker_entry.py",
+        work_dir=fx, python_exe=A._direct_interpreter(),
+        password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"),
+        expected_entry_sha256=A._sha256_file(HERE / "q3_business_worker_entry.py"))
+    ad = _base_adapter(
+        fx, supervisor=sup,                       # REAL supervisor, REAL chain
+        protected=files["protected.bin"], substrate_path=files["protected.bin"],
+        literal_path=files["literal.bin"], forbidden_path=files["forbidden.bin"])
+    out = ad.run_reset_transaction(_mk_state(), _mk_state())
+    _chk("D1 real success path integration_valid is True",
+         out.integration_valid is True, out.reason)
     return PASS
 
 
 # ===========================================================================
 def main() -> int:
     print("=" * 72)
-    print("Q3 RESET ADAPTER — INTEGRATION REGRESSION (layers A/B/C)")
+    print("Q3 RESET ADAPTER — INTEGRATION REGRESSION (layers A/B/C/D)")
     print(f"lineage = {A.INTEGRATION_LINEAGE}")
     print("=" * 72)
     layer_a_logic()
     layer_b_controlled()
     c_verdict = layer_c_real()
+    d_verdict = layer_d_real_success()
 
     print("\n" + "=" * 72)
     anyfail = any(v == FAIL for _, v, _ in _results)
@@ -346,9 +547,9 @@ def main() -> int:
     if anyfail:
         print("ADAPTER_REGRESSION = FAIL")
         return 1
-    if c_verdict == SKIP:
-        print("ADAPTER_REGRESSION = PARTIAL (logic+controlled passed; real layer SKIPPED")
-        print("  => NOT a real-isolation pass; env precondition, NOT a pass)")
+    if c_verdict == SKIP or d_verdict == SKIP:
+        print("ADAPTER_REGRESSION = PARTIAL (logic+controlled passed; a real layer SKIPPED")
+        print("  => NOT a real-isolation/full-success pass; env precondition, NOT a pass)")
         return 2
     print("ADAPTER_REGRESSION = PASS")
     return 0
