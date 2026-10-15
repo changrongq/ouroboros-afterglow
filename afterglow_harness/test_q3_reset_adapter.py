@@ -499,14 +499,16 @@ def layer_c_real() -> str:
         forbidden = tmp / "forbidden.bin"
         forbidden.write_bytes(b"secret")
 
-        # C0: the work dir must be writable by the worker account for the holding
+        # C0: the mailbox dir must be writable by the worker account for the holding
         # handshake; grant it (the OS-level ACL arrangement is part of setup).
-        _grant_worker_write(tmp)
+        mailbox = tmp.parent / (tmp.name + "_mailbox")
+        mailbox.mkdir(parents=True, exist_ok=True)
+        _grant_worker_write(mailbox)
 
         sup = A.BusinessWorkerSupervisor(
             account=os.environ.get("AFTERGLOW_WORKER_ACCOUNT", "afterglow_worker"),
             entry_script=HERE / "q3_business_worker_entry.py",
-            work_dir=tmp, python_exe=A._direct_interpreter(),
+            work_dir=tmp, mailbox_dir=mailbox, python_exe=A._direct_interpreter(),
             password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"))
 
         # C2 (negative): a same-account worker must NEVER be accepted as a real
@@ -695,9 +697,15 @@ def layer_d_real_success() -> str:
         _chk("D1 callbacks bind the frozen arity", False, str(e))
         return FAIL
 
+    # 知微 D4-01: the frozen Q3 chain LOCKS DOWN `fx` (denies the worker write on
+    # code_dir.parent). The business mailbox must be a SEPARATE writable dir.
+    mailbox = fx.parent / (fx.name + "_mailbox")
+    mailbox.mkdir(parents=True, exist_ok=True)
+    _grant_worker_write(mailbox)
+
     sup = A.BusinessWorkerSupervisor(
         account=acct, entry_script=HERE / "q3_business_worker_entry.py",
-        work_dir=fx, python_exe=A._direct_interpreter(),
+        work_dir=fx, mailbox_dir=mailbox, python_exe=A._direct_interpreter(),
         password=os.environ.get("AFTERGLOW_WORKER_PASSWORD"),
         expected_entry_sha256=A._sha256_file(HERE / "q3_business_worker_entry.py"))
     ad = A.Q3ResetAdapter(

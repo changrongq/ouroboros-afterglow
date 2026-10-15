@@ -1,0 +1,11 @@
+ADAPTER D4-01 FIX EVIDENCE BUNDLE
+DATE=2026-10-15
+POLICY=知微 6ba62ff replay (D4-01 shared-workdir ACL conflict)
+
+q3_reset_adapter.py sha256=bac6ead799a89455483bd8d6ffb169839d8ec764eac3d8530ae8b55933dc5390 bytes=61707 crlf=0
+test_q3_reset_adapter.py sha256=23d053db5a2d5ad11d42c88638921e65e8f594228077fe8907fec99efbcbc820 bytes=40339 crlf=0
+q3_business_worker_entry.py sha256=59910647ec689d831855f7dab4258f4bf0e1eb554542a9e75d3f662753f1dad5 bytes=4194 crlf=0
+RC11_MANIFEST_SHA256=78bdb90f7a56b5da0c9b37ce7f454fa98a64530800f9d0727cf773e120e23059
+
+CHANGE: adapter+test only (mailbox_dir separate from Q3 work_dir). Frozen q3_reset_chain.py UNCHANGED.
+LOCAL SMOKE (real old worker): D1 advances past business READY (D4-01 fixed), stops at handles=HANDLE_AUDIT_UNRESOLVED (non-elevated).

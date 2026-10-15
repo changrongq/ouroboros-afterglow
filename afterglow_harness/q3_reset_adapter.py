@@ -167,10 +167,17 @@ class BusinessWorkerSupervisor:
 
     def __init__(self, *, account: str, entry_script: Path, work_dir: Path,
                  python_exe: str | None = None, password: str | None = None,
-                 expected_entry_sha256: str | None = None):
+                 expected_entry_sha256: str | None = None,
+                 mailbox_dir: Path | None = None):
         self.account = account
         self.entry_script = Path(entry_script)
         self.work_dir = Path(work_dir)
+        # 知微 D4-01: the frozen Q3 chain LOCKS DOWN `work_dir` (it denies the worker
+        # write/delete on `code_dir.parent` == work_dir). The business mailbox
+        # (READY / RELEASE / ACK / access request+response) therefore CANNOT live in
+        # work_dir. It gets its OWN directory with its own writable contract.
+        self.mailbox_dir = Path(mailbox_dir) if mailbox_dir is not None else (
+            self.work_dir.parent / (self.work_dir.name + "_mailbox"))
         self.python_exe = python_exe or _direct_interpreter()
         # password is REQUIRED to create the worker under a DIFFERENT account; a
         # same-account child is NOT a real isolation subject (see start_...).
@@ -183,7 +190,7 @@ class BusinessWorkerSupervisor:
         self._witness: BusinessWorkerWitness | None = None
         self._released = False
         self._release_token = ""
-        self._ready_file = self.work_dir / ".afterglow_worker_ready"
+        self._ready_file = self.mailbox_dir / ".afterglow_worker_ready"
         # 知微 D2-04: the supervisor owns its OWN audit dict (it is a different class
         # from Q3ResetAdapter, which has its own `_audit`). Failure exits must not
         # reference an attribute that does not exist here.
@@ -195,6 +202,13 @@ class BusinessWorkerSupervisor:
             raise NotIsolatedError("business worker already started (supervisor single-use)")
         if not self.entry_script.is_file():
             raise NotIsolatedError(f"business entry not found: {self.entry_script}")
+        # 知微 D4-01: the mailbox is a SEPARATE dir (the frozen Q3 chain denies the
+        # worker write on work_dir). Create it; the caller grants the worker account
+        # write on it (its own writable contract).
+        try:
+            self.mailbox_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise NotIsolatedError(f"cannot create mailbox dir: {e}") from e
         entry_sha = _sha256_file(self.entry_script)
         # 凌翼 R3: refuse if the entry bytes do not match the prespawn trusted identity.
         if self.expected_entry_sha256 is not None and entry_sha != self.expected_entry_sha256:
@@ -288,11 +302,11 @@ class BusinessWorkerSupervisor:
         LOGON_WITH_PROFILE = 0x00000001
         CREATE_NO_WINDOW = 0x08000000
         cmd = ctypes.create_unicode_buffer(
-            f'"{self.python_exe}" "{self.entry_script}" --work-dir "{self.work_dir}" '
+            f'"{self.python_exe}" "{self.entry_script}" --work-dir "{self.mailbox_dir}" '
             f'--holding --release-token {self._release_token}')
         ok = adv.CreateProcessWithLogonW(self.account, ".", self.password or "",
                                          LOGON_WITH_PROFILE, None, cmd,
-                                         CREATE_NO_WINDOW, None, str(self.work_dir),
+                                         CREATE_NO_WINDOW, None, str(self.mailbox_dir),
                                          ctypes.byref(si), ctypes.byref(pi))
         if not ok:
             raise NotIsolatedError(
@@ -367,11 +381,11 @@ class BusinessWorkerSupervisor:
         if self._released:
             raise NotIsolatedError("double release")
         self._released = True
-        ack_file = self.work_dir / ".afterglow_release_ack"
+        ack_file = self.mailbox_dir / ".afterglow_release_ack"
         try:
             if ack_file.exists():
                 ack_file.unlink()
-            token_file = self.work_dir / ".afterglow_release"
+            token_file = self.mailbox_dir / ".afterglow_release"
             token_file.write_text(self._release_token, encoding="ascii")
         except OSError as e:
             raise NotIsolatedError(f"release token write failed: {e}") from e
@@ -453,8 +467,8 @@ class BusinessWorkerSupervisor:
                                     w: BusinessWorkerWitness) -> str:
         """Have the live worker attempt the read; accept its response ONLY if it is
         bound to THIS nonce + THIS worker pid (凌翼 R2 / 知微 ZW-01)."""
-        req = self.work_dir / ".afterglow_access_request.json"
-        resp = self.work_dir / ".afterglow_access_response.json"
+        req = self.mailbox_dir / ".afterglow_access_request.json"
+        resp = self.mailbox_dir / ".afterglow_access_response.json"
         try:
             if resp.exists():
                 resp.unlink()
