@@ -31,6 +31,10 @@ used only as a DIAGNOSTIC / cross-check, never as the physical identity.
 from __future__ import annotations
 
 import ctypes
+import hashlib
+import hmac
+import os
+import secrets
 from ctypes import wintypes
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,16 +48,43 @@ V2_CLEAN = "CLEAN"
 V2_UNRESOLVED = "UNRESOLVED"
 V2_ERROR = "ERROR"
 
+# 凌翼 CLEAN_EVIDENCE_BINDING (still open): the evidence must be PRODUCED by a trusted
+# verification flow, not merely a constructible dataclass. We mirror the frozen
+# AccessWitness pattern: a per-process secret seals the evidence, and only the trusted
+# producer (see `build_enumerator_evidence` / q3_t0_enumerator_experiment) can compute
+# it. A caller that hand-builds an EnumeratorEvidence cannot produce a valid seal.
+_ENUM_SECRET: bytes = secrets.token_bytes(32)
+
+
+def _evidence_fields(ev: "EnumeratorEvidence") -> dict:
+    return {
+        "pid": ev.pid,
+        "create_time": round(float(ev.create_time), 6),
+        "verified_handle_values": sorted(int(v) for v in ev.verified_handle_values),
+        "all_verified_seen": bool(ev.all_verified_seen),
+        "method": ev.method,
+        "raw_ref": ev.raw_ref,
+    }
+
+
+def _evidence_seal(ev: "EnumeratorEvidence") -> str:
+    msg = "|".join(f"{k}={_evidence_fields(ev)[k]}" for k in sorted(_evidence_fields(ev)))
+    return hmac.new(_ENUM_SECRET, msg.encode("utf-8"), hashlib.sha256).hexdigest()
+
 
 @dataclass
 class EnumeratorEvidence:
     """TRUSTED evidence that the handle enumerator is complete for a given pid
     (凌翼: 'CALLER BOOLEAN IS NOT SUFFICIENT; REQUIRE TRUSTED BOUND EVIDENCE').
 
-    It must be PRODUCED by a trusted verification (see q3_t0_enumerator_experiment)
-    that: spawned a real worker, read its OS-verified pid/create_time, had the
-    controller DuplicateHandle+identity-verify the worker's held handles, and showed
-    the enumerator returns those exact values. A caller cannot simply assert it.
+    It must be PRODUCED by the trusted verifier `build_enumerator_evidence(...)`
+    (driven by q3_t0_enumerator_experiment), which:
+      · spawned a real worker and read its OS-verified pid + create_time;
+      · had the controller DuplicateHandle+identity-verify the worker's held handles;
+      · showed the enumerator returns those exact handle values.
+    A caller that hand-builds this dataclass CANNOT produce a valid `seal`, so
+    `trusted` is False. (凌翼: the evidence must come from a trusted origin, not a
+    constructible object.)
     """
     pid: int
     create_time: float
@@ -61,13 +92,39 @@ class EnumeratorEvidence:
     all_verified_seen: bool               # enumerator returned ALL of them
     method: str = "q3_t0_enumerator_experiment"
     raw_ref: str = ""                     # path/ref to the raw T0 observation
+    seal: str | None = None               # set ONLY by build_enumerator_evidence
 
     @property
     def trusted(self) -> bool:
+        # A STRUCTURALLY valid evidence is not enough: the SEAL must verify against
+        # the per-process secret (only the trusted producer can compute it).
+        if self.seal is None:
+            return False
+        try:
+            if not hmac.compare_digest(self.seal, _evidence_seal(self)):
+                return False
+        except Exception:                                        # noqa: BLE001
+            return False
         return (isinstance(self.pid, int) and self.pid > 0
                 and self.create_time > 0.0
                 and bool(self.verified_handle_values)
                 and self.all_verified_seen is True)
+
+
+def build_enumerator_evidence(*, pid: int, create_time: float,
+                              verified_handle_values, all_verified_seen: bool,
+                              method: str = "q3_t0_enumerator_experiment",
+                              raw_ref: str = "") -> EnumeratorEvidence:
+    """TRUSTED producer. Only call this from a verification flow that has ACTUALLY
+    (a) read the OS pid+create_time, (b) controller-verified the held handle values by
+    DuplicateHandle+identity, and (c) shown the enumerator returned them. Seals the
+    evidence with the per-process secret."""
+    ev = EnumeratorEvidence(pid=int(pid), create_time=float(create_time),
+                            verified_handle_values=list(verified_handle_values),
+                            all_verified_seen=bool(all_verified_seen),
+                            method=method, raw_ref=raw_ref, seal=None)
+    ev.seal = _evidence_seal(ev)
+    return ev
 
 
 # device name prefixes: 凌翼 says these names are DIAGNOSTIC ONLY and NOT sufficient
@@ -109,6 +166,16 @@ class V2AuditResult:
     matched: list = field(default_factory=list)
     counts: dict = field(default_factory=dict)
     detail: str = ""
+
+
+def _process_create_time(pid: int) -> float | None:
+    """OS-measured process creation time (for independent create_time re-check)."""
+    try:
+        from win32_isolation import _process_times
+        ct, _ = _process_times(pid)
+        return ct
+    except Exception:                                            # noqa: BLE001
+        return None
 
 
 def _k32():
@@ -245,6 +312,8 @@ def audit_business_worker_handles(pid: int, target_path: str,
             res.detail = f"handle enumeration error: {type(e).__name__}: {e}"
             res.counts = counts
             return res
+        # every handle value the enumerator returned THIS run (for evidence re-check)
+        seen_handles = {int(hv) for hv, _tp, _acc in handles}
 
         for hv, tp, acc in handles:
             if tp != file_type:
@@ -333,25 +402,43 @@ def audit_business_worker_handles(pid: int, target_path: str,
             res.detail = (f"{counts['unresolved']} relevant handle(s) could not be "
                           f"reliably classified (fail-closed)")
         else:
-            # 凌翼 UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN, and CALLER BOOLEAN IS NOT
-            # SUFFICIENT: CLEAN requires TRUSTED BOUND EVIDENCE that the enumerator is
-            # complete for THIS pid (see q3_t0_enumerator_experiment). The caller cannot
-            # assert it; only a trusted verification object with `trusted == True` and a
-            # matching pid+create_time qualifies.
+            # 凌翼 UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN, and CLEAN_EVIDENCE_BINDING:
+            # CLEAN requires (1) a SEALED, trusted EnumeratorEvidence; (2) its pid ==
+            # this audit's pid; (3) its create_time == the OS-measured create_time of
+            # THIS process (independent re-check); (4) its verified handle values were
+            # ACTUALLY seen in THIS run's enumeration. A caller-built object fails (1).
             ev = enumerator_evidence
-            ev_ok = bool(ev is not None and getattr(ev, "trusted", False)
-                         and ev.pid == pid)
+            ev_ok = False
+            ev_detail = "no enumerator evidence"
+            if ev is not None and getattr(ev, "trusted", False) and ev.pid == pid:
+                os_ct = None
+                try:
+                    os_ct = _process_create_time(pid)
+                except Exception:                                # noqa: BLE001
+                    os_ct = None
+                ct_match = (os_ct is not None
+                            and abs(float(os_ct) - float(ev.create_time)) < 1e-3)
+                seen_all = all(int(v) in seen_handles
+                               for v in (ev.verified_handle_values or []))
+                if ct_match and seen_all:
+                    ev_ok = True
+                    ev_detail = (f"sealed evidence from {ev.method}; create_time match; "
+                                 f"verified handles re-seen in this run")
+                else:
+                    ev_detail = (f"evidence NOT confirmed: create_time_match={ct_match} "
+                                 f"(os={os_ct} ev={ev.create_time}); "
+                                 f"verified_handles_re_seen={seen_all}")
+            elif ev is not None:
+                ev_detail = "evidence present but not trusted (seal/fields) or pid mismatch"
             if not ev_ok:
                 res.status = V2_UNRESOLVED
-                res.detail = ("would be CLEAN on the handles seen, BUT no TRUSTED "
-                              "enumerator evidence is bound to this pid => fail-closed "
-                              "(not CLEAN; 凌翼: caller boolean not sufficient)")
+                res.detail = ("would be CLEAN on the handles seen, BUT " + ev_detail
+                              + " => fail-closed (not CLEAN)")
             else:
                 res.status = V2_CLEAN
                 res.detail = (f"all {counts['file_type_total']} File-type handles positively "
                               f"classified non-target (proven_non_target="
-                              f"{counts['non_target_proven']}); enumerator completeness "
-                              f"verified via {ev.method} for pid {pid}")
+                              f"{counts['non_target_proven']}); {ev_detail}")
         return res
     except Exception as e:                                        # noqa: BLE001
         res.status = V2_ERROR

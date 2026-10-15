@@ -18,7 +18,7 @@ WHAT THIS DOES (same worker, same PID, same create_time):
      a value only counts if the controller can duplicate it AND its identity == target;
   3. while the handles are provably still open, enumerate THAT SAME pid with:
        · class 16  (SystemHandleInformation,        frozen layout, 24-byte stride)
-       · class 64  (SystemExtendedHandleInformation, 48-byte stride, wider fields)
+       · class 64  (SystemExtendedHandleInformation, 40-byte stride, wider fields)
      and record whether each enumerator yields the exact verified handle values;
   4. close, sample again.
 
@@ -61,10 +61,11 @@ class SHTEI_NONEX(ctypes.Structure):
 
 
 class SHTEI_EX(ctypes.Structure):
-    # x64 layout of SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX (48 bytes):
-    #   PVOID Object; ULONG_PTR UniqueProcessId; ULONG_PTR HandleValue;
-    #   ULONG GrantedAccess; USHORT CreatorBackTraceIndex; USHORT ObjectTypeIndex;
-    #   ULONG HandleAttributes; ULONG Reserved;
+    # x64 layout of SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX (ctypes.sizeof == 40 bytes,
+    # MEASURED — do NOT trust a comment's number; the archived JSON records stride=40):
+    #   PVOID Object(8); ULONG_PTR UniqueProcessId(8); ULONG_PTR HandleValue(8);
+    #   ULONG GrantedAccess(4); USHORT CreatorBackTraceIndex(2); USHORT ObjectTypeIndex(2);
+    #   ULONG HandleAttributes(4); ULONG Reserved(4);  => 8+8+8+4+2+2+4+4 = 40
     _fields_ = [("Object", ctypes.c_void_p),
                 ("UniqueProcessId", ctypes.c_ulonglong),
                 ("HandleValue", ctypes.c_ulonglong),
@@ -116,7 +117,7 @@ def enumerate_class64(pid: int) -> list:
     raw = _query(SystemExtendedHandleInformation)
     count = int.from_bytes(raw[0:8], "little")
     base = 16                                    # ULONG_PTR count + ULONG_PTR reserved
-    stride = ctypes.sizeof(SHTEI_EX)             # 48
+    stride = ctypes.sizeof(SHTEI_EX)             # 40 (MEASURED; do not assume 48)
     out = []
     for i in range(count):
         e = SHTEI_EX.from_buffer_copy(raw, base + i * stride)
