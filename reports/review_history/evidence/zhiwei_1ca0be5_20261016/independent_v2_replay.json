@@ -1,0 +1,665 @@
+{
+  "run_id": "7b6d83ed1a094a2fb279229a39b8ec3e",
+  "commit": "1ca0be5f6da1d03625c01a486f0ef1d1c78419c1",
+  "admin_token": false,
+  "controller_sid": "S-1-5-21-1435817774-958721018-1488588540-1001",
+  "python": "3.9.8 (tags/v3.9.8:bb3fdcf, Nov  5 2021, 20:48:33) [MSC v.1929 64 bit (AMD64)]",
+  "fixture": "D:\\qcr\\afterglow_v2_1ca0be5_aby_s3vb",
+  "cases": {
+    "positive_target_and_benign": {
+      "worker": {
+        "pid": 1416,
+        "token_sid": "S-1-5-21-1435817774-958721018-1488588540-1021",
+        "account": "afterglow_worker",
+        "create_time": 1792143657.4209423,
+        "entry_sha256": "59910647ec689d831855f7dab4258f4bf0e1eb554542a9e75d3f662753f1dad5",
+        "create_api": "CreateProcessWithLogonW",
+        "started_and_holding": true,
+        "ready_seen": true,
+        "ready_pid": 1416,
+        "detail": "started holding; READY consumed; awaiting isolation verification"
+      },
+      "injected_handles": {
+        "benign": 448,
+        "protected": 452
+      },
+      "worker_path_read": "DENIED",
+      "target_identities": {
+        "GetFileInformationByHandle": [
+          537928235,
+          3997696,
+          932453
+        ],
+        "GetFileInformationByHandleEx:FileIdInfo": [
+          9664742564859748907,
+          17169973580282469
+        ]
+      },
+      "benign_identity": {
+        "handle_value": 448,
+        "duplicated": false,
+        "identity": null,
+        "identity_api": "",
+        "identity_known": false,
+        "is_target": null,
+        "is_non_target": false,
+        "last_error": [
+          "OpenProcess",
+          5
+        ]
+      },
+      "evidence": {
+        "pid": 1416,
+        "create_time": 1792143657.4209423,
+        "benign_control_values": [],
+        "all_benign_seen": false,
+        "method": "q3_business_handle_audit_v2:trusted_producer",
+        "raw_ref": "positive_target_and_benign",
+        "seal": "82e40f64ba4e14f3835e3afe73ee6398df83a01a8909b6b28f6339f87f56a1ec"
+      },
+      "observation_trusted": false,
+      "v2_audit": {
+        "pid": 1416,
+        "status": "UNRESOLVED",
+        "target_path": "D:\\qcr\\afterglow_v2_1ca0be5_aby_s3vb\\positive_target_and_benign\\protected.bin",
+        "target_identity": [
+          537928235,
+          3997696,
+          932453
+        ],
+        "file_type_index": 37,
+        "records": [
+          {
+            "handle_value": 64,
+            "granted_access": 1048608,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 68,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 72,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 80,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 84,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 88,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 212,
+            "granted_access": 1048579,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 252,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 308,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 332,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 372,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 448,
+            "granted_access": 1179785,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 452,
+            "granted_access": 1179785,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          }
+        ],
+        "matched": [],
+        "counts": {
+          "file_type_total": 13,
+          "found_target": 0,
+          "known_non_file": 0,
+          "non_target_proven": 0,
+          "unresolved": 13,
+          "openprocess_fail": 13,
+          "duplicate_fail": 0,
+          "enum_error": 0
+        },
+        "detail": "13 relevant handle(s) could not be reliably classified (fail-closed)"
+      },
+      "frozen_audit": {
+        "pid": 1416,
+        "status": "HANDLE_AUDIT_UNRESOLVED",
+        "target_path": "D:\\qcr\\afterglow_v2_1ca0be5_aby_s3vb\\positive_target_and_benign\\protected.bin",
+        "matched_names": [],
+        "file_handles_scanned": 0,
+        "names_unresolved": 13,
+        "skipped_non_file": 76,
+        "target_type_index": 37,
+        "detail": "13 FILE handles could not be resolved (fail-closed); skipped_non_file=76"
+      },
+      "protected_identity": {
+        "handle_value": 452,
+        "duplicated": false,
+        "identity": null,
+        "identity_api": "",
+        "identity_known": false,
+        "is_target": null,
+        "is_non_target": false,
+        "last_error": [
+          "OpenProcess",
+          5
+        ]
+      },
+      "protected_as_benign": {
+        "pid": 1416,
+        "create_time": 1792143657.4209423,
+        "benign_control_values": [],
+        "all_benign_seen": false,
+        "method": "q3_business_handle_audit_v2:trusted_producer",
+        "raw_ref": "",
+        "seal": "407537837967b1aaafcaa36dc577169125a4b6f0aa5481b40496beedf4523abe"
+      },
+      "no_comparable_target": {
+        "handle_value": 448,
+        "duplicated": false,
+        "identity": null,
+        "identity_api": "",
+        "identity_known": false,
+        "is_target": null,
+        "is_non_target": false,
+        "last_error": [
+          "OpenProcess",
+          5
+        ]
+      },
+      "release_absent": true,
+      "termination": "EXIT_CONFIRMED",
+      "restore_after_exit": [
+        true,
+        "restored + read-back matched (SDDL)"
+      ]
+    },
+    "business_benign_only": {
+      "worker": {
+        "pid": 33100,
+        "token_sid": "S-1-5-21-1435817774-958721018-1488588540-1021",
+        "account": "afterglow_worker",
+        "create_time": 1792143658.2756023,
+        "entry_sha256": "59910647ec689d831855f7dab4258f4bf0e1eb554542a9e75d3f662753f1dad5",
+        "create_api": "CreateProcessWithLogonW",
+        "started_and_holding": true,
+        "ready_seen": true,
+        "ready_pid": 33100,
+        "detail": "started holding; READY consumed; awaiting isolation verification"
+      },
+      "injected_handles": {
+        "benign": 344,
+        "protected": null
+      },
+      "worker_path_read": "DENIED",
+      "target_identities": {
+        "GetFileInformationByHandle": [
+          537928235,
+          3342336,
+          932463
+        ],
+        "GetFileInformationByHandleEx:FileIdInfo": [
+          9664742564859748907,
+          14355223813175919
+        ]
+      },
+      "benign_identity": {
+        "handle_value": 344,
+        "duplicated": false,
+        "identity": null,
+        "identity_api": "",
+        "identity_known": false,
+        "is_target": null,
+        "is_non_target": false,
+        "last_error": [
+          "OpenProcess",
+          5
+        ]
+      },
+      "evidence": {
+        "pid": 33100,
+        "create_time": 1792143658.2756023,
+        "benign_control_values": [],
+        "all_benign_seen": false,
+        "method": "q3_business_handle_audit_v2:trusted_producer",
+        "raw_ref": "business_benign_only",
+        "seal": "9c5a15d148a1b2da5dec0e23aaf8f49940c1907e3bbef9aa6688dff499b0948b"
+      },
+      "observation_trusted": false,
+      "v2_audit": {
+        "pid": 33100,
+        "status": "UNRESOLVED",
+        "target_path": "D:\\qcr\\afterglow_v2_1ca0be5_aby_s3vb\\business_benign_only\\protected.bin",
+        "target_identity": [
+          537928235,
+          3342336,
+          932463
+        ],
+        "file_type_index": 37,
+        "records": [
+          {
+            "handle_value": 64,
+            "granted_access": 1048608,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 68,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 72,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 80,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 84,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 88,
+            "granted_access": 1180063,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 200,
+            "granted_access": 1048579,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 288,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 304,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 328,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 344,
+            "granted_access": 1179785,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          },
+          {
+            "handle_value": 364,
+            "granted_access": 1048577,
+            "type_index": 37,
+            "openprocess_ok": false,
+            "duplicate_ok": false,
+            "identity_api": "",
+            "file_identity": null,
+            "name": null,
+            "classification": "unresolved",
+            "unresolved_reason": "OpenProcess(PROCESS_DUP_HANDLE) failed",
+            "getlasterror": {
+              "OpenProcess": 5
+            }
+          }
+        ],
+        "matched": [],
+        "counts": {
+          "file_type_total": 12,
+          "found_target": 0,
+          "known_non_file": 0,
+          "non_target_proven": 0,
+          "unresolved": 12,
+          "openprocess_fail": 12,
+          "duplicate_fail": 0,
+          "enum_error": 0
+        },
+        "detail": "12 relevant handle(s) could not be reliably classified (fail-closed)"
+      },
+      "frozen_audit": {
+        "pid": 33100,
+        "status": "HANDLE_AUDIT_UNRESOLVED",
+        "target_path": "D:\\qcr\\afterglow_v2_1ca0be5_aby_s3vb\\business_benign_only\\protected.bin",
+        "matched_names": [],
+        "file_handles_scanned": 0,
+        "names_unresolved": 12,
+        "skipped_non_file": 76,
+        "target_type_index": 37,
+        "detail": "12 FILE handles could not be resolved (fail-closed); skipped_non_file=76"
+      },
+      "clean_established": false,
+      "release_absent": true,
+      "termination": "EXIT_CONFIRMED",
+      "restore_after_exit": [
+        true,
+        "restored + read-back matched (SDDL)"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "positive_target_and_benign real cross-account identity",
+      "pass": true
+    },
+    {
+      "name": "positive_target_and_benign worker path access denied",
+      "pass": true
+    },
+    {
+      "name": "positive_target_and_benign benign-only observation evidence",
+      "pass": false
+    },
+    {
+      "name": "target-as-benign rejected",
+      "pass": true
+    },
+    {
+      "name": "target positive detected despite other unknown handles",
+      "pass": false
+    },
+    {
+      "name": "no-comparable-target rejected",
+      "pass": false
+    },
+    {
+      "name": "positive_target_and_benign worker exit confirmed",
+      "pass": true
+    },
+    {
+      "name": "business_benign_only real cross-account identity",
+      "pass": true
+    },
+    {
+      "name": "business_benign_only worker path access denied",
+      "pass": true
+    },
+    {
+      "name": "business_benign_only benign-only observation evidence",
+      "pass": false
+    },
+    {
+      "name": "unknown handles never counted as CLEAN",
+      "pass": true
+    },
+    {
+      "name": "business_benign_only worker exit confirmed",
+      "pass": true
+    }
+  ],
+  "method": "Stock business entry + controller-injected real OS handle controls; no mocked candidate functions",
+  "adapter_uses_frozen_function": true,
+  "adapter_uses_frozen_function_after": true,
+  "source_unchanged": true
+}

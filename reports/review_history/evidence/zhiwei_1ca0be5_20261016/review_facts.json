@@ -1,0 +1,79 @@
+{
+  "commit": "1ca0be5f6da1d03625c01a486f0ef1d1c78419c1",
+  "controlled_run_id": "107174ac786d46239069cfe696ce6681",
+  "ordinary_run_id": "7b6d83ed1a094a2fb279229a39b8ec3e",
+  "admin_token": false,
+  "distinct_checks": 13,
+  "distinct_pass": 13,
+  "distinct_fail": 0,
+  "cases": {
+    "positive_target_and_benign": {
+      "pid": 17740,
+      "create_time": 1792143734.8880272,
+      "sid": "S-1-5-21-1435817774-958721018-1488588540-1021",
+      "injected_handles": {
+        "benign": 392,
+        "protected": 396
+      },
+      "controls": [
+        392
+      ],
+      "observation_trusted": true,
+      "v2_status": "FOUND_TARGET",
+      "counts": {
+        "file_type_total": 13,
+        "found_target": 1,
+        "known_non_file": 0,
+        "non_target_proven": 4,
+        "unresolved": 8,
+        "openprocess_fail": 0,
+        "duplicate_fail": 0,
+        "enum_error": 0
+      },
+      "unknown_names": [
+        "\\Device\\CNG",
+        "\\Device\\ConDrv",
+        "\\Device\\KsecDD"
+      ],
+      "termination": "EXIT_CONFIRMED",
+      "restore": [
+        true,
+        "restored + read-back matched (SDDL)"
+      ]
+    },
+    "business_benign_only": {
+      "pid": 9536,
+      "create_time": 1792143735.8850746,
+      "sid": "S-1-5-21-1435817774-958721018-1488588540-1021",
+      "injected_handles": {
+        "benign": 156,
+        "protected": null
+      },
+      "controls": [
+        156
+      ],
+      "observation_trusted": true,
+      "v2_status": "UNRESOLVED",
+      "counts": {
+        "file_type_total": 12,
+        "found_target": 0,
+        "known_non_file": 0,
+        "non_target_proven": 4,
+        "unresolved": 8,
+        "openprocess_fail": 0,
+        "duplicate_fail": 0,
+        "enum_error": 0
+      },
+      "unknown_names": [
+        "\\Device\\CNG",
+        "\\Device\\ConDrv",
+        "\\Device\\KsecDD"
+      ],
+      "termination": "EXIT_CONFIRMED",
+      "restore": [
+        true,
+        "restored + read-back matched (SDDL)"
+      ]
+    }
+  }
+}

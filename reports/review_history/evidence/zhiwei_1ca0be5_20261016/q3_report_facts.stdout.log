@@ -1,0 +1,33 @@
+# === FACTS FROM v2_t1_negative_recheck_raw_20261016.txt (machine-read; do NOT hand-copy) ===
+benign_handle = 300
+controls_seen = [[300], []]
+fail_count = 0
+pass_count = 4
+protected_handle = 324
+verdict_lines = ['P', 'N2', 'N1', 'N1b', 'P', 'N2', 'N1', 'N1b', ('target-as-benign rejected', 'PASS'), ('identity-unreadable rejected', 'PASS'), ('no-comparable-target rejected', 'PASS')]
+worker_pid = 39732
+
+# === FACTS FROM v2_benign_control_raw_20261016.txt (machine-read; do NOT hand-copy) ===
+benign_handle = 300
+controls_seen = [[300], []]
+fail_count = 0
+pass_count = 2
+verdict_lines = [('benign control accepted', 'PASS'), ('target==protected excluded', 'PASS')]
+worker_pid = 34048
+
+# === FACTS FROM v2_trusted_producer_raw_20261016.txt (machine-read; do NOT hand-copy) ===
+fail_count = 0
+pass_count = 3
+reported_handle = 344
+verdict_lines = [('positive producer verification', 'PASS'), ('forged/unverified rejection', 'PASS'), ('hand-built rejected', 'PASS')]
+worker_pid = 39848
+
+# === FACTS FROM controlled_v2_replay_utf8.txt (machine-read; do NOT hand-copy) ===
+benign_handle = 392
+controls_seen = [[392], [156]]
+fail_count = 0
+pass_count = 14
+protected_handle = 396
+verdict_lines = [('target-as-benign rejected', 'PASS'), ('identity-unreadable rejected', 'PASS'), ('no-comparable-target rejected', 'PASS')]
+worker_pid = 17740
+
