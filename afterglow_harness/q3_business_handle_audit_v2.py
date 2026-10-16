@@ -120,18 +120,28 @@ class EnumeratorEvidence:
                 and self.all_benign_seen is True)
 
 
-def verify_held_handle(pid: int, handle_value: int,
-                       target_identity) -> dict:
-    """TRUSTED producer primitive: independently verify that `handle_value` in process
-    `pid` refers to the target (by DuplicateHandle + OS identity). Returns a dict with
-    what was ACTUALLY observed — never a caller assertion. 凌翼: the producer must
-    PERFORM the OS verification, not accept it."""
+def verify_held_handle(pid: int, handle_value: int, target_identities: dict) -> dict:
+    """TRUSTED producer primitive: independently verify `handle_value` in process `pid`
+    by DuplicateHandle + OS identity, COMPARED LIKE-WITH-LIKE.
+
+    `target_identities` is a per-API map {api_name: identity_tuple} (see
+    `_target_identities`), because GetFileInformationByHandle (classic) and
+    GetFileInformationByHandleEx(FileIdInfo) produce DIFFERENT tuple shapes and must
+    not be compared directly.
+
+    Returns what was ACTUALLY observed. 凌翼 (D2): `duplicated` does NOT imply a
+    verified identity — an UNKNOWN identity is NOT evidence of non-target. So we expose
+    an explicit `identity_known` flag and only set `is_non_target` when the candidate's
+    identity was read AND a SAME-API target identity exists AND they DIFFER."""
     k = _k32()
     PROCESS_DUP_HANDLE = 0x0040
     DUPLICATE_SAME_ACCESS = 0x00000002
     me = k.GetCurrentProcess()
-    out = {"handle_value": int(handle_value), "duplicated": False, "identity": None,
-           "is_target": False, "last_error": None}
+    out = {"handle_value": int(handle_value), "duplicated": False,
+           "identity": None, "identity_api": "", "identity_known": False,
+           "is_target": None,      # None = UNKNOWN (not False!)
+           "is_non_target": False,  # True only if comparable identities DIFFER
+           "last_error": None}
     hproc = k.OpenProcess(PROCESS_DUP_HANDLE, False, pid)
     if not hproc:
         out["last_error"] = ("OpenProcess", k.GetLastError())
@@ -145,9 +155,25 @@ def verify_held_handle(pid: int, handle_value: int,
         out["duplicated"] = True
         try:
             ident, api, _le = _identity_from_handle(dup, k)
-            out["identity"] = list(ident) if ident else None
-            out["identity_api"] = api
-            out["is_target"] = (ident is not None and ident == target_identity)
+            if ident is not None:
+                out["identity"] = list(ident)
+                out["identity_api"] = api
+                out["identity_known"] = True
+                # 凌翼 D2: compare SAME-API identities only.
+                target_same_api = (target_identities or {}).get(api)
+                if target_same_api is not None:
+                    if tuple(ident) == tuple(target_same_api):
+                        out["is_target"] = True
+                        out["is_non_target"] = False
+                    else:
+                        out["is_target"] = False
+                        out["is_non_target"] = True
+                else:
+                    # no same-API target identity to compare -> identity known but NOT
+                    # comparable => target-ness UNKNOWN (neither target nor benign)
+                    out["is_target"] = None
+                    out["is_non_target"] = False
+            # identity unknown stays identity_known=False, is_target=None, is_non_target=False
         finally:
             k.CloseHandle(dup)
     finally:
@@ -162,21 +188,21 @@ def build_enumerator_evidence(*, pid: int, benign_handle_values, protected_path:
     It proves the enumerator OBSERVES this worker's handles, using SEPARATE BENIGN
     handles (handles to objects that are NOT the protected target). The producer itself:
       1. reads the pid's OS create_time (GetProcessTimes);
-      2. obtains the PROTECTED object's OS identity;
+      2. obtains the PROTECTED object's OS identity VIA BOTH APIS (same-API compare);
       3. for EACH candidate benign handle value: DuplicateHandle(pid, hv) + identity;
-         a value counts as BENIGN-VERIFIED only if it duplicates AND its identity is
-         NOT the protected target;
-      4. enumerates the pid itself and checks which benign-verified values the
-         enumerator returns;
+         a value counts as BENIGN only if its identity was actually READ (identity_known)
+         AND a SAME-API target identity exists AND they DIFFER (is_non_target). An
+         UNKNOWN identity, or an identity with no comparable target, is NOT benign;
+      4. enumerates the pid itself and checks which benign values the enumerator returns;
       5. sets `all_benign_seen` from THAT observation (never from the caller).
 
     The caller may only propose candidate benign handle values; the producer decides.
     A caller cannot assert `all_benign_seen`. (The HMAC seal is an integrity aid, not a
     cross-caller boundary.)
     """
-    target_identity = HA.file_identity(str(protected_path))
+    target_identities = _target_identities(str(protected_path))   # {api: identity}
     os_ct = _process_create_time(pid)
-    if target_identity is None or os_ct is None:
+    if not target_identities or os_ct is None:
         return EnumeratorEvidence(pid=int(pid), create_time=float(os_ct or 0.0),
                                   benign_control_values=[], all_benign_seen=False,
                                   method="q3_business_handle_audit_v2:build(failed)",
@@ -184,9 +210,10 @@ def build_enumerator_evidence(*, pid: int, benign_handle_values, protected_path:
 
     benign = []
     for hv in benign_handle_values or []:
-        v = verify_held_handle(pid, int(hv), target_identity)
-        # BENIGN = duplicated AND NOT the protected target (so it cannot be the target)
-        if v.get("duplicated") and not v.get("is_target"):
+        v = verify_held_handle(pid, int(hv), target_identities)
+        # 凌翼 D2: duplicated != verified benign; require identity_known AND a SAME-API
+        # target identity that DIFFERS (is_non_target). UNKNOWN identity is NOT benign.
+        if v.get("duplicated") and v.get("identity_known") and v.get("is_non_target"):
             benign.append(int(hv))
 
     try:

@@ -1,0 +1,12 @@
+worker pid 39732 benign 300 protected 324
+target identities apis: ['GetFileInformationByHandle', 'GetFileInformationByHandleEx:FileIdInfo']
+[P] benign accepted: True controls= [300]
+[N2] protected-as-benign rejected: True controls= []
+[N1] duplicated but identity UNREADABLE => not benign: True | duplicated= True identity_known= False is_non_target= False
+[N1b] identity known but no comparable target => not benign: True
+
+VERDICT:
+ P benign accepted: PASS
+ N2 target-as-benign rejected: PASS
+ N1 identity-unreadable rejected: PASS
+ N1b no-comparable-target rejected: PASS
