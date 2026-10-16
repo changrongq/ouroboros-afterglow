@@ -1,0 +1,24 @@
+worker pid 39848 reported handle 344
+{
+  "worker_pid": 39848,
+  "reported_handle": 344,
+  "positive": {
+    "trusted": true,
+    "verified": [
+      344
+    ],
+    "all_verified_seen": true,
+    "method": "q3_business_handle_audit_v2:trusted_producer"
+  },
+  "forged_rejected": {
+    "trusted": false,
+    "verified": [],
+    "all_verified_seen": false
+  },
+  "hand_built_trusted": false
+}
+
+=== VERDICT ===
+positive producer verification: PASS
+forged/unverified rejection: PASS
+hand-built rejected: PASS

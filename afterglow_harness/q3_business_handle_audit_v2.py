@@ -52,7 +52,11 @@ V2_ERROR = "ERROR"
 # verification flow, not merely a constructible dataclass. We mirror the frozen
 # AccessWitness pattern: a per-process secret seals the evidence, and only the trusted
 # producer (see `build_enumerator_evidence` / q3_t0_enumerator_experiment) can compute
-# it. A caller that hand-builds an EnumeratorEvidence cannot produce a valid seal.
+# 凌翼: the seal is an INTEGRITY AID within the trusted-producer flow, NOT a
+# cross-caller privilege boundary (this secret is a same-process module variable).
+# The real guarantee is that build_enumerator_evidence ITSELF performs the OS
+# verification; the auditor independently re-checks. Do not claim the HMAC alone
+# isolates callers.
 _ENUM_SECRET: bytes = secrets.token_bytes(32)
 
 
@@ -74,30 +78,29 @@ def _evidence_seal(ev: "EnumeratorEvidence") -> str:
 
 @dataclass
 class EnumeratorEvidence:
-    """TRUSTED evidence that the handle enumerator is complete for a given pid
-    (凌翼: 'CALLER BOOLEAN IS NOT SUFFICIENT; REQUIRE TRUSTED BOUND EVIDENCE').
+    """Evidence, produced by the TRUSTED PRODUCER `build_enumerator_evidence(...)`,
+    that specific handle values are OS-verified to refer to the target AND were seen by
+    the enumerator this round (凌翼 TRUSTED_EVIDENCE_ORIGIN).
 
-    It must be PRODUCED by the trusted verifier `build_enumerator_evidence(...)`
-    (driven by q3_t0_enumerator_experiment), which:
-      · spawned a real worker and read its OS-verified pid + create_time;
-      · had the controller DuplicateHandle+identity-verify the worker's held handles;
-      · showed the enumerator returns those exact handle values.
-    A caller that hand-builds this dataclass CANNOT produce a valid `seal`, so
-    `trusted` is False. (凌翼: the evidence must come from a trusted origin, not a
-    constructible object.)
+    IMPORTANT (凌翼): the HMAC `seal` is an INTEGRITY AID within the producer flow —
+    it is NOT a cross-caller privilege boundary (the secret is a same-process module
+    variable). The real guarantee is that the PRODUCER ITSELF performed the OS
+    verification (DuplicateHandle + identity) and set `all_verified_seen` from its own
+    enumeration; the AUDITOR then independently re-checks create_time + re-seen values.
+    Do NOT rely on the seal as proof that the caller was trusted.
     """
     pid: int
     create_time: float
-    verified_handle_values: list          # the OS-verified held handles that WERE seen
-    all_verified_seen: bool               # enumerator returned ALL of them
-    method: str = "q3_t0_enumerator_experiment"
-    raw_ref: str = ""                     # path/ref to the raw T0 observation
+    verified_handle_values: list          # OS-verified (DuplicateHandle+identity) values
+    all_verified_seen: bool               # producer observed the enumerator return ALL
+    method: str = "q3_business_handle_audit_v2:trusted_producer"
+    raw_ref: str = ""                     # path/ref to the raw observation
     seal: str | None = None               # set ONLY by build_enumerator_evidence
 
     @property
     def trusted(self) -> bool:
-        # A STRUCTURALLY valid evidence is not enough: the SEAL must verify against
-        # the per-process secret (only the trusted producer can compute it).
+        # Integrity of the fields (seal) — an aid, NOT a trust boundary. The auditor
+        # additionally re-checks create_time against the OS and re-seen handle values.
         if self.seal is None:
             return False
         try:
@@ -111,18 +114,88 @@ class EnumeratorEvidence:
                 and self.all_verified_seen is True)
 
 
-def build_enumerator_evidence(*, pid: int, create_time: float,
-                              verified_handle_values, all_verified_seen: bool,
-                              method: str = "q3_t0_enumerator_experiment",
+def verify_held_handle(pid: int, handle_value: int,
+                       target_identity) -> dict:
+    """TRUSTED producer primitive: independently verify that `handle_value` in process
+    `pid` refers to the target (by DuplicateHandle + OS identity). Returns a dict with
+    what was ACTUALLY observed — never a caller assertion. 凌翼: the producer must
+    PERFORM the OS verification, not accept it."""
+    k = _k32()
+    PROCESS_DUP_HANDLE = 0x0040
+    DUPLICATE_SAME_ACCESS = 0x00000002
+    me = k.GetCurrentProcess()
+    out = {"handle_value": int(handle_value), "duplicated": False, "identity": None,
+           "is_target": False, "last_error": None}
+    hproc = k.OpenProcess(PROCESS_DUP_HANDLE, False, pid)
+    if not hproc:
+        out["last_error"] = ("OpenProcess", k.GetLastError())
+        return out
+    try:
+        dup = ctypes.c_void_p()
+        if not k.DuplicateHandle(hproc, ctypes.c_void_p(int(handle_value)), me,
+                                 ctypes.byref(dup), 0, False, DUPLICATE_SAME_ACCESS):
+            out["last_error"] = ("DuplicateHandle", k.GetLastError())
+            return out
+        out["duplicated"] = True
+        try:
+            ident, api, _le = _identity_from_handle(dup, k)
+            out["identity"] = list(ident) if ident else None
+            out["identity_api"] = api
+            out["is_target"] = (ident is not None and ident == target_identity)
+        finally:
+            k.CloseHandle(dup)
+    finally:
+        k.CloseHandle(hproc)
+    return out
+
+
+def build_enumerator_evidence(*, pid: int, target_path: str,
+                              worker_reported_handle_values, requester: str = "",
                               raw_ref: str = "") -> EnumeratorEvidence:
-    """TRUSTED producer. Only call this from a verification flow that has ACTUALLY
-    (a) read the OS pid+create_time, (b) controller-verified the held handle values by
-    DuplicateHandle+identity, and (c) shown the enumerator returned them. Seals the
-    evidence with the per-process secret."""
-    ev = EnumeratorEvidence(pid=int(pid), create_time=float(create_time),
-                            verified_handle_values=list(verified_handle_values),
-                            all_verified_seen=bool(all_verified_seen),
-                            method=method, raw_ref=raw_ref, seal=None)
+    """TRUSTED PRODUCER (凌翼: 'TRUSTED PRODUCER MUST PERFORM OS VERIFICATION; DO NOT
+    ACCEPT CALLER-ASSERTED ALL_VERIFIED_SEEN').
+
+    The producer itself, inside this call:
+      1. reads the pid's OS create_time (GetProcessTimes);
+      2. obtains the target's OS identity;
+      3. for EACH worker-reported handle value: DuplicateHandle(pid, hv) + identity;
+         a value counts as VERIFIED only if the OS identity == target identity;
+      4. enumerates the pid itself and checks which verified values the enumerator
+         returns;
+      5. sets `all_verified_seen` from THAT observation (never from the caller).
+
+    The caller supplies only the candidate (worker-reported) handle values and the
+    target path; everything else is observed here. The seal is an integrity aid within
+    this flow — 凌翼: it is NOT a cross-caller privilege boundary.
+    """
+    k = _k32()
+    target_identity = HA.file_identity(str(target_path))
+    os_ct = _process_create_time(pid)
+    if target_identity is None or os_ct is None:
+        # cannot observe -> return an UNSIGNED (untrusted) evidence rather than fake it
+        return EnumeratorEvidence(pid=int(pid), create_time=float(os_ct or 0.0),
+                                  verified_handle_values=[], all_verified_seen=False,
+                                  method="q3_business_handle_audit_v2:build(failed)",
+                                  raw_ref=raw_ref, seal=None)
+
+    verified = []
+    for hv in worker_reported_handle_values or []:
+        v = verify_held_handle(pid, int(hv), target_identity)
+        if v.get("duplicated") and v.get("is_target"):
+            verified.append(int(hv))
+
+    # enumerate the pid OURSELVES and see which verified values appear this run
+    try:
+        seen = {int(hv) for hv, _tp, _acc in HA._iter_handles(pid)}
+    except Exception:                                            # noqa: BLE001
+        seen = set()
+    all_verified_seen = bool(verified) and all(v in seen for v in verified)
+
+    ev = EnumeratorEvidence(pid=int(pid), create_time=float(os_ct),
+                            verified_handle_values=sorted(set(verified)),
+                            all_verified_seen=all_verified_seen,
+                            method="q3_business_handle_audit_v2:trusted_producer",
+                            raw_ref=raw_ref, seal=None)
     ev.seal = _evidence_seal(ev)
     return ev
 
