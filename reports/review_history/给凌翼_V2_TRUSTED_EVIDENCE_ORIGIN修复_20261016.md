@@ -58,9 +58,11 @@ SAME-PROCESS SECRET IS NOT A TRUST BOUNDARY
 
 | 用例 | 期望 | 实测 |
 |---|---|---|
-| **真·正例**：生产者自己做 OS 核验 | `verified` 含真句柄 + `all_verified_seen=true` + `trusted=true` | ✅ `verified=[176]`, `all_verified_seen=true`, `trusted=true` |
+| **真·正例**：生产者自己做 OS 核验 | `verified` 含真句柄 + `all_verified_seen=true` + `trusted=true` | ✅ `verified=[344]`, `all_verified_seen=true`, `trusted=true`（worker pid 39848） |
 | **伪造/未核实输入拒绝**：调用者给假句柄 `0xFFFFF` | 生产者 OS 核验**拒绝** ⇒ `verified=[]` + `all_verified_seen=false` | ✅ `verified=[]`, `all_verified_seen=false`, `trusted=false` |
 | 手工构造对象（无 seal） | 拒绝 | ✅ `trusted=false` |
+
+> **勘误（2026-10-16，据凌翼）**：本表原先写正例句柄为 `176`/pid 未记 —— 那是**较早一次运行**的值。**以归档原始输出为准**：`worker pid 39848, reported handle 344`，`verified=[344]`。（与 T0 PID 同类：我又引用了旧一次运行的值；**归档字节优先**。）
 
 **归档原始输出**：`reports/review_history/v2_trusted_producer_raw_20261016.txt`（含 pid、上报句柄、positive/forged/hand-built 三段 JSON 与 VERDICT）。
 

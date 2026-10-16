@@ -64,43 +64,49 @@ def _evidence_fields(ev: "EnumeratorEvidence") -> dict:
     return {
         "pid": ev.pid,
         "create_time": round(float(ev.create_time), 6),
-        "verified_handle_values": sorted(int(v) for v in ev.verified_handle_values),
-        "all_verified_seen": bool(ev.all_verified_seen),
+        "benign_control_values": sorted(int(v) for v in ev.benign_control_values),
+        "all_benign_seen": bool(ev.all_benign_seen),
         "method": ev.method,
         "raw_ref": ev.raw_ref,
     }
 
 
 def _evidence_seal(ev: "EnumeratorEvidence") -> str:
-    msg = "|".join(f"{k}={_evidence_fields(ev)[k]}" for k in sorted(_evidence_fields(ev)))
+    f = _evidence_fields(ev)
+    msg = "|".join(f"{k}={f[k]}" for k in sorted(f))
     return hmac.new(_ENUM_SECRET, msg.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 @dataclass
 class EnumeratorEvidence:
-    """Evidence, produced by the TRUSTED PRODUCER `build_enumerator_evidence(...)`,
-    that specific handle values are OS-verified to refer to the target AND were seen by
-    the enumerator this round (凌翼 TRUSTED_EVIDENCE_ORIGIN).
+    """Evidence that the handle enumerator OBSERVED this worker's known handles
+    (凌翼 T1 scope fix: 'TARGET-HANDLE POSITIVE EVIDENCE IS NOT A CLEAN-SIDE CONTROL').
 
-    IMPORTANT (凌翼): the HMAC `seal` is an INTEGRITY AID within the producer flow —
-    it is NOT a cross-caller privilege boundary (the secret is a same-process module
-    variable). The real guarantee is that the PRODUCER ITSELF performed the OS
-    verification (DuplicateHandle + identity) and set `all_verified_seen` from its own
-    enumeration; the AUDITOR then independently re-checks create_time + re-seen values.
-    Do NOT rely on the seal as proof that the caller was trusted.
+    It proves the ENUMERATOR'S OBSERVATION CAPABILITY for this pid using a SEPARATE
+    BENIGN control handle (a handle to a NON-protected object the worker genuinely
+    holds) — NOT a handle to the protected target. In one stable state:
+        positive target evidence  => ∃h Target(h)  => FOUND_TARGET
+        CLEAN                     => ¬∃h Target(h)
+    are mutually exclusive, so a target-handle positive CANNOT serve as a CLEAN-side
+    control. Hence the benign control.
+
+    BOUNDARY (凌翼, consistent with R1): the benign control ONLY proves the enumerator
+    can observe this worker's handles. It does NOT prove protected-object isolation —
+    the AUDITOR still independently checks the REAL protected object.
+
+    The HMAC `seal` is an INTEGRITY AID within the producer flow, NOT a cross-caller
+    privilege boundary (the secret is a same-process module variable).
     """
     pid: int
     create_time: float
-    verified_handle_values: list          # OS-verified (DuplicateHandle+identity) values
-    all_verified_seen: bool               # producer observed the enumerator return ALL
+    benign_control_values: list           # OS-verified BENIGN handles seen by the enum
+    all_benign_seen: bool                 # enumerator returned ALL benign controls
     method: str = "q3_business_handle_audit_v2:trusted_producer"
-    raw_ref: str = ""                     # path/ref to the raw observation
+    raw_ref: str = ""
     seal: str | None = None               # set ONLY by build_enumerator_evidence
 
     @property
-    def trusted(self) -> bool:
-        # Integrity of the fields (seal) — an aid, NOT a trust boundary. The auditor
-        # additionally re-checks create_time against the OS and re-seen handle values.
+    def observation_trusted(self) -> bool:
         if self.seal is None:
             return False
         try:
@@ -110,8 +116,8 @@ class EnumeratorEvidence:
             return False
         return (isinstance(self.pid, int) and self.pid > 0
                 and self.create_time > 0.0
-                and bool(self.verified_handle_values)
-                and self.all_verified_seen is True)
+                and bool(self.benign_control_values)
+                and self.all_benign_seen is True)
 
 
 def verify_held_handle(pid: int, handle_value: int,
@@ -149,51 +155,49 @@ def verify_held_handle(pid: int, handle_value: int,
     return out
 
 
-def build_enumerator_evidence(*, pid: int, target_path: str,
-                              worker_reported_handle_values, requester: str = "",
-                              raw_ref: str = "") -> EnumeratorEvidence:
-    """TRUSTED PRODUCER (凌翼: 'TRUSTED PRODUCER MUST PERFORM OS VERIFICATION; DO NOT
-    ACCEPT CALLER-ASSERTED ALL_VERIFIED_SEEN').
+def build_enumerator_evidence(*, pid: int, benign_handle_values, protected_path: str,
+                              requester: str = "", raw_ref: str = "") -> EnumeratorEvidence:
+    """TRUSTED PRODUCER for a CLEAN-SIDE BENIGN CONTROL (凌翼 T1 scope fix).
 
-    The producer itself, inside this call:
+    It proves the enumerator OBSERVES this worker's handles, using SEPARATE BENIGN
+    handles (handles to objects that are NOT the protected target). The producer itself:
       1. reads the pid's OS create_time (GetProcessTimes);
-      2. obtains the target's OS identity;
-      3. for EACH worker-reported handle value: DuplicateHandle(pid, hv) + identity;
-         a value counts as VERIFIED only if the OS identity == target identity;
-      4. enumerates the pid itself and checks which verified values the enumerator
-         returns;
-      5. sets `all_verified_seen` from THAT observation (never from the caller).
+      2. obtains the PROTECTED object's OS identity;
+      3. for EACH candidate benign handle value: DuplicateHandle(pid, hv) + identity;
+         a value counts as BENIGN-VERIFIED only if it duplicates AND its identity is
+         NOT the protected target;
+      4. enumerates the pid itself and checks which benign-verified values the
+         enumerator returns;
+      5. sets `all_benign_seen` from THAT observation (never from the caller).
 
-    The caller supplies only the candidate (worker-reported) handle values and the
-    target path; everything else is observed here. The seal is an integrity aid within
-    this flow — 凌翼: it is NOT a cross-caller privilege boundary.
+    The caller may only propose candidate benign handle values; the producer decides.
+    A caller cannot assert `all_benign_seen`. (The HMAC seal is an integrity aid, not a
+    cross-caller boundary.)
     """
-    k = _k32()
-    target_identity = HA.file_identity(str(target_path))
+    target_identity = HA.file_identity(str(protected_path))
     os_ct = _process_create_time(pid)
     if target_identity is None or os_ct is None:
-        # cannot observe -> return an UNSIGNED (untrusted) evidence rather than fake it
         return EnumeratorEvidence(pid=int(pid), create_time=float(os_ct or 0.0),
-                                  verified_handle_values=[], all_verified_seen=False,
+                                  benign_control_values=[], all_benign_seen=False,
                                   method="q3_business_handle_audit_v2:build(failed)",
                                   raw_ref=raw_ref, seal=None)
 
-    verified = []
-    for hv in worker_reported_handle_values or []:
+    benign = []
+    for hv in benign_handle_values or []:
         v = verify_held_handle(pid, int(hv), target_identity)
-        if v.get("duplicated") and v.get("is_target"):
-            verified.append(int(hv))
+        # BENIGN = duplicated AND NOT the protected target (so it cannot be the target)
+        if v.get("duplicated") and not v.get("is_target"):
+            benign.append(int(hv))
 
-    # enumerate the pid OURSELVES and see which verified values appear this run
     try:
         seen = {int(hv) for hv, _tp, _acc in HA._iter_handles(pid)}
     except Exception:                                            # noqa: BLE001
         seen = set()
-    all_verified_seen = bool(verified) and all(v in seen for v in verified)
+    all_benign_seen = bool(benign) and all(v in seen for v in benign)
 
     ev = EnumeratorEvidence(pid=int(pid), create_time=float(os_ct),
-                            verified_handle_values=sorted(set(verified)),
-                            all_verified_seen=all_verified_seen,
+                            benign_control_values=sorted(set(benign)),
+                            all_benign_seen=all_benign_seen,
                             method="q3_business_handle_audit_v2:trusted_producer",
                             raw_ref=raw_ref, seal=None)
     ev.seal = _evidence_seal(ev)
@@ -347,11 +351,13 @@ def audit_business_worker_handles(pid: int, target_path: str,
                                   ) -> V2AuditResult:
     """V2 audit: classify each File-type handle of `pid` against the target file.
 
-    凌翼: `CALLER BOOLEAN IS NOT SUFFICIENT`. A CLEAN verdict requires
-    `enumerator_evidence` — a TRUSTED, pid-bound EnumeratorEvidence produced by a
-    trusted completeness check (q3_t0_enumerator_experiment), NOT a caller's own
-    assertion. Without it, a would-be CLEAN is DOWNGRADED to UNRESOLVED
-    (UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN).
+    凌翼 T1 scope: a CLEAN verdict requires `enumerator_evidence` — a BENIGN
+    enumerator-observation control produced by the trusted producer
+    (`build_enumerator_evidence`), proving the enumerator observes this worker's own
+    handles. It is NOT a target-handle positive (that would be FOUND_TARGET). Without
+    trusted observation evidence, a would-be CLEAN is DOWNGRADED to UNRESOLVED
+    (UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN). The benign control does NOT prove
+    protected-object isolation; the auditor independently checks the real object.
 
     Returns a V2AuditResult whose `status` is one of the four V2_* verdicts.
     """
@@ -475,43 +481,44 @@ def audit_business_worker_handles(pid: int, target_path: str,
             res.detail = (f"{counts['unresolved']} relevant handle(s) could not be "
                           f"reliably classified (fail-closed)")
         else:
-            # 凌翼 UNKNOWN_TO_CLEAN_DOWNGRADE = FORBIDDEN, and CLEAN_EVIDENCE_BINDING:
-            # CLEAN requires (1) a SEALED, trusted EnumeratorEvidence; (2) its pid ==
-            # this audit's pid; (3) its create_time == the OS-measured create_time of
-            # THIS process (independent re-check); (4) its verified handle values were
-            # ACTUALLY seen in THIS run's enumeration. A caller-built object fails (1).
+            # 凌翼 T1 scope: CLEAN needs a BENIGN enumerator-observation control (NOT a
+            # target-handle positive, which would itself be FOUND_TARGET). The auditor
+            # independently re-checks: (1) observation evidence is sealed/trusted;
+            # (2) pid matches; (3) its create_time == the OS-measured create_time of THIS
+            # process; (4) its BENIGN control handle values were actually seen this run.
+            # The benign control proves ONLY that the enumerator observes this worker's
+            # handles — it does NOT prove protected-object isolation.
             ev = enumerator_evidence
             ev_ok = False
-            ev_detail = "no enumerator evidence"
-            if ev is not None and getattr(ev, "trusted", False) and ev.pid == pid:
-                os_ct = None
-                try:
-                    os_ct = _process_create_time(pid)
-                except Exception:                                # noqa: BLE001
-                    os_ct = None
+            ev_detail = "no enumerator observation evidence"
+            if ev is not None and getattr(ev, "observation_trusted", False) and ev.pid == pid:
+                os_ct = _process_create_time(pid)
                 ct_match = (os_ct is not None
                             and abs(float(os_ct) - float(ev.create_time)) < 1e-3)
-                seen_all = all(int(v) in seen_handles
-                               for v in (ev.verified_handle_values or []))
-                if ct_match and seen_all:
+                benign_seen = all(int(v) in seen_handles
+                                  for v in (ev.benign_control_values or []))
+                if ct_match and benign_seen:
                     ev_ok = True
-                    ev_detail = (f"sealed evidence from {ev.method}; create_time match; "
-                                 f"verified handles re-seen in this run")
+                    ev_detail = (f"benign enumerator control verified via {ev.method}; "
+                                 f"create_time match; benign controls re-seen")
                 else:
-                    ev_detail = (f"evidence NOT confirmed: create_time_match={ct_match} "
-                                 f"(os={os_ct} ev={ev.create_time}); "
-                                 f"verified_handles_re_seen={seen_all}")
+                    ev_detail = (f"observation evidence NOT confirmed: create_time_match="
+                                 f"{ct_match} (os={os_ct} ev={ev.create_time}); "
+                                 f"benign_controls_re_seen={benign_seen}")
             elif ev is not None:
-                ev_detail = "evidence present but not trusted (seal/fields) or pid mismatch"
+                ev_detail = ("observation evidence present but not trusted (seal/fields) "
+                             "or pid mismatch")
             if not ev_ok:
                 res.status = V2_UNRESOLVED
                 res.detail = ("would be CLEAN on the handles seen, BUT " + ev_detail
-                              + " => fail-closed (not CLEAN)")
+                              + " => fail-closed (not CLEAN). NOTE: a benign control "
+                              "proves observation capability only, NOT isolation.")
             else:
                 res.status = V2_CLEAN
                 res.detail = (f"all {counts['file_type_total']} File-type handles positively "
                               f"classified non-target (proven_non_target="
-                              f"{counts['non_target_proven']}); {ev_detail}")
+                              f"{counts['non_target_proven']}); {ev_detail} (benign "
+                              f"control does NOT itself prove isolation)")
         return res
     except Exception as e:                                        # noqa: BLE001
         res.status = V2_ERROR

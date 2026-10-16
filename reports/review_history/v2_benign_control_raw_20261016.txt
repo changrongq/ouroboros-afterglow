@@ -1,0 +1,7 @@
+worker pid 34048 benign handle 300
+benign evidence: observation_trusted= True controls= [300] all_benign_seen= True
+self-check (protected==benign): observation_trusted= False controls= []
+
+VERDICT:
+ benign control accepted: PASS
+ target==protected excluded: PASS
