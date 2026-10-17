@@ -102,6 +102,32 @@ ROUTE_OPTION_C = "LIMITED FEASIBILITY ONLY"
 # cause. OPERATIONAL_FAILURE != ONTOLOGICAL_NO_IDENTITY.
 UNRESOLVED_KIND_OPERATIONAL = "operational"
 UNRESOLVED_KIND_NO_IDENTITY = "no_identity"
+# 睫 (2026-10-17, second pass): a THIRD bucket is required, not preferred. The case
+# "handle identity was read, but there is no target identity from the SAME API to
+# compare against" used to be filed as no_identity, on the stated reasoning that
+# "granting privilege cannot remove it". That reasoning was an ASSERTION, not evidence:
+# `_target_identities` returned a bare {} for two different situations --
+#   (a) CreateFileW(target) itself failed            -> permissions/environment, FIXABLE
+#   (b) it opened but neither API applies            -> ontological, NOT fixable
+# and nothing in the returned value could separate them. Filing such a case under
+# no_identity fed CAUSE_IS_ONTOLOGICAL ("operation succeeded on every relevant handle")
+# a sentence that can be FALSE, and it did so in the one situation where the action it
+# blocks ("grant privilege once more") is exactly the action still worth trying.
+UNRESOLVED_KIND_INCOMPARABLE = "incomparable"
+
+# The instrument did not obtain a baseline. This is ONE fact about the target side, not
+# N facts about N handles: if the target has no comparable identity, every handle is
+# incomparable for the SAME reason. Short-circuiting is therefore both more honest and
+# more informative than reporting "12 handles each had a problem".
+V2_INCOMPARABLE = "INCOMPARABLE"
+
+# CAUSE_IS_ONTOLOGICAL may be printed ONLY under this conjunction. Dropping any single
+# conjunct makes the sentence capable of lying.
+CAUSE_IS_ONTOLOGICAL_REQUIRES = (
+    "unresolved_operational == 0",
+    "unresolved_no_identity > 0",
+    "unresolved_incomparable == 0",
+)
 
 # 凌翼 CLEAN_EVIDENCE_BINDING (still open): the evidence must be PRODUCED by a trusted
 # verification flow, not merely a constructible dataclass. We mirror the frozen
@@ -301,7 +327,7 @@ def build_enumerator_evidence(*, pid: int, benign_handle_values, protected_path:
     A caller cannot assert `all_benign_seen`. (The HMAC seal is an integrity aid, not a
     cross-caller boundary.)
     """
-    target_identities = _target_identities(str(protected_path))   # {api: identity}
+    target_identities, _target_reason = _target_identities(str(protected_path))
     os_ct = _process_create_time(pid)
     if not target_identities or os_ct is None:
         return EnumeratorEvidence(pid=int(pid), create_time=float(os_ct or 0.0),
@@ -387,6 +413,10 @@ class V2AuditResult:
     promotable_to_business_clean: bool = False
     # Item 4: required in every applicable verdict, so it cannot be dropped.
     persistent_worker_clean_block: str = PERSISTENT_WORKER_CLEAN_BLOCK
+    # 睫 (2026-10-17): WHY the target baseline has (or lacks) identities. Without this
+    # the caller cannot distinguish a fixable permission failure from an ontological
+    # "no API applies" case -- the two used to collapse into a bare {}.
+    target_identity_reason: str = ""
 
 
 def _process_create_time(pid: int) -> float | None:
@@ -428,10 +458,34 @@ class _FILE_ID_INFO(ctypes.Structure):
 FileIdInfo = 18  # FILE_INFO_BY_HANDLE_CLASS
 
 
-def _target_identities(target_path: str) -> dict:
+TARGET_IDENTITIES_OK = "OK"
+TARGET_IDENTITIES_CREATEFILE_FAILED = "CREATEFILE_FAILED"
+TARGET_IDENTITIES_OPENED_NO_API = "OPENED_NO_API"
+
+
+def _target_identities(target_path: str) -> tuple:
     """Compute the target's identity via BOTH APIs, so a remote handle's identity
     (obtained via whichever API works on it) can be compared LIKE-WITH-LIKE.
-    Returns {api_name: identity_tuple} — only APIs that succeeded are present."""
+
+    Returns ``(identities, reason)`` where ``identities`` is ``{api_name: identity}``
+    and ``reason`` is one of:
+
+        "OK"                        -- at least one API produced an identity
+        "CREATEFILE_FAILED:<err>"   -- we could not OPEN the target at all (permissions
+                                       / environment). FIXABLE: granting privilege may
+                                       make this go away.
+        "OPENED_NO_API"             -- we opened the target but NEITHER API yielded an
+                                       identity. ONTOLOGICAL: more privilege cannot help.
+
+    睫 (2026-10-17): before this change the function returned a bare ``{}`` for BOTH
+    cases, so the caller could not tell "we never got a baseline because we lack
+    permission" from "the APIs do not apply to this object". That conflation is exactly
+    the T1 contract violation `UNKNOWN != NON_TARGET`, applied to the TARGET side.
+
+    The reason string is the whole point: an empty dict carries no field saying WHY it
+    is empty, so any downstream sentence that asserts a cause is asserting something
+    the code never observed.
+    """
     k = _k32()
     GENERIC_READ = 0x80000000
     FILE_SHARE_ALL = 0x7
@@ -445,7 +499,7 @@ def _target_identities(target_path: str) -> dict:
     h = k.CreateFileW(str(target_path), GENERIC_READ, FILE_SHARE_ALL, None,
                       OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, None)
     if not h or h == -1:
-        return out
+        return out, f"{TARGET_IDENTITIES_CREATEFILE_FAILED}:{k.GetLastError()}"
     try:
         # GetFileInformationByHandle (classic)
         info = HA.BY_HANDLE_FILE_INFORMATION()
@@ -459,7 +513,7 @@ def _target_identities(target_path: str) -> dict:
             out["GetFileInformationByHandleEx:FileIdInfo"] = _fmt_file_id(fid)
     finally:
         k.CloseHandle(ctypes.c_void_p(h))
-    return out
+    return (out, TARGET_IDENTITIES_OK) if out else (out, TARGET_IDENTITIES_OPENED_NO_API)
 
 
 def _fmt_file_id(fid: "_FILE_ID_INFO") -> tuple:
@@ -512,11 +566,35 @@ def audit_business_worker_handles(pid: int, target_path: str,
     me = k.GetCurrentProcess()
 
     try:
-        target_ids = _target_identities(target_path)   # {api: identity}
+        target_ids, target_reason = _target_identities(target_path)
         res.target_identity = next(iter(target_ids.values()), None)
+        res.target_identity_reason = target_reason
         if not target_ids:
-            res.status = V2_ERROR
-            res.detail = "cannot read target file identity via any API"
+            # 睫 (2026-10-17): SHORT-CIRCUIT. The instrument never obtained a baseline.
+            # Reporting N per-handle verdicts here would dress up ONE failure as N
+            # failures, and would attribute to the handles a defect that lives entirely
+            # on the target side. INCOMPARABLE is the honest verdict: "I did not
+            # obtain a baseline", not "each handle had a problem".
+            res.status = V2_INCOMPARABLE
+            res.scope = "NO_BASELINE_OBTAINED"
+            if target_reason.startswith(TARGET_IDENTITIES_CREATEFILE_FAILED):
+                why = ("CREATEFILE_FAILED is an OPERATIONAL failure: more privilege "
+                       "may fix it (FIXABLE).")
+            else:
+                why = ("OPENED_NO_API means neither identity API applies to this "
+                       "object even though it opened (ONTOLOGICAL: privilege cannot "
+                       "help).")
+            res.detail = (
+                f"target baseline NOT obtained (reason={target_reason}); audit "
+                f"short-circuited to INCOMPARABLE -- no per-handle classification was "
+                f"performed, and the handle count is deliberately NOT reported as N "
+                f"separate errors. " + why)
+            res.counts = {"file_type_total": 0, "found_target": 0, "known_non_file": 0,
+                          "non_target_proven": 0, "unresolved": 0,
+                          "unresolved_operational": 0, "unresolved_no_identity": 0,
+                          "unresolved_incomparable": 0, "openprocess_fail": 0,
+                          "duplicate_fail": 0, "enum_error": 0,
+                          "short_circuited": True, "target_identity_reason": target_reason}
             return res
         file_type = HA._file_type_index(target_path)
         res.file_type_index = file_type
@@ -546,6 +624,7 @@ def audit_business_worker_handles(pid: int, target_path: str,
         counts = {"file_type_total": 0, "found_target": 0, "known_non_file": 0,
                   "non_target_proven": 0, "unresolved": 0,
                   "unresolved_operational": 0, "unresolved_no_identity": 0,
+                  "unresolved_incomparable": 0,
                   "openprocess_fail": 0,
                   "duplicate_fail": 0, "enum_error": 0}
         try:
@@ -603,12 +682,8 @@ def audit_business_worker_handles(pid: int, target_path: str,
                             rec.classification = "unresolved"
                             rec.unresolved_reason = (f"handle identity via {api} but target "
                                                      f"has no {api} identity to compare")
-                            # identity WAS read off the handle; the defect is that no
-                            # like-with-like target identity exists => not an operation
-                            # failure. Classify as no-identity (ontological, same bucket
-                            # as "device object has no file identity").
-                            rec.unresolved_kind = "no_identity"
-                            counts["unresolved_no_identity"] += 1
+                            rec.unresolved_kind = "incomparable"
+                            counts["unresolved_incomparable"] += 1
                             counts["unresolved"] += 1
                             res.records.append(rec)
                             continue
@@ -664,12 +739,26 @@ def audit_business_worker_handles(pid: int, target_path: str,
                           f"unresolved_operational={counts['unresolved_operational']} "
                           f"(operation refused/by permissions), "
                           f"unresolved_no_identity={counts['unresolved_no_identity']} "
-                          f"(object carries no readable file identity)")
-            if counts["unresolved_operational"] == 0 and counts["unresolved_no_identity"] > 0:
+                          f"(object carries no readable file identity), "
+                          f"unresolved_incomparable={counts['unresolved_incomparable']} "
+                          f"(handle identity read, but no like-API target baseline)")
+            # 睫 (2026-10-17): ALL THREE conjuncts are required. With only the first
+            # two, an incomparable case would print "operation succeeded on every
+            # relevant handle", which is FALSE -- the failure is on the TARGET side
+            # and may well be a permission problem that more privilege would fix.
+            if (counts["unresolved_operational"] == 0
+                    and counts["unresolved_no_identity"] > 0
+                    and counts["unresolved_incomparable"] == 0):
                 res.detail += (
                     "; CAUSE_IS_ONTOLOGICAL: operation succeeded on every relevant handle, "
                     "so granting further privilege cannot move this to CLEAN — the "
                     "conclusion does not hold on this object")
+            elif counts["unresolved_incomparable"] > 0:
+                res.detail += (
+                    "; CAUSE_IS_INCOMPARABLE: the target baseline is missing for at least "
+                    "one API -- this is ONE fact about the instrument, not N independent "
+                    "handle defects; do not read it as evidence about the target's "
+                    "isolation")
         else:
             # 凌翼 T1 scope: CLEAN needs a BENIGN enumerator-observation control (NOT a
             # target-handle positive, which would itself be FOUND_TARGET). The auditor

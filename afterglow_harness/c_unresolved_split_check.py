@@ -22,6 +22,7 @@ Expected:
 """
 from __future__ import annotations
 
+import ctypes
 import json
 import sys
 import tempfile
@@ -111,11 +112,87 @@ def main() -> int:
                f"no_id={c2['unresolved_no_identity']}")
         _check("C2 operational == 0", c2["unresolved_operational"] == 0,
                f"op={c2['unresolved_operational']}")
+        _check("C2 incomparable == 0", c2["unresolved_incomparable"] == 0,
+               f"inc={c2['unresolved_incomparable']}")
         _check("C2 sum == unresolved",
-               c2["unresolved_operational"] + c2["unresolved_no_identity"] == c2["unresolved"])
+               c2["unresolved_operational"] + c2["unresolved_no_identity"]
+               + c2["unresolved_incomparable"] == c2["unresolved"])
         _check("C2 detail flags ontological cause",
                "CAUSE_IS_ONTOLOGICAL" in (r2.detail or ""), (r2.detail or "")[:90])
     _ = real_dup
+
+    # ---- 睫 (2026-10-17) regression ①: CreateFileW(target) fails -> INCOMPARABLE ----
+    # Forced by asking for a target path that cannot be opened, with NO other injection.
+    orig_create = real_k32().CreateFileW
+
+    class _DenyCreateFile:
+        """Wrapper: CreateFileW always fails, everything else delegates.
+
+        CreateFileW must remain a real ctypes function object because the caller sets
+        .restype/.argtypes on it before calling. We therefore expose a genuine ctypes
+        callable that ignores its arguments and returns 0 (an invalid handle).
+        """
+        _fake = ctypes.WINFUNCTYPE(ctypes.c_void_p)(lambda *a: 0)
+
+        def __init__(self, real):
+            self._real = real
+            self.CreateFileW = self._fake
+
+        def GetLastError(self):
+            return 5  # ERROR_ACCESS_DENIED
+
+        def __getattr__(self, item):
+            return getattr(self._real, item)
+
+    def _k32_deny_create():
+        return _DenyCreateFile(real_k32())
+
+    V._k32 = _k32_deny_create
+    try:
+        r3 = V.audit_business_worker_handles(pid, str(target))
+    finally:
+        V._k32 = real_k32
+    print("CASE3 forced CreateFileW(target) failed ->", json.dumps(
+        {"status": r3.status, "reason": r3.target_identity_reason,
+         "short_circuited": r3.counts.get("short_circuited")}))
+    _check("C3 status INCOMPARABLE", r3.status == V.V2_INCOMPARABLE, r3.status)
+    _check("C3 reason is CREATEFILE_FAILED",
+           r3.target_identity_reason.startswith(V.TARGET_IDENTITIES_CREATEFILE_FAILED),
+           r3.target_identity_reason)
+    _check("C3 short-circuited", r3.counts.get("short_circuited") is True)
+    _check("C3 no per-handle count",
+           r3.counts.get("file_type_total") == 0, str(r3.counts.get("file_type_total")))
+    _check("C3 must NOT print CAUSE_IS_ONTOLOGICAL",
+           "CAUSE_IS_ONTOLOGICAL" not in (r3.detail or ""), (r3.detail or "")[:80])
+    _check("C3 states it is fixable (operational)",
+           "FIXABLE" in (r3.detail or ""), (r3.detail or "")[:80])
+    _ = orig_create
+
+    # ---- 睫 regression ②: target OPENS but neither API yields identity ------------
+    orig_target_ids = V._target_identities
+
+    def _fake_target_ids(path):                   # noqa: ANN001
+        return {}, V.TARGET_IDENTITIES_OPENED_NO_API
+
+    V._target_identities = _fake_target_ids
+    try:
+        r4 = V.audit_business_worker_handles(pid, str(target))
+    finally:
+        V._target_identities = orig_target_ids
+    print("CASE4 target opened but no API ->", json.dumps(
+        {"status": r4.status, "reason": r4.target_identity_reason,
+         "short_circuited": r4.counts.get("short_circuited")}))
+    _check("C4 status INCOMPARABLE", r4.status == V.V2_INCOMPARABLE, r4.status)
+    _check("C4 reason is OPENED_NO_API",
+           r4.target_identity_reason == V.TARGET_IDENTITIES_OPENED_NO_API,
+           r4.target_identity_reason)
+    _check("C4 short-circuited", r4.counts.get("short_circuited") is True)
+    _check("C4 no per-handle count",
+           r4.counts.get("file_type_total") == 0, str(r4.counts.get("file_type_total")))
+    _check("C4 must NOT print CAUSE_IS_ONTOLOGICAL",
+           "CAUSE_IS_ONTOLOGICAL" not in (r4.detail or ""), (r4.detail or "")[:80])
+    _check("C4 states it is ontological",
+           "ONTOLOGICAL" in (r4.detail or ""), (r4.detail or "")[:80])
 
     print()
     if FAILURES:

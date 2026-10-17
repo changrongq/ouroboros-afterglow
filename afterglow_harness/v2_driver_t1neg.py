@@ -82,8 +82,8 @@ def main(argv):
     seen = {int(hv) for hv, _tp, _acc in HA._iter_handles(pi.pid)}
     print("worker pid", pi.pid, "benign", bh, "protected", ph)
 
-    tmap = V2._target_identities(str(protected))
-    print("target identity APIs:", list(tmap.keys()))
+    tmap, tmap_reason = V2._target_identities(str(protected))
+    print("target identity APIs:", list(tmap.keys()), "reason:", tmap_reason)
 
     def show(tag, controls):
         obs = {c: (c in seen) for c in controls}
