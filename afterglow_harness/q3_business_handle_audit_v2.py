@@ -256,6 +256,11 @@ class V2HandleRecord:
     name: str | None = None                # diagnostic only
     classification: str = ""               # target | non_target_known_device | ...
     unresolved_reason: str = ""
+    # 睫 (2026-10-17): which of the two disjoint causes produced the unresolved.
+    #   "operational" = we failed to operate (permissions / duplicate / enumeration)
+    #   "no_identity" = we operated but the object carries no readable file identity
+    #   ""            = not classified as unresolved
+    unresolved_kind: str = ""
     getlasterror: dict = field(default_factory=dict)
 
 
@@ -408,8 +413,28 @@ def audit_business_worker_handles(pid: int, target_path: str,
             res.detail = "cannot determine File object-type index"
             return res
 
+        # 睫 (2026-10-17) asked for the two unresolved causes to be counted
+        # SEPARATELY, because they mean different things:
+        #   unresolved_operational  = we FAILED TO OPERATE (OpenProcess denied by
+        #                             ordinary permissions, DuplicateHandle failed,
+        #                             enumeration error). Environmental; may be
+        #                             fixable by granting privilege.
+        #   unresolved_no_identity  = we OPERATED but the object has NO FILE
+        #                             IDENTITY to read (device objects such as
+        #                             \Device\ConDrv / KsecDD / CNG). Ontological;
+        #                             no amount of privilege makes it readable.
+        # Consequence 睫 named: if unresolved_operational == 0 while
+        # unresolved_no_identity > 0, the conclusion does NOT hold on this object
+        # and "just fix the permissions" is the WRONG direction. Collapsing the two
+        # into one number invites exactly that misreading once privileges are given
+        # and the number still refuses to reach 0.
+        #
+        # `unresolved` is retained as the SUM so existing readers keep the same
+        # total; the CLEAN branch is sensitive ONLY to the two split counters.
         counts = {"file_type_total": 0, "found_target": 0, "known_non_file": 0,
-                  "non_target_proven": 0, "unresolved": 0, "openprocess_fail": 0,
+                  "non_target_proven": 0, "unresolved": 0,
+                  "unresolved_operational": 0, "unresolved_no_identity": 0,
+                  "openprocess_fail": 0,
                   "duplicate_fail": 0, "enum_error": 0}
         try:
             handles = list(HA._iter_handles(pid))
@@ -431,7 +456,9 @@ def audit_business_worker_handles(pid: int, target_path: str,
                 rec.getlasterror["OpenProcess"] = k.GetLastError()
                 rec.classification = "unresolved"
                 rec.unresolved_reason = "OpenProcess(PROCESS_DUP_HANDLE) failed"
+                rec.unresolved_kind = "operational"
                 counts["openprocess_fail"] += 1
+                counts["unresolved_operational"] += 1
                 counts["unresolved"] += 1
                 res.records.append(rec)
                 continue
@@ -443,7 +470,9 @@ def audit_business_worker_handles(pid: int, target_path: str,
                     rec.getlasterror["DuplicateHandle"] = k.GetLastError()
                     rec.classification = "unresolved"
                     rec.unresolved_reason = "DuplicateHandle failed"
+                    rec.unresolved_kind = "operational"
                     counts["duplicate_fail"] += 1
+                    counts["unresolved_operational"] += 1
                     counts["unresolved"] += 1
                     res.records.append(rec)
                     continue
@@ -462,6 +491,12 @@ def audit_business_worker_handles(pid: int, target_path: str,
                             rec.classification = "unresolved"
                             rec.unresolved_reason = (f"handle identity via {api} but target "
                                                      f"has no {api} identity to compare")
+                            # identity WAS read off the handle; the defect is that no
+                            # like-with-like target identity exists => not an operation
+                            # failure. Classify as no-identity (ontological, same bucket
+                            # as "device object has no file identity").
+                            rec.unresolved_kind = "no_identity"
+                            counts["unresolved_no_identity"] += 1
                             counts["unresolved"] += 1
                             res.records.append(rec)
                             continue
@@ -492,6 +527,10 @@ def audit_business_worker_handles(pid: int, target_path: str,
                     else:
                         rec.classification = "unresolved"
                         rec.unresolved_reason = "no identity from handle and no name"
+                    # both APIs operated successfully but the object yields no file
+                    # identity => ONTOLOGICAL, not an operation failure.
+                    rec.unresolved_kind = "no_identity"
+                    counts["unresolved_no_identity"] += 1
                     counts["unresolved"] += 1
                     res.records.append(rec)
                 finally:
@@ -505,8 +544,20 @@ def audit_business_worker_handles(pid: int, target_path: str,
             res.detail = f"worker holds handle(s) to target: {res.matched}"
         elif counts["unresolved"] > 0:
             res.status = V2_UNRESOLVED
+            # 睫: state the two causes SEPARATELY so a future "we granted the
+            # privilege, why is it still not CLEAN" question cannot be pointed at the
+            # wrong cause.
             res.detail = (f"{counts['unresolved']} relevant handle(s) could not be "
-                          f"reliably classified (fail-closed)")
+                          f"reliably classified (fail-closed): "
+                          f"unresolved_operational={counts['unresolved_operational']} "
+                          f"(operation refused/by permissions), "
+                          f"unresolved_no_identity={counts['unresolved_no_identity']} "
+                          f"(object carries no readable file identity)")
+            if counts["unresolved_operational"] == 0 and counts["unresolved_no_identity"] > 0:
+                res.detail += (
+                    "; CAUSE_IS_ONTOLOGICAL: operation succeeded on every relevant handle, "
+                    "so granting further privilege cannot move this to CLEAN — the "
+                    "conclusion does not hold on this object")
         else:
             # 凌翼 T1 scope: CLEAN needs a BENIGN enumerator-observation control (NOT a
             # target-handle positive, which would itself be FOUND_TARGET). The auditor

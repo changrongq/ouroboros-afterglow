@@ -2,9 +2,13 @@
 
 AFTERGLOW Reference Harness — shared workspace for **凌翼 / 睫 / Coder / 船长**.
 
-This repository is a **shared, read-oriented snapshot** of the Afterglow Reference Harness
-and its implementation-binding freeze chain. It exists so 凌翼 and 睫 can independently
-verify the artifacts without relying on a chat attachment.
+This repository is a **shared working tree**, and it is **live**: it changes as the work
+progresses. It is **not** a frozen snapshot. The only frozen things are the artifacts
+under `prereg/`, `spec/`, `artifacts/RC*/`, the MANIFEST under `reports/`, and the Q3
+role set — each with a recorded hash. Everything else moves.
+
+> **This README is a front page, not an authority.** Where any number here disagrees
+> with `reports/`, the file under `reports/` wins. See *Front-page accountability* below.
 
 ---
 
@@ -45,6 +49,11 @@ MANIFEST lineage: RC1 `b3802142…` → … → RC7 `c61d8aa7…`(FAILED) → RC
 → RC9 `67dfb538…`(NOT CLOSED) → RC10 `dd30e3ad…`(NOT CLOSED)
 → **RC11 `78bdb90f…`（CLOSED）**。
 
+**RC11 is the CURRENT CLOSED CANDIDATE** (per `reports/review_history/INDEX.md`).
+The lineage above stops at RC11 on purpose — RC7 is retained for audit only and is
+**not** current. If any surface (this README, the repo *About* panel, an old summary)
+still names RC7 `45acd8b1…` or `c61d8aa7…` as current, that surface is **stale**.
+
 ---
 
 ## RC11 — closure round (凌翼 R1–R5 + 知微 RC9/RC10/RC11 reviews)
@@ -74,6 +83,16 @@ RC11 repairs (all fail-open -> fail-closed):
 - **Structured sub-verdicts** are tri-state (True/False/UNEVALUATED); a default is never True.
 - **Adversarial regression** (54/54): all of the above, plus all prior RC7/RC8/RC9 false-PASS attacks.
 
+  **Read this number correctly.** 54/54 is the **RC11** closure count. The earlier
+  `13/13` figure belongs to **RC7's failing round** — RC7 was subsequently declared
+  **NOT CLOSED**, and that 13/13 is precisely why: the suite passed while the
+  adversarial machinery was still blind to the defects. A larger count on a later
+  candidate does **not** retroactively validate the smaller one.
+
+- **BD-57 + independent review**: BD-57 is listed here as *work performed*, **not** as
+  *support*. The independent review of that round concluded **RC7 NOT CLOSED**; the
+  review is the reason RC8 exists. Citing it as backing for a claim would invert it.
+
 ---
 
 ## Status
@@ -93,3 +112,54 @@ SCIENTIFIC_EXECUTION          = MAY NOT START
 - Not scientific evidence of memory / Afterglow mechanism (PHASE A is harness validation).
 - Not authorized for scientific execution (OS-level isolation is not yet implemented;
   the reset layer is logic-level only — see the MANIFEST §十).
+
+---
+
+## Front-page accountability
+
+睫 raised this on 2026-10-17, and it is recorded here rather than argued against.
+
+Every number in this file is a **harness-validation** number. None of them is a
+scientific result. That gap is not implied by the numbers — it has to be **said**, so
+it is said here explicitly:
+
+> `PHASE_A_QUALIFICATION = PASS`, `RC11 = CLOSED`, and `54/54` all describe the
+> **instrument**. They do **not** license a single scientific claim. 凌翼's ruling
+> carries `SCIENTIFIC_EXECUTION = MAY NOT START`; that ruling is about the experiment,
+> and nothing on this page overrides it.
+
+The numbers above and `MAY NOT START` are not in tension — they are about different
+things — but a reader arriving at a front page will not know that unless this paragraph
+exists. So it exists.
+
+### Current disposition of the isolation layer (2026-10-17)
+
+```text
+PROBE_CLEAN_HISTORY            = VERIFIED        (frozen Q3 probe path: pid 35048, 37200)
+PERSISTENT_BUSINESS_CLEAN      = NOT ESTABLISHED
+CURRENT_BUSINESS_AUDIT         = UNRESOLVED
+OPTION_A                       = NOT AUTHORIZED  (no name/path/device-class skipping)
+OPTION_B                       = ACTIVE           (no CLEAN claim, no wiring)
+OPTION_C_IMPLEMENTATION_ADOPTION = NOT AUTHORIZED
+C_FEASIBILITY                  = NOT ESTABLISHED (right side partial; E == H unproven)
+V2_WIRING                      = NOT AUTHORIZED
+```
+
+`HANDLE_AUDIT_CLEAN` has real evidence **twice, both on the short-lived probe path**.
+Trustworthy evidence count on the **persistent business worker path = 0**.
+
+Unresolved causes are counted separately, because they are not the same finding:
+`unresolved_operational` (permission/operation failure — fixable) versus
+`unresolved_no_identity` (the object has no readable file identity — not fixable by
+privilege). If the former is 0 and the latter is not, more privilege will never make
+the number reach 0.
+
+---
+
+## Authority map
+
+| Surface | In git? | Authority |
+|---|---|---|
+| `reports/`, `artifacts/RC*/`, `prereg/`, `spec/` | yes | **authoritative** |
+| `README.md` (this file) | yes | front page; reviewable, traceable |
+| GitHub repository *About* panel | **no** | facade only; never authoritative |
