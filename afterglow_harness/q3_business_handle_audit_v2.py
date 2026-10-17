@@ -48,6 +48,61 @@ V2_CLEAN = "CLEAN"
 V2_UNRESOLVED = "UNRESOLVED"
 V2_ERROR = "ERROR"
 
+# ---------------------------------------------------------------------------
+# 凌翼 `LINGYI — JIE FOUR PROPOSALS RULING` (2026-10-17) — binding, machine-readable.
+#
+# Item 4 says the persistent blocker is "REQUIRED IN APPLICABLE REVIEWS AND WIRING
+# DECISIONS". Written as a constant so it cannot be quietly dropped from a verdict:
+# every applicable handoff/report must restate PERSISTENT_WORKER_CLEAN_BLOCK.
+#
+# Item 2 is the operative consequence for this module: a CLEAN verdict here is scoped
+# to a single enumeration of a live process, so it is a POINT-IN-TIME observation, not
+# a quiescence claim. Two equal snapshots do NOT prove quiescence; two unequal ones do
+# NOT prove snapshot impossibility. Until an OBSERVATION BOUNDARY is defined (see
+# C_OBSERVATION_BOUNDARY_* below), no CLEAN produced here may be promoted to
+# BUSINESS_CLEAN.
+#
+# Item 1: PROBE_CLEAN != BUSINESS_CLEAN — a verdict must name its SUBJECT and SCOPE.
+# ---------------------------------------------------------------------------
+LINGYI_JIE_RULING_DATE = "2026-10-17"
+PERSISTENT_WORKER_CLEAN_BLOCK = "ACTIVE"
+
+VERDICT_SUBJECT_PROBE = "PROBE"            # short-lived attested probe worker
+VERDICT_SUBJECT_BUSINESS = "BUSINESS"      # persistent business worker
+PROBE_CLEAN_IS_NOT_BUSINESS_CLEAN = True
+PERSISTENT_BUSINESS_CLEAN = "NOT ESTABLISHED"
+
+# Item 2 STOP CONDITION: the three things that must be defined BEFORE any snapshot
+# reasoning counts. None of them is currently defined, so the gate is CLOSED.
+C_QUIESCENCE_PROOF_REQUIRED_DEFINITIONS = (
+    "OBSERVATION_BOUNDARY",        # what is inside vs outside the observed set
+    "SNAPSHOT_COVERAGE_SEMANTICS", # what a snapshot is taken to COVER
+    "TIME_SCOPE_OF_ASSURANCE",     # how long a snapshot verdict is claimed to hold
+)
+C_OBSERVATION_BOUNDARY_DEFINED = False
+C_SNAPSHOT_COVERAGE_SEMANTICS_DEFINED = False
+C_TIME_SCOPE_OF_ASSURANCE_DEFINED = False
+C_TWO_SNAPSHOT_EARLY_STOP = "DIAGNOSTIC ONLY"
+C_FEASIBILITY = "NOT ESTABLISHED"          # 凌翼: if no credible boundary, record this
+C_CURRENT_EXPLORATION = "STOPPED"          # 凌翼: ...and STOP CURRENT EXPLORATION
+
+# Item 3: an independently-confirmed target plus a CONTROLLED identity failure is
+# UNRESOLVED, never CLEAN. Simulation is not an OS-completeness proof.
+UNREADABLE_TARGET_CONTROL_RESULT = "UNRESOLVED"
+UNREADABLE_TARGET_CONTROL_MAY_BE_CLEAN = False
+SIMULATION_IS_COMPLETENESS_PROOF = False
+
+# Current route (凌翼, same ruling).
+ROUTE_OPTION_A = "NOT AUTHORIZED"
+ROUTE_OPTION_B = "ACTIVE"
+ROUTE_OPTION_C = "LIMITED FEASIBILITY ONLY"
+
+# 睫 (2026-10-17): the two unresolved causes are NOT interchangeable. Kept here so a
+# future "we granted the privilege, why is it still not CLEAN" cannot aim at the wrong
+# cause. OPERATIONAL_FAILURE != ONTOLOGICAL_NO_IDENTITY.
+UNRESOLVED_KIND_OPERATIONAL = "operational"
+UNRESOLVED_KIND_NO_IDENTITY = "no_identity"
+
 # 凌翼 CLEAN_EVIDENCE_BINDING (still open): the evidence must be PRODUCED by a trusted
 # verification flow, not merely a constructible dataclass. We mirror the frozen
 # AccessWitness pattern: a per-process secret seals the evidence, and only the trusted
@@ -118,6 +173,52 @@ class EnumeratorEvidence:
                 and self.create_time > 0.0
                 and bool(self.benign_control_values)
                 and self.all_benign_seen is True)
+
+
+def quiescence_gate(observation_boundary_defined: bool = False,
+                    snapshot_coverage_semantics_defined: bool = False,
+                    time_scope_of_assurance_defined: bool = False) -> dict:
+    """凌翼 `JIE FOUR PROPOSALS RULING` item 2 — the gate that must be OPENED first.
+
+    This function exists so the STOP CONDITION is EXECUTABLE rather than a sentence in
+    a report. It does not gather evidence and it does not decide anything about a real
+    process; it only answers "are the three definitions in place?".
+
+    凌翼's ruling, restated as logic:
+        E(t1) == E(t2)  does NOT prove quiescence
+        E(t1) != E(t2)  does NOT prove snapshot impossibility
+    so neither outcome of the two-snapshot comparison may be used as a proof. The
+    comparison stays DIAGNOSTIC ONLY regardless of its result.
+
+    If all three definitions are absent/unestablished, this returns
+    `exploration = STOPPED` and `c_feasibility = NOT ESTABLISHED`, which is exactly
+    what must be recorded rather than continuing to explore.
+
+    NOTE: passing True here is an ASSERTION by the caller that a definition exists. It
+    is not proof that the definition is credible; a reviewer must accept it. Do not
+    call this with True to unblock work — that would be self-authorization.
+    """
+    defined = {
+        "OBSERVATION_BOUNDARY": bool(observation_boundary_defined),
+        "SNAPSHOT_COVERAGE_SEMANTICS": bool(snapshot_coverage_semantics_defined),
+        "TIME_SCOPE_OF_ASSURANCE": bool(time_scope_of_assurance_defined),
+    }
+    missing = [k for k, v in defined.items() if not v]
+    gate_open = not missing
+    return {
+        "gate": "OBSERVATION_BOUNDARY_GATE",
+        "required": list(C_QUIESCENCE_PROOF_REQUIRED_DEFINITIONS),
+        "defined": defined,
+        "missing": missing,
+        "gate_open": gate_open,
+        # 凌翼: E(t1)==E(t2) does not prove quiescence; E(t1)!=E(t2) does not prove
+        # snapshot impossibility. Both outcomes remain non-proof => DIAGNOSTIC ONLY.
+        "two_snapshot_early_stop": C_TWO_SNAPSHOT_EARLY_STOP,
+        "quiescence_proven": False if not gate_open else None,
+        "c_feasibility": C_FEASIBILITY if not gate_open else "REQUIRES_REVIEW",
+        "exploration": C_CURRENT_EXPLORATION if not gate_open else "MAY_CONTINUE_UNDER_REVIEW",
+        "persistent_worker_clean_block": PERSISTENT_WORKER_CLEAN_BLOCK,
+    }
 
 
 def verify_held_handle(pid: int, handle_value: int, target_identities: dict) -> dict:
@@ -275,6 +376,17 @@ class V2AuditResult:
     matched: list = field(default_factory=list)
     counts: dict = field(default_factory=dict)
     detail: str = ""
+    # 凌翼 `JIE FOUR PROPOSALS RULING` item 1: BIND SUBJECT + SCOPE TO VERDICT.
+    # A verdict that does not say WHO it is about and WHAT it covers is not conclusive.
+    #   subject = PROBE  (short-lived attested probe worker) or BUSINESS (persistent)
+    #   scope   = POINT_IN_TIME_SINGLE_ENUMERATION  (this module never claims more)
+    subject: str = VERDICT_SUBJECT_BUSINESS
+    scope: str = "POINT_IN_TIME_SINGLE_ENUMERATION"
+    # Item 1: PROBE_CLEAN != BUSINESS_CLEAN. A PROBE-subject CLEAN must never be
+    # aggregated into a business-isolation claim.
+    promotable_to_business_clean: bool = False
+    # Item 4: required in every applicable verdict, so it cannot be dropped.
+    persistent_worker_clean_block: str = PERSISTENT_WORKER_CLEAN_BLOCK
 
 
 def _process_create_time(pid: int) -> float | None:
@@ -596,7 +708,15 @@ def audit_business_worker_handles(pid: int, target_path: str,
                 res.detail = (f"all {counts['file_type_total']} File-type handles positively "
                               f"classified non-target (proven_non_target="
                               f"{counts['non_target_proven']}); {ev_detail} (benign "
-                              f"control does NOT itself prove isolation)")
+                              f"control does NOT itself prove isolation); "
+                              f"SCOPE={res.scope} subject={res.subject} "
+                              f"-- this is NOT a quiescence claim: handles opened after "
+                              f"this enumeration are outside it; "
+                              f"PERSISTENT_WORKER_CLEAN_BLOCK={PERSISTENT_WORKER_CLEAN_BLOCK!r}")
+                # 凌翼 item 1: a BUSINESS-subject CLEAN is still scoped to this single
+                # enumeration and is NOT promoted to PERSISTENT_BUSINESS_CLEAN (which
+                # remains NOT ESTABLISHED). Never True.
+                res.promotable_to_business_clean = False
         return res
     except Exception as e:                                        # noqa: BLE001
         res.status = V2_ERROR

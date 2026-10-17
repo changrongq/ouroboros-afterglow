@@ -138,10 +138,15 @@ exists. So it exists.
 PROBE_CLEAN_HISTORY            = VERIFIED        (frozen Q3 probe path: pid 35048, 37200)
 PERSISTENT_BUSINESS_CLEAN      = NOT ESTABLISHED
 CURRENT_BUSINESS_AUDIT         = UNRESOLVED
+PERSISTENT_WORKER_CLEAN_BLOCK  = ACTIVE          (凌翼 JIE FOUR PROPOSALS RULING, item 4)
+PROBE_CLEAN != BUSINESS_CLEAN  = TRUE            (item 1; verdict binds SUBJECT + SCOPE)
 OPTION_A                       = NOT AUTHORIZED  (no name/path/device-class skipping)
 OPTION_B                       = ACTIVE           (no CLEAN claim, no wiring)
-OPTION_C_IMPLEMENTATION_ADOPTION = NOT AUTHORIZED
-C_FEASIBILITY                  = NOT ESTABLISHED (right side partial; E == H unproven)
+OPTION_C                       = LIMITED FEASIBILITY ONLY
+C_TWO_SNAPSHOT_EARLY_STOP      = DIAGNOSTIC ONLY
+C_OBSERVATION_BOUNDARY         = NOT DEFINED
+C_FEASIBILITY                  = NOT ESTABLISHED
+C_CURRENT_EXPLORATION          = STOPPED
 V2_WIRING                      = NOT AUTHORIZED
 ```
 
@@ -153,6 +158,30 @@ Unresolved causes are counted separately, because they are not the same finding:
 `unresolved_no_identity` (the object has no readable file identity — not fixable by
 privilege). If the former is 0 and the latter is not, more privilege will never make
 the number reach 0.
+
+### Why OPTION C exploration is stopped, not merely "incomplete"
+
+凌翼's ruling settled the reasoning, so it is recorded rather than paraphrased:
+
+> `E(t1) == E(t2)` does **not** prove quiescence.
+> `E(t1) != E(t2)` does **not** prove snapshot impossibility.
+
+Both outcomes of a two-snapshot comparison are therefore non-proofs, and the comparison
+stays diagnostic. Before any snapshot reasoning can count, three things must be defined:
+
+1. **OBSERVATION BOUNDARY** — what is inside versus outside the observed set
+2. **SNAPSHOT / COVERAGE SEMANTICS** — what a snapshot is taken to cover
+3. **TIME SCOPE OF ASSURANCE** — how long a snapshot verdict is claimed to hold
+
+None of the three is currently defined. The consequence is mechanical, not a judgement
+call: **`C_FEASIBILITY = NOT ESTABLISHED`, and the current exploration stops.** This is
+encoded as `quiescence_gate()` in `afterglow_harness/q3_business_handle_audit_v2.py` so
+the stop condition is executable rather than a sentence in a report.
+
+A CLEAN produced by the V2 auditor is scoped to a **point-in-time single enumeration**.
+Handles opened after that enumeration lie outside it. It is never a quiescence claim,
+and it is never promoted to `PERSISTENT_BUSINESS_CLEAN`.
+
 
 ---
 
