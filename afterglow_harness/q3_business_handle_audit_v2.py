@@ -110,24 +110,26 @@ UNRESOLVED_KIND_NO_IDENTITY = "no_identity"
 #   (a) CreateFileW(target) itself failed            -> permissions/environment, FIXABLE
 #   (b) it opened but neither API applies            -> ontological, NOT fixable
 # and nothing in the returned value could separate them. Filing such a case under
-# no_identity fed CAUSE_IS_ONTOLOGICAL ("operation succeeded on every relevant handle")
-# a sentence that can be FALSE, and it did so in the one situation where the action it
-# blocks ("grant privilege once more") is exactly the action still worth trying.
+# no_identity fed a sentence claiming the cause was ontological ("operation succeeded
+# on every relevant handle"), which can be FALSE, and did so in the one situation where
+# the action it blocked ("grant privilege once more") is exactly the action still worth
+# trying. 凌翼 later ruled that conclusion OVERCLAIMED; see CAUSE_IS_IDENTITY_UNAVAILABLE.
 UNRESOLVED_KIND_INCOMPARABLE = "incomparable"
 
 # The instrument did not obtain a baseline. This is ONE fact about the target side, not
 # N facts about N handles: if the target has no comparable identity, every handle is
 # incomparable for the SAME reason. Short-circuiting is therefore both more honest and
 # more informative than reporting "12 handles each had a problem".
-V2_INCOMPARABLE = "INCOMPARABLE"
-
-# CAUSE_IS_ONTOLOGICAL may be printed ONLY under this conjunction. Dropping any single
-# conjunct makes the sentence capable of lying.
-CAUSE_IS_ONTOLOGICAL_REQUIRES = (
-    "unresolved_operational == 0",
-    "unresolved_no_identity > 0",
-    "unresolved_incomparable == 0",
-)
+#
+# 凌翼 `LINGYI — C STOP / T1 / PROOF SEMANTICS RULING` (2026-10-17) item 3:
+#   V2_FIFTH_STATUS_INCOMPARABLE = CONTRACT_MISMATCH
+#   RETAIN FOUR-STATUS CONTRACT / KEEP INCOMPARABLE AS DIAGNOSTIC REASON
+# So INCOMPARABLE is NOT a top-level status. It stays a DIAGNOSTIC REASON carried on the
+# ERROR verdict together with `short_circuited=True`. Adding a fifth return state to the
+# integration layer is a CONTRACT CHANGE and is not authorized here.
+# ERROR means "a key identity-acquisition step failed" -- NOT "the program crashed".
+INCOMPARABLE = "INCOMPARABLE"          # diagnostic reason, NOT a top-level verdict
+V2_CONTRACT_STATUSES = (V2_FOUND_TARGET, V2_CLEAN, V2_UNRESOLVED, V2_ERROR)
 
 # 凌翼 CLEAN_EVIDENCE_BINDING (still open): the evidence must be PRODUCED by a trusted
 # verification flow, not merely a constructible dataclass. We mirror the frozen
@@ -417,6 +419,9 @@ class V2AuditResult:
     # the caller cannot distinguish a fixable permission failure from an ontological
     # "no API applies" case -- the two used to collapse into a bare {}.
     target_identity_reason: str = ""
+    # 凌翼 item 3: INCOMPARABLE is a DIAGNOSTIC REASON, not a top-level status. It is
+    # carried here alongside short_circuited=True while the verdict stays ERROR.
+    incomparable_reason: str = ""
 
 
 def _process_create_time(pid: int) -> float | None:
@@ -573,22 +578,29 @@ def audit_business_worker_handles(pid: int, target_path: str,
             # 睫 (2026-10-17): SHORT-CIRCUIT. The instrument never obtained a baseline.
             # Reporting N per-handle verdicts here would dress up ONE failure as N
             # failures, and would attribute to the handles a defect that lives entirely
-            # on the target side. INCOMPARABLE is the honest verdict: "I did not
-            # obtain a baseline", not "each handle had a problem".
-            res.status = V2_INCOMPARABLE
+            # on the target side.
+            #
+            # 凌翼 item 3: the top-level status stays ERROR (four-status contract). The
+            # short-circuit and its cause are carried as DIAGNOSTICS --
+            # `short_circuited=True` + `incomparable_reason`. ERROR here means "a key
+            # identity-acquisition step failed", NOT "the program crashed".
+            res.status = V2_ERROR
             res.scope = "NO_BASELINE_OBTAINED"
+            res.incomparable_reason = INCOMPARABLE
             if target_reason.startswith(TARGET_IDENTITIES_CREATEFILE_FAILED):
-                why = ("CREATEFILE_FAILED is an OPERATIONAL failure: more privilege "
-                       "may fix it (FIXABLE).")
+                why = ("CREATEFILE_FAILED is an OPERATIONAL failure -- the target could "
+                       "not be opened at all. Granting privilege MAY help; this is not "
+                       "a statement that it will.")
             else:
-                why = ("OPENED_NO_API means neither identity API applies to this "
-                       "object even though it opened (ONTOLOGICAL: privilege cannot "
-                       "help).")
+                why = ("OPENED_NO_API means the target opened but the attempted identity "
+                       "APIs returned no usable identity. The ROOT CAUSE IS NOT "
+                       "ESTABLISHED; privilege MAY or MAY NOT help.")
             res.detail = (
-                f"target baseline NOT obtained (reason={target_reason}); audit "
-                f"short-circuited to INCOMPARABLE -- no per-handle classification was "
-                f"performed, and the handle count is deliberately NOT reported as N "
-                f"separate errors. " + why)
+                f"target baseline NOT obtained (reason={target_reason}); "
+                f"short_circuited=True (reason={INCOMPARABLE}) -- no per-handle "
+                f"classification was performed, and the handle count is deliberately "
+                f"NOT reported as N separate errors. status=ERROR means a key identity "
+                f"step failed, not that the audit crashed. " + why)
             res.counts = {"file_type_total": 0, "found_target": 0, "known_non_file": 0,
                           "non_target_proven": 0, "unresolved": 0,
                           "unresolved_operational": 0, "unresolved_no_identity": 0,
@@ -742,17 +754,28 @@ def audit_business_worker_handles(pid: int, target_path: str,
                           f"(object carries no readable file identity), "
                           f"unresolved_incomparable={counts['unresolved_incomparable']} "
                           f"(handle identity read, but no like-API target baseline)")
-            # 睫 (2026-10-17): ALL THREE conjuncts are required. With only the first
-            # two, an incomparable case would print "operation succeeded on every
-            # relevant handle", which is FALSE -- the failure is on the TARGET side
-            # and may well be a permission problem that more privilege would fix.
+            # 凌翼 `LINGYI — C STOP / T1 / PROOF SEMANTICS RULING` item 3:
+            #   THREE_BUCKET_CLASSIFICATION = ACCEPTED
+            #   CAUSE_IS_ONTOLOGICAL       = OVERCLAIMED
+            #   IDENTITY_API_FAILURE != PROOF_OF_INTRINSIC_UNREADABILITY
+            # Both identity APIs failing is an OBSERVATION. "The object intrinsically has
+            # no readable identity" is a CONCLUSION, and per Microsoft's docs a failed
+            # GetFileInformationByHandle/Ex is to be diagnosed via GetLastError -- the
+            # failure alone does not prove the operation is permanently inapplicable.
+            # So the diagnostic sentence says only what was observed, and states plainly
+            # that the root cause is NOT established.
+            #
+            # The three-way conjunction is retained: it is a precise filter for "no known
+            # mixed cause", which is a weaker -- and defensible -- claim than the one it
+            # used to license.
             if (counts["unresolved_operational"] == 0
                     and counts["unresolved_no_identity"] > 0
                     and counts["unresolved_incomparable"] == 0):
                 res.detail += (
-                    "; CAUSE_IS_ONTOLOGICAL: operation succeeded on every relevant handle, "
-                    "so granting further privilege cannot move this to CLEAN — the "
-                    "conclusion does not hold on this object")
+                    "; CAUSE_IS_IDENTITY_UNAVAILABLE: process access and handle "
+                    "duplication succeeded; the attempted identity APIs returned no "
+                    "usable identity; the root cause is NOT established; CLEAN remains "
+                    "blocked")
             elif counts["unresolved_incomparable"] > 0:
                 res.detail += (
                     "; CAUSE_IS_INCOMPARABLE: the target baseline is missing for at least "

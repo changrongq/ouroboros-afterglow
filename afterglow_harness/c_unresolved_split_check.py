@@ -117,8 +117,12 @@ def main() -> int:
         _check("C2 sum == unresolved",
                c2["unresolved_operational"] + c2["unresolved_no_identity"]
                + c2["unresolved_incomparable"] == c2["unresolved"])
-        _check("C2 detail flags ontological cause",
-               "CAUSE_IS_ONTOLOGICAL" in (r2.detail or ""), (r2.detail or "")[:90])
+        _check("C2 detail flags identity-unavailable cause",
+               "CAUSE_IS_IDENTITY_UNAVAILABLE" in (r2.detail or ""), (r2.detail or "")[:90])
+        _check("C2 must NOT claim an ontological cause",
+               "CAUSE_IS_ONTOLOGICAL" not in (r2.detail or ""), (r2.detail or "")[:90])
+        _check("C2 must NOT claim privilege cannot help",
+               "cannot move this to CLEAN" not in (r2.detail or ""), (r2.detail or "")[:90])
     _ = real_dup
 
     # ---- 睫 (2026-10-17) regression ①: CreateFileW(target) fails -> INCOMPARABLE ----
@@ -154,8 +158,14 @@ def main() -> int:
         V._k32 = real_k32
     print("CASE3 forced CreateFileW(target) failed ->", json.dumps(
         {"status": r3.status, "reason": r3.target_identity_reason,
+         "incomparable": r3.incomparable_reason,
          "short_circuited": r3.counts.get("short_circuited")}))
-    _check("C3 status INCOMPARABLE", r3.status == V.V2_INCOMPARABLE, r3.status)
+    _check("C3 status stays ERROR (four-status contract)",
+           r3.status == V.V2_ERROR, r3.status)
+    _check("C3 status is a contract status",
+           r3.status in V.V2_CONTRACT_STATUSES, str(V.V2_CONTRACT_STATUSES))
+    _check("C3 carries INCOMPARABLE as a diagnostic reason",
+           r3.incomparable_reason == V.INCOMPARABLE, r3.incomparable_reason)
     _check("C3 reason is CREATEFILE_FAILED",
            r3.target_identity_reason.startswith(V.TARGET_IDENTITIES_CREATEFILE_FAILED),
            r3.target_identity_reason)
@@ -164,8 +174,10 @@ def main() -> int:
            r3.counts.get("file_type_total") == 0, str(r3.counts.get("file_type_total")))
     _check("C3 must NOT print CAUSE_IS_ONTOLOGICAL",
            "CAUSE_IS_ONTOLOGICAL" not in (r3.detail or ""), (r3.detail or "")[:80])
-    _check("C3 states it is fixable (operational)",
-           "FIXABLE" in (r3.detail or ""), (r3.detail or "")[:80])
+    _check("C3 must NOT claim privilege cannot help",
+           "cannot move this to CLEAN" not in (r3.detail or ""), (r3.detail or "")[:80])
+    _check("C3 states ERROR is not a crash",
+           "not that the audit crashed" in (r3.detail or ""), (r3.detail or "")[:80])
     _ = orig_create
 
     # ---- 睫 regression ②: target OPENS but neither API yields identity ------------
@@ -181,8 +193,12 @@ def main() -> int:
         V._target_identities = orig_target_ids
     print("CASE4 target opened but no API ->", json.dumps(
         {"status": r4.status, "reason": r4.target_identity_reason,
+         "incomparable": r4.incomparable_reason,
          "short_circuited": r4.counts.get("short_circuited")}))
-    _check("C4 status INCOMPARABLE", r4.status == V.V2_INCOMPARABLE, r4.status)
+    _check("C4 status stays ERROR (four-status contract)",
+           r4.status == V.V2_ERROR, r4.status)
+    _check("C4 carries INCOMPARABLE as a diagnostic reason",
+           r4.incomparable_reason == V.INCOMPARABLE, r4.incomparable_reason)
     _check("C4 reason is OPENED_NO_API",
            r4.target_identity_reason == V.TARGET_IDENTITIES_OPENED_NO_API,
            r4.target_identity_reason)
@@ -191,8 +207,10 @@ def main() -> int:
            r4.counts.get("file_type_total") == 0, str(r4.counts.get("file_type_total")))
     _check("C4 must NOT print CAUSE_IS_ONTOLOGICAL",
            "CAUSE_IS_ONTOLOGICAL" not in (r4.detail or ""), (r4.detail or "")[:80])
-    _check("C4 states it is ontological",
-           "ONTOLOGICAL" in (r4.detail or ""), (r4.detail or "")[:80])
+    _check("C4 must NOT claim privilege cannot help",
+           "cannot move this to CLEAN" not in (r4.detail or ""), (r4.detail or "")[:80])
+    _check("C4 states root cause is NOT established",
+           "ROOT CAUSE IS NOT ESTABLISHED" in (r4.detail or ""), (r4.detail or "")[:80])
 
     print()
     if FAILURES:
