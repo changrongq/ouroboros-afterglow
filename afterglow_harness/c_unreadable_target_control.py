@@ -61,6 +61,11 @@ EXIT_CLEANUP_FAILED = 3
 PENDING_PID: int = 0
 CLEANUP_DETAIL: str = ""
 CHECK_RESULT: int = 0
+# 知微 2026-10-18 (fourth pass): resource release is a SEPARATE fact from process exit.
+# RESOURCE_LEAK is reported on its own so a failed CloseHandle is never mistaken for
+# "the worker may still be running".
+RESOURCES_RELEASED: bool = True
+RESOURCE_LEAK: bool = False
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -102,7 +107,7 @@ def _spawn(data_dir: Path, protected: Path, hs: Path, acct: str, pw: str):
     return ok, pi, ctypes.windll.kernel32.GetLastError()
 
 
-def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> tuple:
+def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> dict:
     """Terminate the worker and WAIT until the OS says it is gone.
 
     知微 2026-10-18: the original driver terminated the process and immediately closed
@@ -121,7 +126,18 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> tuple:
     cleanup actually succeeded, so a cleanup failure can be promoted into the process
     exit status instead of being printed and ignored.
 
-    Returns (exited: bool, detail: str). Never raises.
+    Returns a dict with THREE SEPARATE facts, never collapsed into one flag
+    (知微 2026-10-18, fourth pass):
+        worker_exit_confirmed         -- did the OS confirm the worker exited?
+        controller_resources_released -- did every CloseHandle we own succeed?
+        detail                        -- free-text record of what was observed
+
+    These are independent. A worker can be confirmed exited while a CloseHandle fails;
+    that is a RESOURCE RELEASE problem and is NOT evidence the worker is still alive.
+    Conversely a false CloseHandle return must not be read as "the process is running".
+    Reporting them together invites exactly that misreading.
+
+    Never raises.
 
     Win32 prototypes are set explicitly (知微 2026-10-18): without them ctypes truncates
     64-bit HANDLE returns to 32 bits, which is how I previously produced a bogus
@@ -157,12 +173,27 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> tuple:
     _proto("CloseHandle", wintypes.BOOL, [wintypes.HANDLE])
     detail = ""
 
-    def _close(h, label: str) -> None:
+    def _close(h, label: str) -> bool:
+        """Release one controller-owned handle. Returns True only if CloseHandle said so.
+
+        知微 2026-10-18 (fourth pass): the previous version ignored CloseHandle's BOOL
+        return. A normal Win32 failure (return 0) therefore produced no record at all --
+        only a Python exception was caught. Both must be reported, and one handle's
+        failure must never skip the next.
+        """
         nonlocal detail
+        if not h:
+            return True
         try:
-            k32.CloseHandle(h)
+            ok = bool(k32.CloseHandle(h))
         except Exception as e:                                   # noqa: BLE001
             detail += f"; CloseHandle({label}) raised {type(e).__name__}"
+            return False
+        if not ok:
+            err = k32.GetLastError()
+            detail += f"; CloseHandle({label}) returned FALSE err={err} (NOT released)"
+            return False
+        return True
 
     try:
         k32.TerminateProcess(pi.hp, 1)
@@ -172,11 +203,11 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> tuple:
     # WaitForSingleObject(handle, ms): 0 = signalled (exited), 0x102 = timeout.
     # Guarded individually: if the wait itself throws, we must STILL release handles.
     WAIT_OBJECT_0 = 0x00000000
-    exited = False
+    worker_exit_confirmed = False
     try:
         waited = k32.WaitForSingleObject(pi.hp, int(timeout_s * 1000))
-        exited = (waited == WAIT_OBJECT_0)
-        if not exited:
+        worker_exit_confirmed = (waited == WAIT_OBJECT_0)
+        if not worker_exit_confirmed:
             detail += f"; wait returned {waited:#x} (not signalled within {timeout_s}s)"
     except Exception as e:                                       # noqa: BLE001
         detail += f"; WaitForSingleObject raised {type(e).__name__}"
@@ -189,38 +220,58 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> tuple:
     # worker and then report success. Exit confirmation therefore prefers the STABLE
     # process handle from the spawn, and a failed open is recorded as UNKNOWN, never as
     # "gone".
+    #
+    # 知微 2026-10-18 (fourth pass): this extra query handle was leaked whenever
+    # GetExitCodeProcess raised, because the release sat after it in the same try. It now
+    # has its OWN finally, so hp2 is released on every path out of this block.
     PROCESS_QUERY_LIMITED = 0x1000
     STILL_ACTIVE = 259
     try:
         hp2 = k32.OpenProcess(PROCESS_QUERY_LIMITED, False, pid)
         if hp2:
-            code = wintypes.DWORD(0)
-            ok_code = k32.GetExitCodeProcess(hp2, ctypes.byref(code))
-            _close(hp2, "query")
-            if not ok_code:
-                # we could not read the exit code: do NOT infer exit from this
-                detail += ("; GetExitCodeProcess failed -- exit NOT verified via pid "
-                           "(reason unknown, NOT 'gone')")
-            elif code.value == STILL_ACTIVE:
-                exited = False
-                detail += f"; pid {pid} still reports STILL_ACTIVE"
-            else:
-                detail += f"; exit code {code.value:#x}"
+            try:
+                code = wintypes.DWORD(0)
+                ok_code = k32.GetExitCodeProcess(hp2, ctypes.byref(code))
+                if not ok_code:
+                    # we could not read the exit code: do NOT infer exit from this
+                    err = k32.GetLastError()
+                    detail += (f"; GetExitCodeProcess failed err={err} -- exit NOT "
+                               f"verified via pid (reason unknown, NOT 'gone')")
+                elif code.value == STILL_ACTIVE:
+                    worker_exit_confirmed = False
+                    detail += f"; pid {pid} still reports STILL_ACTIVE"
+                else:
+                    detail += f"; exit code {code.value:#x}"
+            finally:
+                # ALWAYS release the query handle we successfully opened, even when the
+                # code above raised.
+                _close(hp2, "query")
         else:
             err = k32.GetLastError()
             # Unknown, not gone: could be access denied, or the pid may be reused.
             detail += (f"; OpenProcess(PROCESS_QUERY_LIMITED) failed err={err} -- "
                        f"pid state UNKNOWN, NOT interpreted as gone")
     except Exception as e:                                       # noqa: BLE001
-        exited = False
+        worker_exit_confirmed = False
         detail += f"; exit verification raised {type(e).__name__}"
 
-    # Release BOTH handles independently -- never let the first failure skip the second.
-    # NOTE: releasing the controller's handles does not mean the worker exited. If
-    # `exited` is False the caller must record the pid as STILL PENDING.
-    _close(pi.hp, "process")
-    _close(pi.ht, "thread")
-    return exited, detail
+    # Release BOTH controller-owned handles independently -- never let the first failure
+    # skip the second. Track the failures separately from the process-exit question.
+    #
+    # 知微 2026-10-18 (fourth pass): `worker_exit_confirmed` and
+    # `controller_resources_released` are DIFFERENT facts and must not be collapsed into
+    # one "exited" flag. A worker can be confirmed exited while a CloseHandle fails; that
+    # is a resource-release problem, NOT evidence the worker is still alive. Equally, a
+    # false CloseHandle return must not be read as "the process may still be running".
+    released_hp = _close(pi.hp, "process")
+    released_ht = _close(pi.ht, "thread")
+    controller_resources_released = released_hp and released_ht
+
+    return {
+        "worker_exit_confirmed": worker_exit_confirmed,
+        "controller_resources_released": controller_resources_released,
+        "detail": detail,
+    }
 
 
 def main() -> int:
@@ -276,12 +327,27 @@ def main() -> int:
         check_reached = True
         return check_result
     finally:
-        exited, cleanup_detail = _terminate_and_confirm(pi, pid_for_cleanup)
+        cleanup = _terminate_and_confirm(pi, pid_for_cleanup)
+        exited = bool(cleanup.get("worker_exit_confirmed"))
+        released = bool(cleanup.get("controller_resources_released"))
+        cleanup_detail = str(cleanup.get("detail") or "")
         print()
-        print(f"CLEANUP: worker exit confirmed = {exited}  [{cleanup_detail}]")
+        print(f"CLEANUP: worker_exit_confirmed={exited} "
+              f"controller_resources_released={released}  [{cleanup_detail}]")
         global CLEANUP_FAILED, PENDING_PID, CLEANUP_DETAIL, CHECK_RESULT
+        global RESOURCES_RELEASED, RESOURCE_LEAK
         CLEANUP_DETAIL = cleanup_detail
         CHECK_RESULT = check_result
+        RESOURCES_RELEASED = released
+        if not released:
+            # 知微 2026-10-18: a resource-release failure must also affect the overall
+            # result. It is NOT evidence the worker is alive, so it is recorded as a
+            # separate fact rather than as "exit unconfirmed".
+            RESOURCE_LEAK = True
+            CLEANUP_FAILED = True
+            print("CLEANUP_WARNING: controller_resources_released=False -- a CloseHandle "
+                  "failed. This is a RESOURCE LEAK, not evidence that the worker is "
+                  "still running.")
         if not exited:
             CLEANUP_FAILED = True
             PENDING_PID = pid_for_cleanup
@@ -393,6 +459,8 @@ if __name__ == "__main__":
         "check_result": CHECK_RESULT,
         "cleanup_failed": CLEANUP_FAILED,
         "pending_pid": PENDING_PID,
+        "controller_resources_released": RESOURCES_RELEASED,
+        "resource_leak": RESOURCE_LEAK,
         "cleanup_detail": CLEANUP_DETAIL,
     }, ensure_ascii=False))
     if CLEANUP_FAILED:

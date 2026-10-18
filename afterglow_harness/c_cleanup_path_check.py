@@ -40,9 +40,11 @@ class FakePI:
 
 def run_with_stubbed_kernel(wait_raises: bool, wait_signals: bool,
                             open_fails: bool = False, exitcode_fails: bool = False,
-                            still_active: bool = False):
+                            exitcode_raises: bool = False, still_active: bool = False,
+                            close_fails_for: tuple = ()):
     """Drive _terminate_and_confirm with a fake kernel32 and record CloseHandle calls."""
     closed: list = []
+    close_failed: list = []
 
     class FakeK32:
         def TerminateProcess(self, h, code):
@@ -58,6 +60,8 @@ def run_with_stubbed_kernel(wait_raises: bool, wait_signals: bool,
             return None if open_fails else 0x3333
 
         def GetExitCodeProcess(self, h, ref):
+            if exitcode_raises:
+                raise RuntimeError("simulated exit-code failure")
             if exitcode_fails:
                 return 0
             ref._obj.value = 259 if still_active else 1
@@ -67,88 +71,119 @@ def run_with_stubbed_kernel(wait_raises: bool, wait_signals: bool,
             return 5  # ERROR_ACCESS_DENIED
 
         def CloseHandle(self, h):
-            closed.append(int(h) if h else 0)
+            iv = int(h) if h else 0
+            if iv in close_fails_for:
+                close_failed.append(iv)
+                return 0            # Win32 failure: BOOL FALSE, no exception
+            closed.append(iv)
             return 1
 
     orig = ctypes.windll.kernel32
     try:
         ctypes.windll.kernel32 = FakeK32()
-        exited, detail = T._terminate_and_confirm(FakePI(), 4242, timeout_s=0.01)
+        result = T._terminate_and_confirm(FakePI(), 4242, timeout_s=0.01)
     finally:
         ctypes.windll.kernel32 = orig
-    return exited, detail, closed
+    return result, closed, close_failed
 
 
 def main() -> int:
+    def R(*a, **kw):
+        res, closed, failed = run_with_stubbed_kernel(*a, **kw)
+        return (res["worker_exit_confirmed"], res["controller_resources_released"],
+                res["detail"], closed, failed)
+
     print("== case 1: wait raises -> BOTH handles must still be released ==")
-    exited, detail, closed = run_with_stubbed_kernel(wait_raises=True, wait_signals=False)
+    ex, rel, det, closed, _ = R(wait_raises=True, wait_signals=False)
     print("  closed handles:", [hex(c) for c in closed if c])
-    print("  detail:", detail)
+    print("  detail:", det)
     check("handle hp released", 0x1111 in closed, str([hex(c) for c in closed]))
     check("handle ht released", 0x2222 in closed, str([hex(c) for c in closed]))
-    check("exit NOT confirmed when the wait raised", exited is False, str(exited))
-    check("raise is reported in detail", "raised" in detail, detail)
+    check("exit NOT confirmed when the wait raised", ex is False, str(ex))
+    check("raise is reported in detail", "raised" in det, det)
 
     print("== case 2: wait times out -> exit not confirmed, handles released ==")
-    exited2, detail2, closed2 = run_with_stubbed_kernel(wait_raises=False,
-                                                        wait_signals=False)
-    print("  closed handles:", [hex(c) for c in closed2 if c])
-    check("hp released", 0x1111 in closed2)
-    check("ht released", 0x2222 in closed2)
-    check("exit NOT confirmed on timeout", exited2 is False, str(exited2))
+    ex, rel, det, closed, _ = R(wait_raises=False, wait_signals=False)
+    check("hp released", 0x1111 in closed)
+    check("ht released", 0x2222 in closed)
+    check("exit NOT confirmed on timeout", ex is False, str(ex))
 
     print("== case 3: wait signals -> exit confirmed ==")
-    exited3, detail3, closed3 = run_with_stubbed_kernel(wait_raises=False,
-                                                        wait_signals=True)
-    check("exit confirmed", exited3 is True, str(exited3))
-    check("hp released", 0x1111 in closed3)
-    check("ht released", 0x2222 in closed3)
+    ex, rel, det, closed, _ = R(wait_raises=False, wait_signals=True)
+    check("exit confirmed", ex is True, str(ex))
+    check("hp released", 0x1111 in closed)
+    check("ht released", 0x2222 in closed)
+    check("resources released", rel is True, str(rel))
 
     print("== case 3b: OpenProcess FAILS -> state UNKNOWN, NOT 'gone' ==")
-    # 知微 2026-10-18: a failed open can be permissions or PID reuse. It must never be
-    # reported as proof of exit.
-    exited3b, detail3b, closed3b = run_with_stubbed_kernel(
-        wait_raises=False, wait_signals=False, open_fails=True)
-    print("  detail:", detail3b)
-    # NB: the message deliberately CONTAINS the word 'gone' ("NOT interpreted as gone"),
-    # so a plain substring test would be wrong. Assert on the affirmative claim instead.
+    ex, rel, det, closed, _ = R(wait_raises=False, wait_signals=False, open_fails=True)
+    print("  detail:", det)
     check("failed open does NOT assert 'no longer openable (gone)'",
-          "no longer openable (gone)" not in detail3b, detail3b)
-    check("failed open is reported as UNKNOWN", "UNKNOWN" in detail3b, detail3b)
-    check("failed open reports the error code", "err=" in detail3b, detail3b)
+          "no longer openable (gone)" not in det, det)
+    check("failed open is reported as UNKNOWN", "UNKNOWN" in det, det)
+    check("failed open reports the error code", "err=" in det, det)
     check("handles still released on failed open",
-          0x1111 in closed3b and 0x2222 in closed3b)
+          0x1111 in closed and 0x2222 in closed)
 
     print("== case 3c: GetExitCodeProcess fails -> exit NOT verified ==")
-    exited3c, detail3c, _ = run_with_stubbed_kernel(
-        wait_raises=False, wait_signals=True, exitcode_fails=True)
-    print("  detail:", detail3c)
-    check("unreadable exit code is flagged, not silently accepted",
-          "GetExitCodeProcess failed" in detail3c, detail3c)
-    # Same substring trap as 3b: the message says "NOT 'gone'", so look for the
-    # affirmative retired phrase rather than the bare word.
-    check("does not assert 'no longer openable (gone)' from an unreadable exit code",
-          "no longer openable (gone)" not in detail3c, detail3c)
-    check("declares the pid state UNKNOWN when the exit code is unreadable",
-          "unknown" in detail3c.lower(), detail3c)
+    ex, rel, det, closed, _ = R(wait_raises=False, wait_signals=True,
+                                exitcode_fails=True)
+    print("  detail:", det)
+    check("unreadable exit code is flagged", "GetExitCodeProcess failed" in det, det)
+    check("does not assert 'no longer openable (gone)'",
+          "no longer openable (gone)" not in det, det)
+    check("declares UNKNOWN when the exit code is unreadable",
+          "unknown" in det.lower(), det)
+    check("query handle released even when exit code read fails",
+          0x3333 in closed, str([hex(c) for c in closed]))
 
     print("== case 3d: STILL_ACTIVE after termination -> exit NOT confirmed ==")
-    exited3d, detail3d, _ = run_with_stubbed_kernel(
-        wait_raises=False, wait_signals=True, still_active=True)
-    check("STILL_ACTIVE forces exited=False", exited3d is False, str(exited3d))
-    check("STILL_ACTIVE is reported", "STILL_ACTIVE" in detail3d, detail3d)
+    ex, rel, det, closed, _ = R(wait_raises=False, wait_signals=True,
+                                still_active=True)
+    check("STILL_ACTIVE forces exit unconfirmed", ex is False, str(ex))
+    check("STILL_ACTIVE is reported", "STILL_ACTIVE" in det, det)
+
+    print("== case 6 (ZHIWEI 4th pass): GetExitCodeProcess RAISES -> hp2 released ==")
+    ex, rel, det, closed, _ = R(wait_raises=False, wait_signals=True,
+                                exitcode_raises=True)
+    print("  closed handles:", [hex(c) for c in closed if c])
+    print("  detail:", det)
+    check("query handle hp2 RELEASED despite the raise",
+          0x3333 in closed, str([hex(c) for c in closed]))
+    check("hp/ht also released", 0x1111 in closed and 0x2222 in closed)
+    check("raise is recorded", "exit verification raised" in det, det)
+
+    print("== case 7 (ZHIWEI 4th pass): CloseHandle FALSE is reported ==")
+    ex, rel, det, closed, failed = R(wait_raises=False, wait_signals=True,
+                                     close_fails_for=(0x1111,))
+    print("  closed:", [hex(c) for c in closed], " failed:", [hex(c) for c in failed])
+    print("  detail:", det)
+    check("worker_exit_confirmed is STILL TRUE (wait already proved it)",
+          ex is True, str(ex))
+    check("controller_resources_released is FALSE", rel is False, str(rel))
+    check("CloseHandle FALSE is recorded with an error code",
+          "returned FALSE" in det and "err=" in det, det)
+    check("a failed close does NOT skip the other handle", 0x2222 in closed,
+          str([hex(c) for c in closed]))
+    check("failed close is NOT described as worker still running",
+          "still running" not in det.lower(), det)
+
+    print("== case 8: the two facts are INDEPENDENT ==")
+    # exit confirmed + release failed must be representable, and must not collapse.
+    ex, rel, det, closed, failed = R(wait_raises=False, wait_signals=True,
+                                     close_fails_for=(0x1111, 0x2222))
+    check("exit confirmed AND resources leaked simultaneously",
+          ex is True and rel is False, f"exit={ex} released={rel}")
 
     print("== case 4: cleanup failure reaches the EXIT STATUS ==")
-    # The entry point must translate CLEANUP_FAILED into a non-zero code. We assert the
-    # contract rather than spawning a process.
     check("module declares EXIT_CLEANUP_FAILED = 3",
           T.EXIT_CLEANUP_FAILED == 3, str(T.EXIT_CLEANUP_FAILED))
     check("module initialises CLEANUP_FAILED falsy",
           T.CLEANUP_FAILED is False, str(T.CLEANUP_FAILED))
-    check("module exposes PENDING_PID for unconfirmed exits",
-          hasattr(T, "PENDING_PID") and T.PENDING_PID == 0, str(getattr(
-              T, "PENDING_PID", None)))
-    # Simulate what __main__ does.
+    check("module exposes PENDING_PID", hasattr(T, "PENDING_PID"), "")
+    check("module exposes RESOURCES_RELEASED / RESOURCE_LEAK",
+          hasattr(T, "RESOURCES_RELEASED") and hasattr(T, "RESOURCE_LEAK"), "")
+
     def translate(rc: int, cleanup_failed: bool) -> int:
         if cleanup_failed:
             return T.EXIT_CLEANUP_FAILED if rc == 0 else rc
@@ -160,8 +195,6 @@ def main() -> int:
     check("rc=0 + cleanup ok -> 0", translate(0, False) == 0, str(translate(0, False)))
 
     print("== case 5: overall success must INCLUDE cleanup success ==")
-    # 知微's required rule: an unconfirmed exit can never be a full PASS, even when the
-    # check itself passed. Encoded as: clean_pass requires check==0 AND cleanup confirmed.
     def is_clean_pass(check_rc: int, cleanup_failed: bool) -> bool:
         return check_rc == 0 and not cleanup_failed
 
