@@ -226,6 +226,9 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> dict:
     # has its OWN finally, so hp2 is released on every path out of this block.
     PROCESS_QUERY_LIMITED = 0x1000
     STILL_ACTIVE = 259
+    # Initialised True because "we never opened a query handle" is not a release failure.
+    # Only an actually-opened handle whose close fails may set this False.
+    released_query = True
     try:
         hp2 = k32.OpenProcess(PROCESS_QUERY_LIMITED, False, pid)
         if hp2:
@@ -245,7 +248,13 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> dict:
             finally:
                 # ALWAYS release the query handle we successfully opened, even when the
                 # code above raised.
-                _close(hp2, "query")
+                #
+                # 知微 2026-10-18 (fifth pass): the RESULT of this close was discarded,
+                # so a query-close failure was logged as "not released" while the final
+                # aggregate still said controller_resources_released=True and the exit
+                # code stayed 0. The query handle is one of the handles we own, so its
+                # release outcome belongs in the same aggregate as hp/ht.
+                released_query = _close(hp2, "query")
         else:
             err = k32.GetLastError()
             # Unknown, not gone: could be access denied, or the pid may be reused.
@@ -263,13 +272,22 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> dict:
     # one "exited" flag. A worker can be confirmed exited while a CloseHandle fails; that
     # is a resource-release problem, NOT evidence the worker is still alive. Equally, a
     # false CloseHandle return must not be read as "the process may still be running".
+    #
+    # 知微 2026-10-18 (fifth pass): the aggregate must cover EVERY handle we own, not just
+    # hp/ht. Omitting the query handle let a real leak through while the summary claimed
+    # full release.
     released_hp = _close(pi.hp, "process")
     released_ht = _close(pi.ht, "thread")
-    controller_resources_released = released_hp and released_ht
+    controller_resources_released = released_hp and released_ht and released_query
 
     return {
         "worker_exit_confirmed": worker_exit_confirmed,
         "controller_resources_released": controller_resources_released,
+        "released_handles": {
+            "process": released_hp,
+            "thread": released_ht,
+            "query": released_query,
+        },
         "detail": detail,
     }
 

@@ -175,6 +175,32 @@ def main() -> int:
     check("exit confirmed AND resources leaked simultaneously",
           ex is True and rel is False, f"exit={ex} released={rel}")
 
+    print("== case 9 (ZHIWEI 5th pass): ONLY hp2 close fails -> aggregate FALSE ==")
+    # His exact scenario: the query handle is the ONLY one that fails to close.
+    # Previously the log said "query not released" while the summary claimed
+    # controller_resources_released=True and the exit code stayed 0.
+    ex, rel, det, closed, failed = R(wait_raises=False, wait_signals=True,
+                                     close_fails_for=(0x3333,))
+    print("  closed:", [hex(c) for c in closed], " failed:", [hex(c) for c in failed])
+    print("  detail:", det)
+    check("query close failure is recorded", 0x3333 in failed, str([hex(c) for c in failed]))
+    check("worker was still confirmed exited", ex is True, str(ex))
+    check("aggregate controller_resources_released is FALSE", rel is False, str(rel))
+    check("detail names the query handle as NOT released",
+          "CloseHandle(query) returned FALSE" in det, det)
+
+    print("== case 10: per-handle release map covers ALL three handles ==")
+    res, closed, failed = run_with_stubbed_kernel(wait_raises=False, wait_signals=True,
+                                                  close_fails_for=(0x3333,))
+    rh = res.get("released_handles") or {}
+    print("  released_handles:", rh)
+    check("released_handles reports process", "process" in rh, str(rh))
+    check("released_handles reports thread", "thread" in rh, str(rh))
+    check("released_handles reports query", "query" in rh, str(rh))
+    check("query entry is False when its close failed", rh.get("query") is False, str(rh))
+    check("process/thread entries are True",
+          rh.get("process") is True and rh.get("thread") is True, str(rh))
+
     print("== case 4: cleanup failure reaches the EXIT STATUS ==")
     check("module declares EXIT_CLEANUP_FAILED = 3",
           T.EXIT_CLEANUP_FAILED == 3, str(T.EXIT_CLEANUP_FAILED))
