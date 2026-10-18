@@ -132,7 +132,11 @@ The numbers above and `MAY NOT START` are not in tension — they are about diff
 things — but a reader arriving at a front page will not know that unless this paragraph
 exists. So it exists.
 
-### Current disposition of the isolation layer (2026-10-17)
+### Current disposition of the isolation layer
+
+> **2026-10-17 state, superseded 2026-10-18.** The authoritative record is
+> [`LINGYI_OPTION_C_FINAL_DISPOSITION_20261018.md`](reports/review_history/LINGYI_OPTION_C_FINAL_DISPOSITION_20261018.md).
+> Where this block and that file disagree, that file wins — see the Authority map above.
 
 ```text
 PROBE_CLEAN_HISTORY            = VERIFIED        (frozen Q3 probe path: pid 35048, 37200)
@@ -142,11 +146,12 @@ PERSISTENT_WORKER_CLEAN_BLOCK  = ACTIVE          (凌翼 JIE FOUR PROPOSALS RULI
 PROBE_CLEAN != BUSINESS_CLEAN  = TRUE            (item 1; verdict binds SUBJECT + SCOPE)
 OPTION_A                       = NOT AUTHORIZED  (no name/path/device-class skipping)
 OPTION_B                       = ACTIVE           (no CLEAN claim, no wiring)
-OPTION_C                       = LIMITED FEASIBILITY ONLY
+OPTION_C                       = CLOSED           (2026-10-18; was LIMITED FEASIBILITY as of 2026-10-17)
 C_TWO_SNAPSHOT_EARLY_STOP      = DIAGNOSTIC ONLY
 C_OBSERVATION_BOUNDARY         = NOT DEFINED
 C_FEASIBILITY                  = NOT ESTABLISHED
 C_CURRENT_EXPLORATION          = STOPPED
+C_CURRENT_ROUTE                = CLOSED_UNLESS_NEW_BOUNDARY_EVIDENCE
 V2_WIRING                      = NOT AUTHORIZED
 ```
 
