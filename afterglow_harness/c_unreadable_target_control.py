@@ -195,8 +195,21 @@ def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> dict:
             return False
         return True
 
+    # TerminateProcess: DIAGNOSTIC ONLY, not a success requirement.
+    #
+    # 知微 2026-10-18 (fifth pass, accepted as non-blocking): the BOOL return was not
+    # checked, so a normal Win32 failure recorded nothing at all. Added for diagnosis --
+    # but it is deliberately NOT folded into any gate, because the final promise is
+    # "the worker is gone", and that is answered by the wait and the exit-code check
+    # below, not by this call. His rule:
+    #   "不是每个中间动作都必须成功，而是每项最终承诺都必须有证据。"
+    # So: record the failure, keep going, and let the later evidence decide.
     try:
-        k32.TerminateProcess(pi.hp, 1)
+        terminated = bool(k32.TerminateProcess(pi.hp, 1))
+        if not terminated:
+            terr = k32.GetLastError()
+            detail += (f"; TerminateProcess returned FALSE err={terr} "
+                       f"(diagnostic only; exit judged by the wait below)")
     except Exception as e:                                       # noqa: BLE001
         detail += f"; TerminateProcess raised {type(e).__name__}"
 

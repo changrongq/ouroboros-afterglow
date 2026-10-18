@@ -41,14 +41,17 @@ class FakePI:
 def run_with_stubbed_kernel(wait_raises: bool, wait_signals: bool,
                             open_fails: bool = False, exitcode_fails: bool = False,
                             exitcode_raises: bool = False, still_active: bool = False,
-                            close_fails_for: tuple = ()):
+                            close_fails_for: tuple = (),
+                            terminate_fails: bool = False):
     """Drive _terminate_and_confirm with a fake kernel32 and record CloseHandle calls."""
     closed: list = []
     close_failed: list = []
 
     class FakeK32:
         def TerminateProcess(self, h, code):
-            return 1
+            # 知微 2026-10-18: a FALSE return here is a DIAGNOSTIC fact, not a failure of
+            # the final promise. Whether the worker is gone is settled by the wait.
+            return 0 if terminate_fails else 1
 
         def WaitForSingleObject(self, h, ms):
             if wait_raises:
@@ -200,6 +203,24 @@ def main() -> int:
     check("query entry is False when its close failed", rh.get("query") is False, str(rh))
     check("process/thread entries are True",
           rh.get("process") is True and rh.get("thread") is True, str(rh))
+
+    print("== case 11 (ZHIWEI 5th pass): TerminateProcess FALSE + wait confirms exit = OK ==")
+    ex, rel, det, closed, failed = R(wait_raises=False, wait_signals=True,
+                                     terminate_fails=True)
+    print("  detail:", det)
+    check("TerminateProcess FALSE is now RECORDED with an error code",
+          "TerminateProcess returned FALSE" in det and "err=" in det, det)
+    check("worker_exit_confirmed is still TRUE (the wait proved it)", ex is True, str(ex))
+    check("resources still released", rel is True, str(rel))
+    check("diagnostic says exit is judged by the wait",
+          "judged by the wait" in det, det)
+
+    print("== case 12 (ZHIWEI 5th pass): TerminateProcess FALSE + wait TIMEOUT = FAIL ==")
+    ex, rel, det, closed, failed = R(wait_raises=False, wait_signals=False,
+                                     terminate_fails=True)
+    print("  detail:", det)
+    check("exit NOT confirmed on timeout", ex is False, str(ex))
+    check("TerminateProcess FALSE is recorded", "returned FALSE" in det, det)
 
     print("== case 4: cleanup failure reaches the EXIT STATUS ==")
     check("module declares EXIT_CLEANUP_FAILED = 3",
