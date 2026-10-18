@@ -1,5 +1,15 @@
 """C-FEASIBILITY PROBE (unfrozen, research only) — NOT an implementation, NOT adopted.
 
+SUPERSEDED. 凌翼 `OPTION C FINAL DISPOSITION` (2026-10-18) closed this route:
+    OPTION_C_CURRENT_DESIGN = CLOSED
+    C_FEASIBILITY           = NOT ESTABLISHED
+    NO FURTHER C WORK REQUIRED / NO NEW EXPERIMENT AUTHORIZED
+The 2026-10-17 authorization quoted below has EXPIRED. This file is kept only as the
+record of what was measured while the route was open, and must not be run as a step
+toward reopening C. Reopening requires NEW MATERIAL EVIDENCE or a SEPARATELY
+AUTHORIZED DESIGN.
+
+Historical authorization (2026-10-17, superseded):
 凌翼 2026-10-17 ruling: OPTION_C = LIMITED FEASIBILITY AUTHORIZED.
   Required to research:
     (1) INDEPENDENT COVERAGE EVIDENCE for same PID/create_time/controlled interval

@@ -8,9 +8,19 @@ This does NOT replace the frozen q3_handle_audit.py; it serves the adapter only.
 WHY: the frozen `audit_process_handles_for_target()` treats the BROAD Windows kernel
 "File object type" as if every such handle can be read as an ordinary-file identity,
 and silently degrades to UNRESOLVED on any it cannot. A real persistent business worker
-holds console-device (`\\Device\\ConDrv`) and directory handles of that broad type, so
-the frozen auditor returns UNRESOLVED forever (it never reaches CLEAN), even under an
-admin token. This V2 classifies MORE CAREFULLY, without name-guessing.
+holds console-device (`\\Device\\ConDrv`) and directory handles of that broad type.
+
+  SCOPE OF THAT STATEMENT (corrected 2026-10-18 per 知微's review):
+  On a PERSISTENT BUSINESS WORKER the frozen auditor was observed to stay UNRESOLVED and
+  never reach CLEAN, including under an admin token. That is an OBSERVATION about this
+  worker class with this code -- NOT a theorem that V1 can never return CLEAN anywhere.
+  The frozen probe path DID reach HANDLE_AUDIT_CLEAN (pid 35048, 37200), so "V1 is
+  forever UNRESOLVED" is false as a general claim and must not be written that way.
+  PROBE_CLEAN != BUSINESS_CLEAN either way; see PERSISTENT_WORKER_CLEAN_BLOCK below.
+
+  This V2 classifies MORE CAREFULLY, without name-guessing. It does NOT establish
+  PERSISTENT_BUSINESS_CLEAN: OPTION_C (the route that would have) is CLOSED as of
+  2026-10-18, C_FEASIBILITY = NOT ESTABLISHED.
 
 CLASSIFICATION RULES (凌翼, binding):
   · a handle PROVEN (by reliable OS identity) to be the target file  => FOUND_TARGET
@@ -85,6 +95,11 @@ C_TIME_SCOPE_OF_ASSURANCE_DEFINED = False
 C_TWO_SNAPSHOT_EARLY_STOP = "DIAGNOSTIC ONLY"
 C_FEASIBILITY = "NOT ESTABLISHED"          # 凌翼: if no credible boundary, record this
 C_CURRENT_EXPLORATION = "STOPPED"          # 凌翼: ...and STOP CURRENT EXPLORATION
+# 2026-10-18 `OPTION C FINAL DISPOSITION`: the stop became a CLOSURE. Kept separate from
+# C_CURRENT_EXPLORATION because "stopped" could be read as "paused pending more data",
+# while the ruling says no further C work is required at all.
+C_CURRENT_ROUTE = "CLOSED_UNLESS_NEW_BOUNDARY_EVIDENCE"
+C_DESIGN = "CLOSED"
 
 # Item 3: an independently-confirmed target plus a CONTROLLED identity failure is
 # UNRESOLVED, never CLEAN. Simulation is not an OS-completeness proof.
@@ -92,10 +107,15 @@ UNREADABLE_TARGET_CONTROL_RESULT = "UNRESOLVED"
 UNREADABLE_TARGET_CONTROL_MAY_BE_CLEAN = False
 SIMULATION_IS_COMPLETENESS_PROOF = False
 
-# Current route (凌翼, same ruling).
+# Current route (凌翼, same ruling). UPDATED 2026-10-18: OPTION_C is CLOSED, not merely
+# "limited feasibility". The earlier value "LIMITED FEASIBILITY ONLY" described the
+# 2026-10-17 authorization window; 凌翼 `OPTION C FINAL DISPOSITION` ended that window.
+# Kept as a distinct constant so code that still reads ROUTE_OPTION_C gets the current
+# state rather than a stale one.
 ROUTE_OPTION_A = "NOT AUTHORIZED"
 ROUTE_OPTION_B = "ACTIVE"
-ROUTE_OPTION_C = "LIMITED FEASIBILITY ONLY"
+ROUTE_OPTION_C = "CLOSED"                    # was "LIMITED FEASIBILITY ONLY" (2026-10-17)
+ROUTE_OPTION_C_REOPEN_CONDITION = "NEW MATERIAL EVIDENCE OR SEPARATELY AUTHORIZED DESIGN"
 
 # 睫 (2026-10-17): the two unresolved causes are NOT interchangeable. Kept here so a
 # future "we granted the privilege, why is it still not CLEAN" cannot aim at the wrong

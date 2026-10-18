@@ -91,6 +91,54 @@ def _spawn(data_dir: Path, protected: Path, hs: Path, acct: str, pw: str):
     return ok, pi, ctypes.windll.kernel32.GetLastError()
 
 
+def _terminate_and_confirm(pi, pid: int, timeout_s: float = 10.0) -> tuple:
+    """Terminate the worker and WAIT until the OS says it is gone.
+
+    知微 2026-10-18: the original driver terminated the process and immediately closed
+    the handles, without waiting for exit confirmation -- so a still-running worker could
+    outlive the test. It also had four early `return 2` paths that fired AFTER the spawn
+    and never cleaned up at all, leaking an orphaned cross-account process.
+
+    Returns (exited: bool, detail: str). Never raises.
+    """
+    k32 = ctypes.windll.kernel32
+    detail = ""
+    try:
+        k32.TerminateProcess(pi.hp, 1)
+    except Exception as e:                                       # noqa: BLE001
+        detail = f"TerminateProcess raised {type(e).__name__}"
+
+    # WaitForSingleObject(handle, ms): 0 = signalled (exited), 0x102 = timeout.
+    WAIT_OBJECT_0 = 0x00000000
+    waited = k32.WaitForSingleObject(pi.hp, int(timeout_s * 1000))
+    exited = (waited == WAIT_OBJECT_0)
+    if not exited:
+        detail += f"; wait returned {waited:#x} (not signalled within {timeout_s}s)"
+
+    # Verify from the OS that the pid no longer resolves.
+    PROCESS_QUERY_LIMITED = 0x1000
+    STILL_ACTIVE = 259
+    hp2 = k32.OpenProcess(PROCESS_QUERY_LIMITED, False, pid)
+    if hp2:
+        code = wintypes.DWORD(0)
+        k32.GetExitCodeProcess(hp2, ctypes.byref(code))
+        k32.CloseHandle(hp2)
+        if code.value == STILL_ACTIVE:
+            exited = False
+            detail += f"; pid {pid} still reports STILL_ACTIVE"
+        else:
+            detail += f"; exit code {code.value:#x}"
+    else:
+        detail += "; pid no longer openable (gone)"
+
+    try:
+        k32.CloseHandle(pi.hp)
+        k32.CloseHandle(pi.ht)
+    except Exception:                                            # noqa: BLE001
+        pass
+    return exited, detail
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: c_unreadable_target_control.py <fixture_dir>")
@@ -114,19 +162,36 @@ def main() -> int:
     if not ok:
         print("spawn failed", err)
         return 2
-    for _ in range(100):
-        if hs.exists() and hs.stat().st_size:
-            break
-        time.sleep(0.1)
-    if not (hs.exists() and hs.stat().st_size):
-        print("worker did not report a handle")
-        return 2
-    time.sleep(0.3)
-    rep = json.loads(hs.read_text())
-    hv = int(rep["prot"])
-    pid = int(rep["pid"])
-    print("worker pid", pid, "(spawned pid", pi.pid, ") protected handle", hv)
 
+    # From here on a worker exists, so EVERY exit path must go through the finally block.
+    pid_for_cleanup = int(pi.pid)
+    exit_code = 0
+    try:
+        for _ in range(100):
+            if hs.exists() and hs.stat().st_size:
+                break
+            time.sleep(0.1)
+        if not (hs.exists() and hs.stat().st_size):
+            print("worker did not report a handle")
+            exit_code = 2
+            return exit_code
+        time.sleep(0.3)
+        rep = json.loads(hs.read_text())
+        hv = int(rep["prot"])
+        pid = int(rep["pid"])
+        pid_for_cleanup = pid
+        print("worker pid", pid, "(spawned pid", pi.pid, ") protected handle", hv)
+        return _run_checks(pi, pid, hv, protected)
+    finally:
+        exited, detail = _terminate_and_confirm(pi, pid_for_cleanup)
+        print()
+        print(f"CLEANUP: worker exit confirmed = {exited}  [{detail}]")
+        if not exited:
+            print("CLEANUP_WARNING: the worker MAY still be running -- investigate pid "
+                  f"{pid_for_cleanup}")
+
+
+def _run_checks(pi, pid: int, hv: int, protected: Path) -> int:
     print("== independent controller: confirm the handle IS the target ==")
     tmap, treason = V._target_identities(str(protected))
     print("target identity reason:", treason, "APIs:", list(tmap.keys()))
@@ -205,11 +270,10 @@ def main() -> int:
     print("identity is unreadable. Proves NOTHING about handle-set completeness on a real")
     print("Windows run, and does NOT reopen OPTION C. SIMULATION != COMPLETENESS_PROOF")
 
-    k32 = ctypes.windll.kernel32
-    k32.TerminateProcess(pi.hp, 1)
-    k32.CloseHandle(pi.hp)
-    k32.CloseHandle(pi.ht)
-
+    # NOTE: process cleanup is deliberately NOT here. It lives in main()'s finally block
+    # so that every return path -- including early failures and exceptions -- releases the
+    # worker. 知微 2026-10-18: the previous inline termination skipped on error paths and
+    # never waited for exit confirmation.
     fails = [n for n, ok_, _ in RESULTS if not ok_]
     print()
     if fails:

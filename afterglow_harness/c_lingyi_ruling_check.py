@@ -77,8 +77,13 @@ def main() -> int:
     print("== route ==")
     check("OPTION_A NOT AUTHORIZED", V.ROUTE_OPTION_A == "NOT AUTHORIZED", V.ROUTE_OPTION_A)
     check("OPTION_B ACTIVE", V.ROUTE_OPTION_B == "ACTIVE", V.ROUTE_OPTION_B)
-    check("OPTION_C LIMITED FEASIBILITY ONLY",
-          V.ROUTE_OPTION_C == "LIMITED FEASIBILITY ONLY", V.ROUTE_OPTION_C)
+    # 2026-10-18 OPTION C FINAL DISPOSITION: C is CLOSED, no longer "limited feasibility".
+    check("OPTION_C CLOSED", V.ROUTE_OPTION_C == "CLOSED", V.ROUTE_OPTION_C)
+    check("OPTION_C design CLOSED", V.C_DESIGN == "CLOSED", V.C_DESIGN)
+    check("reopen requires new evidence or new design",
+          "NEW MATERIAL EVIDENCE" in V.ROUTE_OPTION_C_REOPEN_CONDITION
+          and "SEPARATELY AUTHORIZED DESIGN" in V.ROUTE_OPTION_C_REOPEN_CONDITION,
+          V.ROUTE_OPTION_C_REOPEN_CONDITION)
 
     print("== jie's split constants ==")
     check("operational constant", V.UNRESOLVED_KIND_OPERATIONAL == "operational")

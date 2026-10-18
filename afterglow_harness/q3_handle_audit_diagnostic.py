@@ -105,11 +105,27 @@ def _token_privileges() -> dict:
                 out[name] = "query-failed"
                 continue
             # scan returned privileges for this LUID
+            #
+            # 知微 2026-10-18 (confirmed by measurement in c_verify_privilege_offset.py):
+            # the previous code did
+            #     full = ctypes.cast(buf, POINTER(LUID_AND_ATTRIBUTES * n))
+            #     la = full.contents[i]
+            # which starts reading at BYTE 0, so it treats PrivilegeCount (a DWORD) as
+            # the first privilege's LUID high half -- a 4-byte offset error. Measured
+            # proof: at the correct offset 4 every LUID high part is 0, while at offset 0
+            # the first one equals PrivilegeCount. The diagnostic was therefore comparing
+            # against WRONG LUIDs and could misreport SeDebugPrivilege state.
+            #
+            # TOKEN_PRIVILEGES = { DWORD PrivilegeCount; LUID_AND_ATTRIBUTES Privileges[]; }
+            # LUID_AND_ATTRIBUTES is 12 bytes and 4-aligned, so the array starts at byte 4.
+            # ctypes already lays the struct's `Privileges` member at offset 4, so the
+            # correct access is via the struct member (or an explicit +4), never byte 0.
             arr = ctypes.cast(buf, ctypes.POINTER(TOKEN_PRIVILEGES)).contents
             found = None
-            full = ctypes.cast(buf, ctypes.POINTER(LUID_AND_ATTRIBUTES * max(1, arr.PrivilegeCount)))
+            base = ctypes.addressof(buf) + TOKEN_PRIVILEGES.Privileges.offset
+            full = ctypes.cast(base, ctypes.POINTER(LUID_AND_ATTRIBUTES))
             for i in range(arr.PrivilegeCount):
-                la = full.contents[i]
+                la = full[i]
                 if la.Luid.LowPart == luid.LowPart and la.Luid.HighPart == luid.HighPart:
                     found = la.Attributes
                     break
