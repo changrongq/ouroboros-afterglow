@@ -128,9 +128,11 @@ RC11_FROZEN_BYTES = DO NOT MODIFY
 
 ---
 
-## Q3 — OS-level isolation (下一层；NOT frozen)
+## Q3 — OS-level isolation（历史：设计冻结前；**现行状态见下方登记**）
 
-凌翼裁定：`Q3_DIRECTION = APPROVED`，`Q3_DESIGN_FREEZE = NOT AUTHORIZED`。
+> **本节记录的是 2026-10-10 之后、正式冻结之前的开发过程。下列 NOT AUTHORIZED 为当时真实裁决，已由 2026-10-12 后续登记取代。请勿据此判断现行状态。**
+
+凌翼裁定（**当时**）：`Q3_DIRECTION = APPROVED`，`Q3_DESIGN_FREEZE = NOT AUTHORIZED`。
 RC11 Phase A 保持冻结，**未动一字节**。Q3 为独立 lineage。
 
 按顺序阅读：
@@ -179,7 +181,10 @@ Q3 代码（`afterglow_harness/`）：`win32_isolation.py`、`win32_worker_proce
 Q3 状态：
 
 ```text
-Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
+Q3_DESIGN_FREEZE = REGISTERED
+  (authorized 2026-10-12;
+   scope = 10 frozen Q3 execution roles;
+   authority = "Q3 DESIGN FREEZE — REGISTERED" below)
   q3_access_matrix      14/14 PASS
   q3_dacl               14/14 PASS
   q3_adversarial        50/50 PASS   (含知微 P1 FULL_VALID 消费门禁负向回归)
@@ -215,5 +220,5 @@ Q3 = IN PROGRESS  (PoC continuation AUTHORIZED; design freeze NOT AUTHORIZED)
 - **冻结引用（detached，不可随意移动）**: `../frozen/Q3_FROZEN_REFERENCE_2c92074.txt`
 - **机器可读角色表**: `../frozen/Q3_FROZEN_ROLES_2c92074.json`
 - **验证器**: `../../afterglow_harness/verify_q3_freeze.py`（`Q3_FROZEN_IDENTITY = OK`）
-- **FROZEN_CODE_COMMIT** = `2c92074a9808b1c9acd5ad5a36cba7a34e472892`；**10 角色**；**DIGEST** = `450349115b71bc9013c7a79f91d9bdf5f1728f2cbae65b025eb35a66af56da36`
+- **FROZEN_CODE_COMMIT** = `2c92074a9808b1c9acd5ad5a36cba7a34e472892`；**10 角色**；**DIGEST** = 见 `../frozen/Q3_FROZEN_REFERENCE_2c92074.txt`
 - 自此刻起 **10 个 Q3 冻结源码不得修改**；`SCIENTIFIC_EXECUTION = MAY NOT START`。
