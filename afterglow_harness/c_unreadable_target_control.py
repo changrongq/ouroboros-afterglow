@@ -175,6 +175,31 @@ def main() -> int:
     check("must NOT claim privilege cannot help",
           "cannot move this to CLEAN" not in (res.detail or ""), (res.detail or "")[:60])
 
+    # ---- 凌翼 2026-10-18: the SPECIFIC known-target handle must be traceable --------
+    # The ruling noted a real gap: the earlier run asserted only AGGREGATE counts, so it
+    # supported "the fail-closed branch fired" but did NOT demonstrate that the one
+    # handle we independently confirmed to be the target appeared in the per-handle
+    # records. Aggregate zeros can be satisfied without that handle ever being examined.
+    # This asserts the per-handle trail explicitly, so the scope limit stops being prose.
+    per_handle = [r for r in res.records if int(getattr(r, "handle_value", -1)) == hv]
+    print("per-handle record for the known target:", json.dumps(
+        [{k: getattr(r, k, None) for k in
+          ("handle_value", "classification", "unresolved_kind", "name")}
+         for r in per_handle], ensure_ascii=False, default=str)[:300])
+    check("known-target handle APPEARS in the per-handle records",
+          len(per_handle) >= 1, f"matches={len(per_handle)} handle={hv:#x}")
+    if per_handle:
+        rec = per_handle[0]
+        check("that record is classified unresolved (not non_target)",
+              rec.classification == "unresolved", str(rec.classification))
+        check("that record did NOT become proven non-target",
+              rec.classification != "non_target_proven", str(rec.classification))
+        check("that record carries an unresolved_kind",
+              rec.unresolved_kind in (V.UNRESOLVED_KIND_OPERATIONAL,
+                                      V.UNRESOLVED_KIND_NO_IDENTITY,
+                                      V.UNRESOLVED_KIND_INCOMPARABLE),
+              str(rec.unresolved_kind))
+
     print()
     print("SCOPE: proves the failure BRANCH refuses to let a known target through when its")
     print("identity is unreadable. Proves NOTHING about handle-set completeness on a real")
