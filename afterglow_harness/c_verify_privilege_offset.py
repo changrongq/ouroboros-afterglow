@@ -15,8 +15,16 @@ arguing from the docs:
   LUID_AND_ATTRIBUTES = { LUID Luid (8 bytes); DWORD Attributes (4) }  -> 12 bytes, align 4
   => Privileges[] starts at offset 4, and sizeof(LUID_AND_ATTRIBUTES) == 12
 
-ctypes will NOT place it at 4 automatically, because LUID contains a 64-bit member and
-ctypes aligns the array to 8. That mismatch is exactly the defect.
+CORRECTION (2026-10-18, per 知微's second-pass review): an earlier version of this
+docstring claimed ctypes would not place `Privileges` at offset 4 because LUID contains a
+64-bit member, and that this alignment mismatch WAS the defect. THAT WAS WRONG, and the
+measurement in this very file refuted it: ctypes places `Privileges` at offset 4, the
+same as the Windows ABI. There is no struct-layout defect.
+
+The defect is ONLY in the hand-written cast, which started at byte 0:
+    full = ctypes.cast(buf, POINTER(LUID_AND_ATTRIBUTES * n))
+so PrivilegeCount was read as the first privilege's LUID high half -- a 4-byte offset.
+The struct was right; the cast was wrong. Do not restate the alignment story.
 
 Read-only; no repository changes. Only queries OUR OWN token.
 """
