@@ -111,7 +111,7 @@ class WorkerAccessWitness:
     凌翼 R2: a worker self-report is NOT sufficient. This binds: the request nonce,
     the target object (path + OS identity), the worker pid/sid/create_time, the raw
     worker verdict, AND the controller's independent corroboration
-    (probe_read_access seal from the CONTROLLER's own read + handle audit status).
+    (target identity binding + handle audit; no controller-side read seal).
     """
     request_nonce: str
     op: str
@@ -121,7 +121,7 @@ class WorkerAccessWitness:
     worker_sid: str
     worker_create_time: float
     worker_reported: str              # raw string the worker wrote
-    controller_seal_ok: bool          # controller-side probe_read_access produced a sealed denial
+    controller_seal_ok: bool          # compatibility field; False in current producer; unused by proven
     controller_verdict: str           # controller-side observed verdict on the SAME object
     handle_audit_status: str          # HANDLE_AUDIT_* for THIS worker + target
     detail: str = ""
@@ -415,8 +415,8 @@ class BusinessWorkerSupervisor:
 
         Requires ALL of:
           1. a bound real access attempt BY the worker (nonce + pid + target),
-          2. the CONTROLLER's own independent sealed denial on the SAME object
-             (probe_read_access) — the controller corroborates, it does not replace,
+          2. the CONTROLLER's independently obtained target-identity binding
+             (NOT a controller-side read or sealed denial),
           3. a handle audit for THIS worker + target that is exactly HANDLE_AUDIT_CLEAN.
         The worker self-report alone is NOT sufficient (self-report is a consistency
         cross-check only).
