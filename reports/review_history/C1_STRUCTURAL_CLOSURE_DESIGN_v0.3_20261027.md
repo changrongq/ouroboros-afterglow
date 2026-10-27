@@ -33,7 +33,8 @@ C1AuthorityGate = ESTABLISHED ⟺ prereg §28.1 C1 class rule 满足
 ```text
 prereg L629   "# 12. Positive Evidence Ladder"                      [读文件]
 prereg L633   "## C1 — STORAGE_WRITE_ESTABLISHED"
-prereg L643-647  "最强允许 claim：REGISTERED_STORAGE_WRITE_OBSERVED"
+prereg L635-637  "C1 表示：storage write 是目前最高被正向建立的 change class。"
+prereg L643-646  "最强允许 claim：REGISTERED_STORAGE_WRITE_OBSERVED"
 prereg L649   "因此 C1 是证据断言，不是世界断言。"
 
 prereg L685   "# 13. L1 — Attributable Registered Change"           [读文件]
@@ -45,9 +46,11 @@ prereg L722-724  "else if an episode-specific registered storage write is establ
 
 prereg L1698  "# 28. Class-Scoped Mandatory Failure Witness"        [读文件]
 prereg L1711  "## 28.1 C1 / Basic L1 Witness"
-prereg L1713-1719 "C1 的最小 mandatory failure path 是：
+prereg L1715-1719 "C1 的最小 mandatory failure path 是：
                    TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL"
 prereg L1721-1723 "它回答：attributable registered write/change 是否真的发生？"
+prereg L1741  "仍可合法尝试并建立 C1。"
+prereg L1743  "## 28.2 Attempted C2 Witness"  ← §28.1 止于此之前
 
 prereg L1379  "# 24. POST_RESET_CLASS_RULE"                          [读文件]
 ```
@@ -83,8 +86,8 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 | **§12** | L629-649 | C1 的**科学含义**与**最强允许 claim**（`REGISTERED_STORAGE_WRITE_OBSERVED`） | 决定"成立之后能说什么"，不是"是否成立" |
 | **§13** 五项 gate | L700-711 | 正向 pre-reset class 的**共同入口** | **必要条件集合**（全部须满足） |
 | **§13** class 选择 | L715-725 | C3 → C2 → C1 的**优先级** | **优先于** AuthorityGate 的 C1 结论 |
-| **§28.1** | L1711-1739 | C1 的 **mandatory failure witness**（两臂对照） | 必要条件中的**一项** |
-| **§24** | L1379+ | **post-reset** C1 | **超出 pre-reset AuthorityGate 范围** |
+| **§28.1** | L1711-1741 | C1 的 **mandatory failure witness**（两臂对照） | 必要条件中的**一项** |
+| **§24** | L1379-1559 | **post-reset** C1 | **超出 pre-reset AuthorityGate 范围** |
 | **§37** | L2203-2262 | stop conditions | 任一命中 ⇒ 不建立 |
 
 **⇒ 关键：`§28.1` 是 §13 class 选择里的一个**限定词**（L723 "under the Basic L1 / §28.1 scope"），不是独立成立条件。**
@@ -157,7 +160,7 @@ AuthorityResult 必须携带两个不同字段：
 
 ```text
 ⇒ 本文的 AuthorityGate 只覆盖 pre-reset C1 claim。
-⇒ post-reset C1 由 §24 L1379+ 的规则决定，不得由本文的 AuthorityGate 自动覆盖。
+⇒ post-reset C1 由 §24（L1379-1559）的规则决定，不得由本文的 AuthorityGate 自动覆盖。
 ⇒ 也不得扩展成 Memory Qualification。
 ```
 
@@ -236,7 +239,22 @@ AuthorityResult 必须携带两个不同字段：
 
 **⇒ 落为新挂起项 T-16 AUTHORITY_PERMISSION_ROOT = NOT ESTABLISHED。**
 
-## 4.2 我这一版**不能**说表一已闭合
+## 4.2 T-17 · 签发主体身份验证（本版新增项的定义）
+
+**凌翼要求「独立身份验证」。而 P-3 只写了"从哪采集"，没写这一项叫什么、什么时候做。**
+
+```text
+T-17 AUTHORITY_ISSUER_IDENTITY = NOT ESTABLISHED
+
+它要回答四件：【谁】签发、其【身份证据来自哪里】、【谁有权认为该证据有效】、
+             以及【该证据在什么时点被固定】。
+
+⇒ 而与 P-3 的区别：P-3 是「采集点」，T-17 是「整条身份链是否成立」。
+⇒ 二者不能合并，因为采集到了不等于验证了。
+⇒ 具体实现归知微（Windows 身份验证可行性）。
+```
+
+## 4.3 我这一版**不能**说表一已闭合
 
 ```text
 ⇒ 我 v0.2 说"表一 · 权威消费边界（已设计）"
@@ -274,6 +292,29 @@ V-3  采集主体验证
 
 # 6 · 表三（第二轮）· `h>=2` 的适用范围（凌翼特别指出）
 
+**⇒ 先重排表三全文（承接 v0.2 §3.2，本版保留并可独立审阅）。**
+**⇒ 原因：v0.2 有这张表，v0.3 若只引用不重排，单独看 v0.3 的人会找不到“第 7 行 / 第 11 行”具体指什么。**
+
+## 6.0 表三全文 · 三轴分离判定表
+
+| # | 情形 | 执行/证据有效性 | 局部测量结果 | 正式 class | 输出 |
+|---|---|---|---|---|---|
+| 1 | 已确认实际发生、与 claim 相关的**违规回流** | INVALID | —（保留原始记录） | 不建立 | `INVALID`，reason=`UNREGISTERED_EPISODE_REINJECTION` |
+| 2 | 本次执行**缺失必须具备的**来源/通路核验证据 | INVALID | 保留（若有） | 不建立 | `INVALID`，reason=具体缺项名（**不写成“已观测到回流”**） |
+| 3 | 必需规则 / witness / provenance broken | INVALID | 保留（若有） | 不建立 | `INVALID`（§13 L741） |
+| 4 | 实际 writer ≠ 注册主体 | INVALID | 保留 | 不建立 | `INVALID`，reason=`WRITER_MISMATCH` |
+| 5 | 对象在 BEGIN/END 之间被替换 | INVALID | 保留 | 不建立 | `INVALID`，reason=`OBJECT_IDENTITY_CHANGED` |
+| 6 | 仅**设计阶段存在未验证风险** | — | — | 不建立 | **不签发任何结论**；不得冒充实际违规，也不得冒充已执行的科学 FAIL |
+| 7 | 边界外读取，经独立审查**确无相关因果路径** | 有效 | 正常 | 照常 | `NEUTRAL_REVIEWED`，保存排除依据（睫 NB-33 第五行） |
+| 8 | 通路已登记 + 事件合规 + **有**因果路径 | 有效 | 正常 | 按规则 | 可纳入 C1 证据 |
+| 9 | 全部 required structure 有效且已执行，测量为负 | 有效 | **FAIL** | 不建立 | `FAIL`（此时才允许） |
+| 10 | 同上，落入不确定区 | 有效 | **UNRESOLVED** | 不建立 | `UNRESOLVED` |
+| 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 有效 | **PASS** | **建立** | `ESTABLISHED`（须满足 §2 R-1..R-9 全部） |
+
+**⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
+
+## 6.1 `h>=2` 的适用范围（凌翼特别指出）
+
 **凌翼原文：**
 
 > 须进一步确保第 11 行的 `h≥2` 是冻结 reference 实现下的具体判别规则，不能未经候选适配证明就成为所有真实系统 C1 的通用规则。
@@ -281,20 +322,24 @@ V-3  采集主体验证
 **⇒ 核字节，确认凌翼指的正是这一处：**
 
 ```text
-evaluator.py L237  h = _literal_byte_diff_count(snap_A.literal, snap_B.literal)
-evaluator.py L239  if h == 0: FAIL
-evaluator.py L246  if h == 1: UNRESOLVED
-evaluator.py L253  # h >= 2 -> positive attribution/change
-⇒ 而 L237 要求 len(a) == len(b) == LITERAL_SIZE = 16
+evaluator.py L210-212  _literal_byte_diff_count(a, b):
+                       if len(a) != LITERAL_SIZE or len(b) != LITERAL_SIZE:
+                           raise HarnessError("literal must be exactly 16 bytes in L1 diff")
+                       ⇒ 16 字节约束在这里，不在 L237
+evaluator.py L237   h = _literal_byte_diff_count(snap_A.literal, snap_B.literal)
+evaluator.py L239   if h == 0: FAIL
+evaluator.py L246   if h == 1: UNRESOLVED
+evaluator.py L253   # h >= 2 -> positive attribution/change
+⇒ 而 h>=2 阈值本身在 L240-267
 ⇒ 这是 reference 的 16 字节规格下的具体规则
 ```
 
-**⇒ 表三第 11 行的 `h>=2` 必须标注：**
+**⇒ 表三第 11 行的 `h>=2` 必须标注（见 §6.0 表内第 11 行）：**
 
 ```text
-② 只在【候选已注册的判别实现】schema 与 reference 一致时，才可引用 h>=2 这个阈值。
+① 只在【候选已注册的判别实现】schema 与 reference 一致时，才可引用 h>=2 这个阈值。
 ② 若 P-1 摘要变长（T-2 / Q-3）⇒ h 的定义与阈值须由候选独立注册。
-② 不得把 h>=2 写成"所有真实系统 C1 的通用规则"。
+③ 不得把 h>=2 写成"所有真实系统 C1 的通用规则"。
 ```
 
 ---
@@ -327,6 +372,28 @@ T-15b  读取通路是否作为 pre-reset C1 的通用条件 = NOT ESTABLISHED�
 ⇒ 两者不同：前者是候选设计，后者是规范变更。
 ⇒ 我 v0.2 把二者混在一处（§4.4 写"属于 claim 的定义性前提"，
    未限定"仅对该候选"）。
+```
+
+## 7.1 T-13 · 「有无因果路径」的判定（承接 v0.2，本版补定义）
+
+**v0.2 状态表列了 `T-13 CAUSAL_PATH_ADJUDICATION`，但正文未定义它是什么、归谁。这是上一版的遗留，本版补上。**
+
+```text
+T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
+
+它要回答【三项】，缺一不可：
+  ① 谁作出「有无因果路径」的判定？
+     ⇒ 不得自动判（无可计算判据）
+     ⇒ 须由【独立审查者】作出
+  ② 判定须引用什么证据？
+     ⇒ 具体到：哪条通路、哪个阶段、读了什么、送给了哪一臂
+  ③ 判定记录如何保管？
+     ⇒ 须封存进表二的 ③ SealedEvidence
+     ⇒ 判定时刻须早于正式结果签发
+
+⇒ 若不钉死这三项，「有无因果路径」会变成一个事后可调的旋钮。
+⇒ 而它直接决定表三第 7 行（NEUTRAL）与第 1/2 行（INVALID）的分界。
+⇒ 具体科学边界请睫审，实现归知微。
 ```
 
 ---
