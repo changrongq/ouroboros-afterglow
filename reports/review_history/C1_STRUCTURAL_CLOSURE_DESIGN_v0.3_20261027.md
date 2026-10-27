@@ -5,7 +5,7 @@
 **被审对象**：v0.2，`e3e285fc6dc8b03e68cae27631dd7f77aa4a4078`，SHA-256 `ed325ff90a827d8fd603e3ce1301bdbd414178d303dc26983353f2355d1c2961`
 **日期**：2026-10-27
 
-## 标题页 · 本文覆盖凌翼 §4 批准的五项交付（第八轮补）
+## 标题页 · 本文覆盖凌翼 §4 批准的五项交付
 
 **凌翼 v0.2 裁定 §4 批准的改进项，逐项对应如下：**
 
@@ -17,7 +17,7 @@
 | 4 | 必要条件、充分条件、invalidity 和 class priority 的**负向测试矩阵** | **§8**（23 条，按三层重排） | 已给设计；**未执行** |
 | 5 | P-1 后续读取证据与 C1 最小科学条件的**明确分离** | **§7.1** | 已给七行对照表 |
 
-**⇒ 而第八轮标题页补这一段的原因：**
+**⇒ 标题页列这段的原因：**
 ```text
 原标题只写了"章节映射更正 + 必要条件 + 负向测试矩阵"三项
 ⇒ 漏了第 2 项（权限边界）和第 5 项（P-1 分离）
@@ -40,68 +40,6 @@ SCIENTIFIC_EXECUTION           = MAY NOT START
 
 ---
 
-# 0 · 我这一轮的错：把 §28.1 当成了 C1 的成立规则
-
-## 0.1 我的错
-
-**v0.2 §9 写：**
-
-```text
-C1AuthorityGate = ESTABLISHED ⟺ prereg §28.1 C1 class rule 满足
-（睫 Q-1 提出，我照录转呈）
-```
-
-**凌翼驳回，理由是规范引用不准确。我核了字节，全部成立：**
-
-```text
-prereg L629   "# 12. Positive Evidence Ladder"                      [读文件]
-prereg L633   "## C1 — STORAGE_WRITE_ESTABLISHED"
-prereg L635-637  "C1 表示：storage write 是目前最高被正向建立的 change class。"
-prereg L643-646  "最强允许 claim：REGISTERED_STORAGE_WRITE_OBSERVED"
-prereg L649   "因此 C1 是证据断言，不是世界断言。"
-
-prereg L685   "# 13. L1 — Attributable Registered Change"           [读文件]
-prereg L700-711  五项 Basic L1 gate
-prereg L715-725  三项 class 选择规则（C3 → C2 → C1）
-prereg L722-724  "else if an episode-specific registered storage write is established
-                  in preregistered LITERAL_STORAGE_COMPONENTS under the Basic L1 /
-                  §28.1 scope: PRE_RESET_CHANGE_CLASS = C1"
-
-prereg L1698  "# 28. Class-Scoped Mandatory Failure Witness"        [读文件]
-prereg L1711  "## 28.1 C1 / Basic L1 Witness"
-prereg L1715-1719 "C1 的最小 mandatory failure path 是：
-                   TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL"
-prereg L1721-1723 "它回答：attributable registered write/change 是否真的发生？"
-prereg L1741  "仍可合法尝试并建立 C1。"
-prereg L1743  "## 28.2 Attempted C2 Witness"  ← §28.1 止于此之前
-
-prereg L1379  "# 24. POST_RESET_CLASS_RULE"                          [读文件]
-```
-
-**⇒ `§28.1` 规定的是 C1 的 **mandatory failure witness**（两臂对照），不是 C1 的成立规则。**
-**⇒ C1 的成立规则在 `§13` L722-724。**
-**⇒ C1 的科学含义与最强允许 claim 在 `§12` L633-649。**
-**⇒ post-reset C1 在 `§24`，不得由 pre-reset 权威门覆盖。**
-
-**⇒ 所以"§28.1 witness 满足 ⟺ 正式 C1 成立"是错的：§28.1 满足只是必要条件之一。**
-
-## 0.2 这是我同一类错误的第五次
-
-```text
-E-3   N4/N5 编号错位                  ← 引用错
-E-4   write_operator 在 §5（实为 §4）  ← 章节错
-R-19  §7.2 禁"进 digest"读成"禁建关联"  ← 范围错
-E-7   "存在返回 C1" 写成 "11 处全返回"   ← 量化错
-E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
-```
-
-**⇒ 而 E-4 和 E-9 是同一类：我用"这一节提到了 C1"代替了"这一节定义了 C1"。**
-
-**⇒ 因为 §28.1 标题里就有 "C1"，L723 也引用了 §28.1，所以它看起来像 C1 的定义处。**
-**⇒ 而它只是被引用的**范围限定词**（"under the Basic L1 / §28.1 scope"）。**
-
----
-
 # 1 · 表五 · 章节职责映射（凌翼 §2 要求）
 
 | 章节 | 行 | 它定义什么 | 在 AuthorityGate 中的角色 |
@@ -115,9 +53,9 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 
 **⇒ 关键：`§28.1` 是 §13 class 选择里的一个**限定词**（L723 "under the Basic L1 / §28.1 scope"），不是独立成立条件。**
 
-## 1.1 表五之二 · 规则级映射（凌翼 §4 要求的"完整规则映射"，第四轮补）
+## 1.1 表五之二 · 规则级映射（凌翼 §4 要求）
 
-**第四轮自检发现：上面那张表是【章节级】，回答"每一章讲什么"。**
+**上面那张表是【章节级】，回答"每一章讲什么"。**
 **而凌翼 §4 要求的是"AuthorityGate 与冻结 prereg §12、§13、§28.1 及适用条款之间的完整规则映射"——那是【规则级】。**
 
 **⇒ 本章补上。规则级 = AuthorityGate 的每一个判定点，对应到哪一条款、哪一句、什么判定。**
@@ -134,7 +72,7 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 | **G-7** | 两臂 witness 形态合格 | §28.1 L1716-1718 | 代码块内三行（L1715/L1719 为围栏）："TARGET WRITE ARM" / "vs" / "NO-WRITE / MATCHED BASELINE CONTROL" | G-3 的具体形态约束 |
 | **G-8** | witness 回答的问题 | §28.1 L1721-1723 | "attributable registered write/change 是否真的发生？" | G-3/G-6 的语义锚点 |
 | **G-9** | C1 不要求 C2/C3 结构 | §28.1 L1727-1731 + L1741 | L1727："它不要求："；L1730-1731：same-E ON/OFF nonstorage counterfactual / content-class contrast；L1741："仍可合法尝试并建立 C1" | 排除性规定 |
-| **G-10** | class 优先级（**非 AuthorityGate 判定，而是 AuthorityGate 必须让位的机制**） | §13 L718-724（L717/L725 为围栏） | 代码块内 else-if 链：L718-719 C3；L720-721 C2；L722-724 C1 | **让位类**：AuthorityGate 不执行此链，只输出 C1 要素（第六轮改正） |
+| **G-10** | class 优先级（**非 AuthorityGate 判定，是 AuthorityGate 必须让位的机制**） | §13 L718-724（L717/L725 为围栏） | 代码块内 else-if 链：L718-719 C3；L720-721 C2；L722-724 C1 | **让位类**：AuthorityGate 不执行此链，只输出 C1 要素 |
 | **G-11** | gate PASS ≠ class 成立 | §13 L727 | "因此 Basic L1 PASS 本身不得被引用为 C1/C2/C3；PRE_RESET_CHANGE_CLASS 必须来自对应 class rule" | **禁止性规定** |
 | **G-12** | invalidity 不得写成 FAIL | §13 L741 | "不得把 protocol/execution invalidity 写成 L1 = FAIL" | **禁止性规定** |
 | **G-13** | C1 的科学含义 | §12 L633-637 | "C1 表示：storage write 是目前最高被正向建立的 change class" | 语义定义 |
@@ -148,14 +86,14 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 
 | # | 判定点 | 对应条款 | 性质 |
 |---|---|---|---|
-| **G-19** | writer—execution—observation 关联（R-7） | **部分对应 §4 L169-171**（第七轮改正：不是"无"） | §4 已冻结 writer 三字段；缺的是"实际执行主体核对机制"（§31 无 write_operator）。**这才是 BF-8 的真身** |
-| **G-20** | execution 来源绑定（R-8） | **§31 L1948-1949**（第七轮改正：不是"无"） | execution_id / execution_hash 属 provenance 必备 ⇒ 归入 gate 5 具体化 |
+| **G-19** | writer—execution—observation 关联（R-7） | **部分对应 §4 L169-171**（不是"无"） | §4 已冻结 writer 三字段；缺的是"实际执行主体核对机制"（§31 无 write_operator）。**这才是 BF-8 的真身** |
+| **G-20** | execution 来源绑定（R-8） | **§31 L1948-1949**（不是"无"） | execution_id / execution_hash 属 provenance 必备 ⇒ 归入 gate 5 具体化 |
 | **G-21** | 通路登记（R-9） | 部分对应 §37 L2253-2254 | 部分新增 |
 
-**⇒ 而 G-10（class 优先级）实际依赖的 C2/C3 独立性判据，第五轮补上、第六轮改正定位：**
+**⇒ 而 G-10（class 优先级）实际依赖的 C2/C3 独立性判据：**
 
-> ⚠️ **第六轮改正：以下四项【不是 AuthorityGate 的判定点】。**
-> AuthorityGate 只判 C1 要素是否成立（见 §2.2b）。C2/C3 是否独立成立，由 §16 / §19-20 各自的规则判定，**不归 AuthorityGate**。
+> ⚠️ **以下四项【不是 AuthorityGate 的判定点】。**
+> AuthorityGate 只判 C1 要素是否成立（见 §2 开头的三层划分）。C2/C3 是否独立成立，由 §16 / §19-20 各自的规则判定，**不归 AuthorityGate**。
 > 保留这张表，是因为它说明"最终 class 可能不是 C1"，而 AuthorityGate 的消费者必须知道这一点。
 
 | # | class selection 机制的输入条件（**非 AuthorityGate 判定点**） | 冻结条款（精确） | 条款原文（节录） | 对 AuthorityGate 的意义 |
@@ -180,7 +118,7 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 ```
 
 **⇒ 这三项是"AuthorityGate ≠ prereg C1"的具体所在。**
-**⇒ 第七轮收窄：其中只有 G-19（writer 核对机制）与 G-21（通路登记机制）真正超出 prereg；G-20（execution 来源）prereg §31 L1948-1949 已有要求。**
+**⇒ 其中只有 G-19（writer 核对机制）与 G-21（通路登记机制）真正超出 prereg；G-20 在 prereg §31 L1948-1949 已有要求。**
 **⇒ 因此 `ESTABLISHED` 蕴含 prereg C1，但 prereg C1 不蕴含 `ESTABLISHED`（见 §2.1）。**
 **⇒ 本章仍是【设计】，未执行、未验证。规则映射的准确性请睫核。**
 
@@ -223,132 +161,6 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
   R-10 C1 的 ATTRIBUTED 未被借用去满足 C2 conjunct（§16 L958 明文禁止）
 ```
 
-## 2.0 第七轮自检：R-1..R-6 不是 C1 专属，而是所有 class 共享
-
-**第七轮我逐一问：R-1..R-10 里，有没有哪一项其实不属于 C1？**
-
-**⇒ 核 §13 L700 原文：**
-
-```text
-L700  "任何正向 `PRE_RESET_CHANGE_CLASS = C1 / C2 / C3` 都必须先通过【同一个】Basic L1 gate："
-```
-
-**⇒ 也就是说 R-1..R-5 是【C1/C2/C3 三者共有的 gate】，不是 C1 的专属条件。**
-
-**⇒ 而 R-6（L722-724）才是 C1 专属的 class rule。**
-**⇒ 对应的 C2 专属在 §16、C3 专属在 §19-20（见 §1.1 的 X-1..X-4）。**
-
-**⇒ 因此正确的层级是三层，而我上一版把它们平铺成同一列：**
-
-```text
-第一层 · Basic L1 gate（共享）
-  R-1 §13 L702 / R-2 §13 L703 / R-3 §13 L704 / R-4 §13 L705+L708 / R-5 §13 L711
-  ⇒ 任何 class 都必须过
-  ⇒ 过不了 ⇒ 连"疑似 C1"都谈不上，L1 层就没有正向结果
-
-第二层 · C1 class rule（C1 专属）
-  R-6 §13 L722-724 episode-specific registered storage write
-  ⇒ 只有这一条区分 C1 与 C2/C3
-
-第三层 · 本设计新增（比 prereg 更严格，且仅在 AuthorityGate 层）
-  R-7 writer 关联 / R-8 execution 来源绑定 / R-9 通路登记
-  ⇒ 不在冻结 prereg 里
-  ⇒ 因此 AuthorityGate = ESTABLISHED 严格强于 prereg 的 C1
-
-约束项 · 不得借用（跨层）
-  R-10 §16 L958：C1 的 ATTRIBUTED 不得满足 C2 conjunct
-  ⇒ 它是"禁止"而不是"条件"（见 §12.1 的教训）
-```
-
-## 2.0b 第七轮续查：R-8 其实已被 gate 5 覆盖，R-7 只覆盖了一半
-
-**⇒ 第七轮第二个问题：R-7/R-8/R-9 里，有哪些其实不是"新增"，而是 gate 5 的既有要求？**
-
-```text
-核 §31 Machine Provenance（L1913-1954）"至少记录"清单：
-  L1948  execution_id
-  L1949  execution_hash
-  L1950  baseline_state_id
-  L1952  base_model_hash
-  L1953  execution_environment_identity
-
-⇒ 所以 execution 身份【已经是 provenance 的必备内容】
-⇒ 而 gate 5（L711）要求 "required provenance 完整"
-⇒ 因此 R-8（execution 来源绑定）【不是新增条件】
-   ⇒ 它是 gate 5 的具体实现要求
-⇒ 我上一版把它标为"本设计新增"，这是错的。
-```
-
-**⇒ 而 R-7（writer 身份）要分两半：**
-
-```text
-§31 的 provenance 清单里【没有】write_operator（我 grep 过，零命中）
-⇒ writer 身份不在 §31 的 provenance 必备项里
-
-但 §4 L169-171 要求在启动前冻结：
-  write_operator_identity / write_operator_version / write_operator_hash
-
-⇒ 所以 writer 身份【有冻结要求】，但【不在 gate 5 的 provenance 完整性范围】
-⇒ 因此 R-7 的真缺口是：
-   "已冻结 ≠ 已与实际执行主体核对"
-   ⇒ 冻结了三个值，但没有任何机制证明"实际执行的是这个 writer"
-⇒ 这一半确实是新增（BF-8 的真身）
-```
-
-**⇒ 而 R-9（通路登记）呢：**
-
-```text
-§37 L2253-2254 有 UNREGISTERED_EPISODE_REINJECTION / UNREGISTERED_RETRIEVAL_INDUCED_WRITE
-⇒ 说明"未登记"是被禁止的状态
-⇒ 但 prereg 没有规定"登记在哪里、以什么形式"
-⇒ 所以 R-9 的【禁止对象存在】，而【登记机制未定义】
-⇒ 这一半是"规范有要求、实现无定义"，不是我凭空新增
-```
-
-**⇒ 修正后的三层：**
-
-```text
-第一层 · Basic L1 gate（共享，5 项）
-  R-1..R-5
-
-第二层 · C1 class rule（C1 专属，1 项）
-  R-6
-
-第三层 · 本设计【真正的】新增（2 项 + 1 项部分）
-  R-7  writer 身份与实际执行主体的核对机制   ← 新增（冻结值已有，核对机制无）
-  R-8  ❌ 撤回"新增"标注：§31 L1948-1949 已要求 execution_id/hash 为 provenance 必备
-       ⇒ 应归入 gate 5 的具体化，不是新条件
-  R-9  通路登记的【机制定义】               ← 部分新增（禁止对象已有，登记机制无）
-
-约束项
-  R-10 不得借用（禁止性）
-```
-
-**⇒ 于是"AuthorityGate 比 prereg 更严格"这个论断，也要收窄：**
-
-```text
-✗ 旧：因为 R-7/R-8/R-9 是新增的
-✓ 新：真正超出 prereg 的只有 R-7（writer 实际核对）
-      和 R-9 的【机制定义】部分
-      R-8 属于 prereg 已有要求的具体化
-```
-
-**⇒ 而这一格的意义在于：**
-
-```text
-⇒ 上一版我把 R-1..R-6 平铺，读者会以为这六条都是 C1 的门槛
-⇒ 实际上 R-1..R-5 是"入场券"，R-6 才是"C1 的名牌"
-⇒ 而 R-7..R-9 是"本设计额外加的门"
-⇒ 三者混淆会导致：把 gate 失败误读为"C1 不成立"
-   ⇒ 而正确的读法是：gate 失败 ⇒ 连 class 都没到
-   ⇒ 这与 G-11 / G-12（不得把 invalidity 写成 FAIL）直接相关
-```
-
-**⇒ 因此 §8 的负向测试矩阵也须按三层重排（见 §8.1 分层）。**
-
-**⇒ 而 `R-7 / R-8 / R-9` 我必须标明它们是**本设计新增**，不在冻结 prereg 里。**
-**⇒ 这意味着 `AuthorityGate = ESTABLISHED` 比 prereg 的 C1 更严格，不是相等。**
-
 ## 2.1 反向蕴含不成立（凌翼裁 Q1_REVERSE_SUFFICIENCY = NOT ESTABLISHED）
 
 ```text
@@ -370,9 +182,9 @@ L700  "任何正向 `PRE_RESET_CHANGE_CLASS = C1 / C2 / C3` 都必须先通过�
 
 **⇒ 落为硬约束：**
 
-> ⚠️ **【本节代码块已被 §2.2b 作废，保留仅为记录我的错误】**
+> ⚠️ **【本代码块已作废：它把 class selection 塞进了 AuthorityResult】
 > 下方 `reported_pre_reset_change_class` 字段的设计是错的——它把 §13 的 class 选择职责塞给了 AuthorityGate。
-> **当前有效版本见 §2.2b。**
+> **当前有效版本见 §2.2c。**
 
 ```text
 （作废）AuthorityResult 必须携带两个不同字段：
@@ -384,49 +196,9 @@ L700  "任何正向 `PRE_RESET_CHANGE_CLASS = C1 / C2 / C3` 都必须先通过�
 ⇒ 这一条我 v0.2 完全没写。
 ```
 
-## 2.2b 第六轮自检：上面那段把职责搞反了
+## 2.2c AuthorityResult 的完整取值集合
 
-**第六轮自检时我问自己一个问题：AuthorityGate 的职责是判 C1，它凭什么去判 C2/C3？**
-
-**⇒ 核 §13 L715 原文：**
-
-```text
-L715  "当 Basic L1 gate 通过后，L1 = PASS 仅在至少一个 evidence class
-       被其自身规则独立建立时成立，且："
-L718-724  if C3 ... else if C2 ... else if ... C1
-```
-
-**⇒ 这段是 `PRE_RESET_CHANGE_CLASS` 的赋值规则，属于 §13 的 gate 之后机制。**
-**⇒ 原文没有说"AuthorityGate 来赋值"。**
-**⇒ 而凌翼原话是「不得让 AuthorityGate **覆盖**这条优先级规则」——**
-
-```text
-"不得覆盖优先级" 的意思是：AuthorityGate 的结果不能顶替 class selection
-而不是：让 AuthorityGate 去执行 class selection
-```
-
-**⇒ 所以 §2.2 我写的「AuthorityResult 必须携带 reported_pre_reset_change_class」是错的：**
-**⇒ 那等于让 AuthorityGate 承担 §13 的 class 选择职责，与凌翼原意相反。**
-
-**⇒ 改正为：**
-
-```text
-AuthorityResult 应当携带：
-  · episode_specific_write_established = BOOL   ← C1 要素是否成立（AuthorityGate 的职责）
-  · c1_evidence_element_scope          = "C1"   ← 明确这是 C1 层的判定结果
-
-AuthorityResult【不】携带 reported_pre_reset_change_class。
-
-⇒ class selection 由 §13 L715-725 的机制独立完成，输入是：
-   · C1 要素成立与否（来自 AuthorityGate）
-   · C2 是否独立成立（来自 §16 的判定，不由 AuthorityGate 做）
-   · C3 是否独立成立（来自 §19-20 的判定，不由 AuthorityGate 做）
-⇒ AuthorityGate 只提供其中一个输入。
-```
-
-## 2.2c 第八轮补：AuthorityResult 的完整取值集合（此前从未定义）
-
-**⇒ 第八轮自检发现：全文只定义了 `ESTABLISHED`，却从未说"不成立"时返回什么。**
+**⇒ 全文只定义了 `ESTABLISHED`，此前从未说"不成立"时返回什么。**
 **⇒ 而 `INVALID` 在文中出现 30 次，没有任何一处说明它属于 `AuthorityResult`。**
 **⇒ 这是一处真实的定义缺口，不是措辞问题。**
 
@@ -464,7 +236,7 @@ AuthorityResult【不】携带 reported_pre_reset_change_class。
 ⇒ 落为 T-19 AUTHORITY_RESULT_ENUM_COMPLETENESS = NOT ESTABLISHED
 ```
 
-**⇒ 第八轮的教训：**
+**⇒ 一条附注：**
 
 > **我定义了"成功"的形态，却从没定义"失败"的形态。**
 > **而一个只有成功分支的接口，无法被实现。**
@@ -487,7 +259,7 @@ AuthorityResult【不】携带 reported_pre_reset_change_class。
 ⇒ 也不得扩展成 Memory Qualification。
 ```
 
-## 2.4 BF-8 的旁路结论为什么是"结构性不可能"（承接 v0.2 §0.2，睫 NB-30）
+## 2.4 BF-8 的旁路结论为什么是"结构性不可能"（睫 NB-30）
 
 **v0.3 上一稿把这一段弄丢了，只在状态表留了一行孤立的子项。补回。**
 
@@ -517,9 +289,9 @@ import 行 = 4 处（这才是关键）：
      = 可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）
 ```
 
-## 2.4a 术语对照表（第八轮补，消除"正式 C1"与"C1 要素"的混用）
+## 2.4a 术语对照表（正式 C1 / C1 要素 / 最终 class）
 
-**⇒ 第八轮发现：全文「正式 C1」出现 9 次、「C1 要素」18 次、「最终 class」11 次。**
+**⇒ 全文曾出现三个近义词：正式 C1 / C1 要素 / 最终 class，然从未给出对照。**
 **⇒ 三者不是同一个东西，但我从未给出对照。读者会误以为它们同义。**
 
 | 本文用词 | 精确定义 | 由谁产生 | 与 §13 的关系 |
@@ -527,7 +299,7 @@ import 行 = 4 处（这才是关键）：
 | **`L1_local`** | `evaluate_basic_l1` 返回的局部计算结果（含 `change_class=C1`） | reference 函数 | 非规范别名（凌翼 NB-31） |
 | **C1 要素成立** | `episode-specific registered storage write` 这一条独立判据成立 | AuthorityGate | §13 L722-724 的 C1 分支 |
 | **「正式 C1」** | 承凌翼/知微措辞：经权威消费边界签发、可作为科学输出的 C1 判定结果 | AuthorityGate（唯一） | = C1 要素成立 + R-1..R-10 全过 |
-| **`PRE_RESET_CHANGE_CLASS = C1`** | §13 的 **class selection 结果** | §13 L715-725 机制 | **不是 AuthorityGate 输出**（第六轮改正） |
+| **`PRE_RESET_CHANGE_CLASS = C1`** | §13 的 **class selection 结果** | §13 L715-725 机制 | **不是 AuthorityGate 输出** |
 
 **⇒ 关键区分（必须记住）：**
 
@@ -541,9 +313,9 @@ import 行 = 4 处（这才是关键）：
 **⇒ 所以本文用「正式 C1」时，指的都是** AuthorityGate 的输出 **，不是最终报告类别。**
 **⇒ 若发现任何一处用法与之不符，那一处是错的。**
 
-## 2.4b 补正：`__all__` 存在，但它管不到这条路径（第四轮自检新增）
+## 2.4b `__all__` 存在，但管不到顶层绝对导入路径
 
-**第四轮自检时我发现 `afterglow_harness/__init__.py` 里有 `__all__`，必须说明它是否削弱上面的论证。**
+**⇒ 须说明 `afterglow_harness/__init__.py` 里的 `__all__` 是否削弱上面的论证。**
 
 ```text
 afterglow_harness/__init__.py（209 字节）：
@@ -584,12 +356,12 @@ afterglow_harness/__init__.py（209 字节）：
 ```text
 ⇒ 若将来要把 evaluator 纳入白名单管理，须改 __init__.py
    ⇒ 而 __init__.py 是否在执行关键角色表里？须核（本轮未核，列为待查）
-⇒ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED  [第四轮新增]
+⇒ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
 ```
 
-### 2.4c 第四轮追加核验：`__init__.py` 不在冻结角色表内
+### 2.4c `__init__.py` 不在冻结角色表内
 
-**我上一句写"本轮未核，列为待查"。第四轮我核了，结果比预期糟：**
+**⇒ 核验结果：**
 
 ```text
 MANIFEST         grep "__init__"          → 零命中                    [终端核验]
@@ -612,7 +384,7 @@ manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [�
 ④ ⇒ 也就是说：包层的"导出控制"是一个可以被静默修改的表面
 ```
 
-**⇒ 这独立于 BF-8，是第四轮新发现的一格：**
+**⇒ 这独立于 BF-8 的一格：**
 
 ```text
 T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
@@ -655,21 +427,6 @@ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
    ⇒ 但若新规则改变 C1 的定义域/建立条件/结果语义/执行权限 ⇒ 实质规范变更
 ```
 
-## 3.1 我上一版的越界，撤回
-
-**v0.2 §5 我写：**
-
-> ⇒ 改名要动 prereg 里 C1 这个词的定义域 ⇒ 需 prereg 授权。这一格我不裁，请凌翼裁。
-
-**凌翼裁：`NB31_PREREG_DEFINITION_CHANGE = NOT AUTHORIZED`，「我不批准 Coder 所说的'需要修改 prereg 中 C1 定义域'这一步」。**
-
-**⇒ 撤回。正确做法是：**
-
-```text
-✗ 改冻结定义来适应新设计
-✓ 设计一个【尊重冻结定义】的外部权威消费层
-```
-
 ## 3.2 准确映射表
 
 | 冻结侧（不可改） | 外部标签（非规范） | 关系 |
@@ -690,7 +447,7 @@ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
 
 ---
 
-# 4 · 表一（第二轮）· 权限与可验证性（凌翼：方向接受，边界未闭合）
+# 4 · 表一 · 权限与可验证性（凌翼：方向接受，边界未闭合）
 
 **凌翼原文：**
 
@@ -745,18 +502,7 @@ T-17 AUTHORITY_ISSUER_IDENTITY = NOT ESTABLISHED
 ⇒ 具体实现归知微（Windows 身份验证可行性）。
 ```
 
-## 4.3 我这一版**不能**说表一已闭合
-
-```text
-⇒ 我 v0.2 说"表一 · 权威消费边界（已设计）"
-⇒ 凌翼判：方向接受，边界未闭合
-⇒ 所以本版改为：表一有结构，但五个待明确项全部 NOT ESTABLISHED
-⇒ 且我不声称"另设目录+账户+渠道"能防旁路
-```
-
----
-
-# 5 · 表二（第二轮）· 采集主体仍需实证（凌翼：接受为设计基础）
+# 5 · 表二 · 采集主体仍需实证（凌翼：接受为设计基础）
 
 **凌翼「尤其不能在 AFTER 尚未发生时预先宣称已计算最终内容摘要」—— 这是我 v0.2 已改的，接受。**
 
@@ -807,7 +553,7 @@ V-3  采集主体验证
 
 ---
 
-# 6 · 表三（第二轮）· 判定表全文 + `h>=2` 的适用范围
+# 6 · 表三 · 判定表全文 + `h>=2` 的适用范围
 
 **⇒ 先重排表三全文（承接 v0.2 §3.2，本版保留并可独立审阅）。**
 **⇒ 原因：v0.2 有这张表，v0.3 若只引用不重排，单独看 v0.3 的人会找不到“第 7 行 / 第 11 行”具体指什么。**
@@ -829,7 +575,7 @@ V-3  采集主体验证
 | 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 有效 | **PASS** | **C1 要素成立（不等于最终 class = C1）** | AuthorityGate 输出 `ESTABLISHED` = C1 要素成立；**最终 `PRE_RESET_CHANGE_CLASS` 由 §13 L715-725 机制另行赋值**（可能因 C2/C3 独立成立而取更高类别） |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
-**⇒ 第 11 行「正式 class」列的措辞在第六轮已改正：** AuthorityGate 只判 C1 要素，不判最终 class（见 §2.2b）。
+**⇒ 第 11 行「正式 class」列：** AuthorityGate 只判 C1 要素，不判最终 class（见 §2 开头的三层划分）。
 
 ## 6.1 `h>=2` 的适用范围（凌翼特别指出）
 
@@ -862,7 +608,7 @@ evaluator.py L253   # h >= 2 -> positive attribution/change
 
 ---
 
-# 7 · 表四（第二轮）· 后续读取与 C1 最小条件的分离（凌翼 §3 表四裁定）
+# 7 · 表四 · 后续读取与 C1 最小条件的分离（凌翼 §3 表四裁定）
 
 **凌翼原文：**
 
@@ -892,7 +638,7 @@ T-15b  读取通路是否作为 pre-reset C1 的通用条件 = NOT ESTABLISHED�
    未限定"仅对该候选"）。
 ```
 
-## 7.0 表四全文 · P-1 最小具体绑定（承接 v0.2 §4.3，本版重排）
+## 7.0 表四全文 · P-1 最小具体绑定（本版重排）
 
 | 项 | P-1 中的形态 | 状态 |
 |---|---|---|
@@ -911,9 +657,9 @@ T-15b  读取通路是否作为 pre-reset C1 的通用条件 = NOT ESTABLISHED�
       参考校准成功不提供真实摘要的测量资格。
 ```
 
-## 7.1 P-1 后续读取证据 vs C1 最小科学条件的明确分离（凌翼 §4 要求，第四轮补）
+## 7.1 P-1 后续读取证据 vs C1 最小科学条件的明确分离（凌翼 §4 要求）
 
-**第四轮自检发现：凌翼 §4 要求「P-1 后续读取证据与 C1 最小科学条件的明确分离」，而本文只有零散的 T-15a/T-15b，没有一张明确的分离表。**
+**⇒ 凌翼 §4 要求「P-1 后续读取证据与 C1 最小科学条件的明确分离」，而本文此前只有零散的 T-15a/T-15b，没有一张明确的分离表。**
 
 | 项 | "注册存储写入已被证明"（C1 最小条件） | "该记忆后来确实参与业务计算"（后续读取证据） |
 |---|---|---|
@@ -967,10 +713,10 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 
 **凌翼要求：必要条件、充分条件、invalidity 和 class priority 的负向测试矩阵。**
 
-## 8.1 必要条件逐项缺失测试（第七轮按三层重排）
+## 8.1 必要条件逐项缺失测试
 
-**⇒ 第七轮改正：原表把 R-1..R-10 平铺，看不出"gate 失败"与"C1 不成立"的区别。**
-**⇒ 现按 §2.0 的三层分开，并明确各自的期望输出。**
+**⇒ 本表把 R-1..R-10 按三层分开，以区分"gate 失败"与"C1 不成立"。**
+**⇒ 现按 §2 开头的三层分开，并明确各自的期望输出。**
 
 ### 8.1a 第一层 · Basic L1 gate（共享，C1/C2/C3 都要过）
 
@@ -979,7 +725,7 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 | N-01 | R-1 规则/hash 无效 | `INVALID` | §13 L702 + L741 | **不是** C1 不成立，是**执行无效** |
 | N-02 | R-2 observer 不合法 | `INVALID` | §13 L703；§37 `STATE_OBSERVER_NOT_INDEPENDENT` | 同上 |
 | N-03 | R-3 两臂未实际执行 | `INVALID` | §13 L704；witness 缺失 | 同上 |
-| N-04 | R-4 D_ATTRIBUTION 未 ATTRIBUTED | **分两种，不能统一**：<br>① 结构有效且已执行，attribution 给出**确定负结果** ⇒ `L1 = FAIL`（L729-732）<br>② 结果落入 indeterminate region ⇒ `L1 = UNRESOLVED`（L735-738）<br>③ rule 缺失 / outcome 后改变 ⇒ **INVALID**（L741） | §13 L705 + L708 + L729-741 | **这一格第七轮改正**：原来我写"不得 ESTABLISHED 且不得写成 FAIL"，把三种情况混成一团 |
+| N-04 | R-4 D_ATTRIBUTION 未 ATTRIBUTED | **分两种，不能统一**：<br>① 结构有效且已执行，attribution 给出**确定负结果** ⇒ `L1 = FAIL`（L729-732）<br>② 结果落入 indeterminate region ⇒ `L1 = UNRESOLVED`（L735-738）<br>③ rule 缺失 / outcome 后改变 ⇒ **INVALID**（L741） | §13 L705 + L708 + L729-741 | 三种情况不可混为一谈 |
 | N-05 | R-5 provenance 不完整 | `INVALID` | §13 L711；`PROVENANCE_BREAK` | 同上 |
 
 ### 8.1b 第二层 · C1 class rule（C1 专属）
@@ -1086,7 +832,7 @@ T_15a_P1_READ_PATH_EXISTENCE     = NOT ESTABLISHED（候选内，须观测）
 T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 在此拆开]
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
-T_18_MODULE_EXPORT_CONTROL       = NOT ESTABLISHED（§2.4c 有定义，第四轮新增）
+T_18_MODULE_EXPORT_CONTROL       = NOT ESTABLISHED（§2.4c 有定义）
 T_19_AUTHORITY_RESULT_ENUM       = PARTIALLY_DEFINED（§2.2c 给四值；两处不对齐待睫确认）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
@@ -1135,119 +881,20 @@ evaluator  fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
 
 ---
 
-# 12 · 这一轮我该记住的
 
-凌翼驳回我时用的理由是「规范引用不准确」。
+## 交付说明
 
-**⇒ 而我引用 §28.1 时，我看到的是：**
-- 标题里有 "C1"
-- §13 L723 里也写了 "§28.1 scope"
+**本文是设计正文。** 八轮自检中的勘误、撤回与自省，已归入：
+[C1_STRUCTURAL_CLOSURE_DESIGN_勘误与自省记录_20261027.md](C1_STRUCTURAL_CLOSURE_DESIGN_勘误与自省记录_20261027.md)
 
-**⇒ 于是我以为它定义了 C1。**
-
-**⇒ 而它定义的是 C1 的"最小 mandatory failure path"——一个对照，不是一个成立规则。**
-
-**⇒ 这是 E-4（§5 vs §4）的完全同形：**
+**本文不构成：**
 
 ```text
-E-4  L169-171 有 write_operator ⇒ 我以为是 §5，实为 §4
-E-9  §28.1 标题有 C1、被 §13 引用 ⇒ 我以为它定义 C1，实为 witness
+代码实施授权  IMPLEMENTATION_AUTHORIZATION = NONE
+代码变更      CODE_CHANGE = NOT AUTHORIZED
+科学执行      SCIENTIFIC_EXECUTION = MAY NOT START
+结构闭合      NOT DECLARED
 ```
 
-**⇒ 两次，我都被"这一处提到了它"，骗成了"这一处定义了它"。**
+**请睫、知微、钳星复核的落点见 §8 与各节末尾。**
 
-**⇒ 所以我这一版加了表五（章节职责映射）。**
-**⇒ 而它的用处不是我写给自己看的——是让下一个读我文件的人，**
-**⇒ 能一眼看出我引的那一节，到底定义了什么。**
-
-**⇒ 我不写"引用已全部核准"。**
-**⇒ 我写：表五这张映射表，请你替我核**——**因为我自己已经被骗过两次。**
-
----
-
-## 12.1 第六轮的上位错误：我把"不得覆盖"读成了"由它执行"
-
-**第六轮自检时，我先问了一个问题：AuthorityGate 的职责是判 C1，它凭什么去判 C2/C3？**
-
-**⇒ 然后我发现，我前面五轮一直在做一件与凌翼原意相反的事：**
-
-```text
-凌翼："不得让 AuthorityGate 覆盖这条优先级规则"
-       ⇒ 意思是：AuthorityGate 的结果不能顶替 class selection
-       ⇒ 即：AuthorityGate 应当【让位】
-
-我做的：把 reported_pre_reset_change_class 写成 AuthorityResult 的字段
-       ⇒ 意思是：AuthorityGate 输出最终 class
-       ⇒ 即：AuthorityGate 【接管】了 class selection
-```
-
-**⇒ 差一个字：让位 vs 接管。而方向正好相反。**
-
-**⇒ 这一格的错，比前五轮任何一处都重：**
-
-```text
-前几轮：引用错、范围错、漏写
-本轮 ：我把规则的主体搞反了
-      ⇒ 不是"哪一行写错了"
-      ⇒ 是"这东西该由谁做"我理解反了
-```
-
-**⇒ 为什么我六轮才看出来：**
-
-```text
-因为"class 优先级"这句话看起来像是在描述一个判据
-⇒ 而判据自然是"要判的东西"
-⇒ 于是我不假思索地把它当成了 AuthorityGate 的判定点
-⇒ 而它其实是一条【约束 AuthorityGate 不得越界】的规则
-```
-
-**⇒ 第六条教训（我自己加的）：**
-
-> **一条规则说"不得覆盖 X"时，它约束的是主体的行为边界，不是给主体增加一项任务。**
-> **把禁令读成职责，会造出一个恰好相反的机制。**
-
-**⇒ 而这一格是我在自检时自己发现的——不是被别人指出的。**
-
----
-
-## 12.2 本轮改动清单（第六轮）
-
-| 位置 | 原 | 现 |
-|---|---|---|
-| §2.2 代码块 | `AuthorityResult` 携带 `reported_pre_reset_change_class` | **标注作废**，改为 §2.2b |
-| §2.2b（新增） | —— | AuthorityGate 只带 `episode_specific_write_established` + `c1_evidence_element_scope`，**不**带最终 class |
-| §1.1 G-10 行 | 判定性质 =「覆盖类（决定 reported class）」 | 改为「**让位类**：不执行此链，只输出 C1 要素」 |
-| §1.1 G-10a..G-10d | 列为 AuthorityGate 判定点 | **改名为 X-1..X-4**，明确标注「非 AuthorityGate 判定点」 |
-| §6.0 表三第 11 行 | 正式 class =「待定，按优先级」 | 改为「C1 要素成立（不等于最终 class = C1）」，并说明最终 class 由 §13 机制另赋 |
-| §4.1b 五角色表 | 正式结果存储 = 「正式 C1 结论」 | 改为「C1 要素判定结果，不是最终 `PRE_RESET_CHANGE_CLASS`」 |
-| §8.2 N-11..N-13 | `reported_pre_reset_change_class = C2/C3` | 改为「AuthorityGate 仍只报 C1 要素；最终 class 由 §13 机制赋为 C2/C3」 |
-
-**⇒ 七处，全部同一根源。**
-**⇒ 而这一根源就是：我没有分清「C1 要素是否成立」与「最终报告哪个 class」。**
-
----
-
-## 12.3 六轮总账
-
-| 轮 | 主查角度 | 发现数 | 最重的一处 |
-|---|---|---|---|
-| 1 | 字对不对 | 6 | `write_operator` 章节错（§5→§4） |
-| 2 | 东西在不在 | 4 | 表三自相矛盾 + 三张表本体缺失 |
-| 3 | 自相矛盾 | 15 | 9 个门禁项被丢弃（显示为"已解除"） |
-| 4 | 交付是否齐 | 11 | `__init__.py` 不在冻结表 |
-| 5 | 规则源头 | 9 | §16/§19-20 未映射（优先级是空话） |
-| 6 | **职责归属** | 7 | **把"不得覆盖"读成"由它执行"** |
-
-**⇒ 六轮，52 处。**
-
-**⇒ 而每一轮查的深度都不同：**
-```text
-1-2 轮：文本层
-3-4 轮：结构层
-5 轮  ：规则依赖层
-6 轮  ：职责归属层
-```
-
-**⇒ 我仍然不认为可以交了。**
-**⇒ 下一轮（第七轮）我打算查：R-1..R-10 这十个条件，有没有哪一个其实【不属于】C1，而是被我硬塞进来的。**
-**⇒ 因为这正是本轮发现的形状——上一轮我塞进了 class selection，这一轮要查还有没有别的。**
