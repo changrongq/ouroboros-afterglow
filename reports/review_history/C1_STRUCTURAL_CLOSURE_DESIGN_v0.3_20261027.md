@@ -5,6 +5,29 @@
 **被审对象**：v0.2，`e3e285fc6dc8b03e68cae27631dd7f77aa4a4078`，SHA-256 `ed325ff90a827d8fd603e3ce1301bdbd414178d303dc26983353f2355d1c2961`
 **日期**：2026-10-27
 
+## 标题页 · 本文覆盖凌翼 §4 批准的五项交付（第八轮补）
+
+**凌翼 v0.2 裁定 §4 批准的改进项，逐项对应如下：**
+
+| # | 凌翼要求的交付 | 本文对应节 | 状态 |
+|---|---|---|---|
+| 1 | `L1_local` 与原始字段、正式科学输出的准确映射 | **§3** | 已给映射表 + 三条禁令 |
+| 2 | 表一权限与权威消费边界的**可验证性** | **§4**（含 §4.1b 五角色表、P-1..P-5 五项待明确） | **只到"待明确"，未验证** |
+| 3 | AuthorityGate 与冻结 prereg §12、§13、§28.1 及适用条款的**完整规则映射** | **§1**（章节级 + 规则级 G-1..G-21 + X-1..X-4）、**§2**（三层必要条件） | 已给；**"完整"待睫核** |
+| 4 | 必要条件、充分条件、invalidity 和 class priority 的**负向测试矩阵** | **§8**（23 条，按三层重排） | 已给设计；**未执行** |
+| 5 | P-1 后续读取证据与 C1 最小科学条件的**明确分离** | **§7.1** | 已给七行对照表 |
+
+**⇒ 而第八轮标题页补这一段的原因：**
+```text
+原标题只写了"章节映射更正 + 必要条件 + 负向测试矩阵"三项
+⇒ 漏了第 2 项（权限边界）和第 5 项（P-1 分离）
+⇒ 读者会以为本文只覆盖三项
+⇒ 而漏的那两项恰恰是凌翼判定"边界未闭合"的地方
+```
+
+**⇒ 第 2 项我必须标清：本文只做到"列出五项待明确"，没有做到"可验证"。**
+**⇒ 这正是凌翼原文「表一：方向接受，边界未闭合」的意思，我不把它写成"已完成"。**
+
 ```text
 BF8_STATUS                     = OPEN
 BF8_AUTHORITY_BOUNDARY         = NOT ESTABLISHED
@@ -401,6 +424,51 @@ AuthorityResult【不】携带 reported_pre_reset_change_class。
 ⇒ AuthorityGate 只提供其中一个输入。
 ```
 
+## 2.2c 第八轮补：AuthorityResult 的完整取值集合（此前从未定义）
+
+**⇒ 第八轮自检发现：全文只定义了 `ESTABLISHED`，却从未说"不成立"时返回什么。**
+**⇒ 而 `INVALID` 在文中出现 30 次，没有任何一处说明它属于 `AuthorityResult`。**
+**⇒ 这是一处真实的定义缺口，不是措辞问题。**
+
+**⇒ 补全为四值（对齐 §13 L729-741 的三种否定形态 + 证据缺失）：**
+
+| 值 | 含义 | 何时产生 | 权威条款 |
+|---|---|---|---|
+| `ESTABLISHED` | C1 要素成立 | R-1..R-10 全过 | §13 L722-724 |
+| `NOT_ESTABLISHED` | C1 要素未成立（结构有效、无违规） | R-6 不成立；或其他 gate 通过但 C1 专属判据不满足 | §13 L722-724 |
+| `INVALID` | 本次执行/证据无效（**不是科学负结果**） | R-1/R-2/R-3/R-5/R-7/R-8/R-9 任一失败；或命中 §37 | §13 L741 |
+| `FAIL` / `UNRESOLVED` | **科学** 确定负结果 / 不确定区 | 仅当 required structure 有效且已执行时 | §13 L729-732 / L735-738 |
+
+**⇒ 而这四个值必须与表三的十一行一一对齐：**
+
+```text
+表三第 1-5 行  → AuthorityResult = INVALID
+表三第 6 行    → 不签发（无 AuthorityResult）
+表三第 7 行    → NEUTRAL_REVIEWED（不是 AuthorityResult 的四个值之一，是独立标记）
+表三第 8 行    → 不产生 ESTABLISHED（只是"可纳入证据"）
+表三第 9 行    → AuthorityResult = FAIL
+表三第 10 行   → AuthorityResult = UNRESOLVED
+表三第 11 行   → AuthorityResult = ESTABLISHED（若 R-1..R-10 全过）
+```
+
+**⇒ 两处仍不一致，我必须指出而不假装解决：**
+
+```text
+① 表三第 7 行 NEUTRAL_REVIEWED 不在四值里
+   ⇒ 我倾向它不属于 AuthorityResult，而是独立的审查记录标记
+   ⇒ 但这一点须睫确认
+② 表三第 8 行"可纳入证据"到底对应哪个值？
+   ⇒ 它可能不对应任何 AuthorityResult 值，只是"这一个证据项被接受"
+   ⇒ 也可能是 NOT_ESTABLISHED（因为 C1 未建立）
+   ⇒ 须睫确认
+⇒ 落为 T-19 AUTHORITY_RESULT_ENUM_COMPLETENESS = NOT ESTABLISHED
+```
+
+**⇒ 第八轮的教训：**
+
+> **我定义了"成功"的形态，却从没定义"失败"的形态。**
+> **而一个只有成功分支的接口，无法被实现。**
+
 **⇒ 于是 G-10a..G-10d 的定位也要改：**
 
 ```text
@@ -448,6 +516,30 @@ import 行 = 4 处（这才是关键）：
    正式 C1 旁路（谁能签发正式 C1）
      = 可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）
 ```
+
+## 2.4a 术语对照表（第八轮补，消除"正式 C1"与"C1 要素"的混用）
+
+**⇒ 第八轮发现：全文「正式 C1」出现 9 次、「C1 要素」18 次、「最终 class」11 次。**
+**⇒ 三者不是同一个东西，但我从未给出对照。读者会误以为它们同义。**
+
+| 本文用词 | 精确定义 | 由谁产生 | 与 §13 的关系 |
+|---|---|---|---|
+| **`L1_local`** | `evaluate_basic_l1` 返回的局部计算结果（含 `change_class=C1`） | reference 函数 | 非规范别名（凌翼 NB-31） |
+| **C1 要素成立** | `episode-specific registered storage write` 这一条独立判据成立 | AuthorityGate | §13 L722-724 的 C1 分支 |
+| **「正式 C1」** | 承凌翼/知微措辞：经权威消费边界签发、可作为科学输出的 C1 判定结果 | AuthorityGate（唯一） | = C1 要素成立 + R-1..R-10 全过 |
+| **`PRE_RESET_CHANGE_CLASS = C1`** | §13 的 **class selection 结果** | §13 L715-725 机制 | **不是 AuthorityGate 输出**（第六轮改正） |
+
+**⇒ 关键区分（必须记住）：**
+
+```text
+「正式 C1」       = C1 要素成立（AuthorityGate 的输出）
+「最终 class = C1」= §13 机制赋值的结果
+⇒ 二者在【C2/C3 都不成立】时才重合
+⇒ 若 C2/C3 独立成立，则「正式 C1」可能仍为真，而「最终 class」是 C2/C3
+```
+
+**⇒ 所以本文用「正式 C1」时，指的都是** AuthorityGate 的输出 **，不是最终报告类别。**
+**⇒ 若发现任何一处用法与之不符，那一处是错的。**
 
 ## 2.4b 补正：`__all__` 存在，但它管不到这条路径（第四轮自检新增）
 
@@ -995,6 +1087,7 @@ T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 �
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 T_18_MODULE_EXPORT_CONTROL       = NOT ESTABLISHED（§2.4c 有定义，第四轮新增）
+T_19_AUTHORITY_RESULT_ENUM       = PARTIALLY_DEFINED（§2.2c 给四值；两处不对齐待睫确认）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
