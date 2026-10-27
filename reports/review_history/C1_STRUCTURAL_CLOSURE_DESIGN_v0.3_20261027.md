@@ -125,8 +125,8 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 
 | # | 判定点 | 对应条款 | 性质 |
 |---|---|---|---|
-| **G-19** | writer—execution—observation 关联（R-7） | **无** | 本设计新增；比 prereg 更严格 |
-| **G-20** | execution 来源绑定（R-8） | **无** | 同上 |
+| **G-19** | writer—execution—observation 关联（R-7） | **部分对应 §4 L169-171**（第七轮改正：不是"无"） | §4 已冻结 writer 三字段；缺的是"实际执行主体核对机制"（§31 无 write_operator）。**这才是 BF-8 的真身** |
+| **G-20** | execution 来源绑定（R-8） | **§31 L1948-1949**（第七轮改正：不是"无"） | execution_id / execution_hash 属 provenance 必备 ⇒ 归入 gate 5 具体化 |
 | **G-21** | 通路登记（R-9） | 部分对应 §37 L2253-2254 | 部分新增 |
 
 **⇒ 而 G-10（class 优先级）实际依赖的 C2/C3 独立性判据，第五轮补上、第六轮改正定位：**
@@ -157,8 +157,8 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 ```
 
 **⇒ 这三项是"AuthorityGate ≠ prereg C1"的具体所在。**
+**⇒ 第七轮收窄：其中只有 G-19（writer 核对机制）与 G-21（通路登记机制）真正超出 prereg；G-20（execution 来源）prereg §31 L1948-1949 已有要求。**
 **⇒ 因此 `ESTABLISHED` 蕴含 prereg C1，但 prereg C1 不蕴含 `ESTABLISHED`（见 §2.1）。**
-
 **⇒ 本章仍是【设计】，未执行、未验证。规则映射的准确性请睫核。**
 
 ---
@@ -190,11 +190,138 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
   R-5  §13 L711  required provenance 完整，且无命中与本次 claim 相关的 §37 invalidity / stop condition
   R-6  §13 L722-724  episode-specific registered storage write 在 preregistered
                      LITERAL_STORAGE_COMPONENTS 上成立（L717/L725 为围栏）
-  R-7  BF-8 的 writer—execution—observation 关联成立（本设计新增，非 prereg 原有）
-  R-8  BF-9 的 execution 来源绑定成立（本设计新增）
-  R-9  NB-29 通路登记成立（本设计新增）
+  R-7  BF-8 的 writer—execution—observation 关联成立
+       ⇒ 【部分新增】：§4 L169-171 已冻结 writer 三字段，但无核对机制（§31 无 write_operator）
+  R-8  BF-9 的 execution 来源绑定成立
+       ⇒ 【不是新增】：§31 L1948-1949 已要求 execution_id/execution_hash 为 provenance 必备
+          ⇒ 属 gate 5（R-5）的具体化
+  R-9  NB-29 通路登记成立
+       ⇒ 【部分新增】：§37 L2253-2254 已禁"未登记"，但登记机制未定义
   R-10 C1 的 ATTRIBUTED 未被借用去满足 C2 conjunct（§16 L958 明文禁止）
 ```
+
+## 2.0 第七轮自检：R-1..R-6 不是 C1 专属，而是所有 class 共享
+
+**第七轮我逐一问：R-1..R-10 里，有没有哪一项其实不属于 C1？**
+
+**⇒ 核 §13 L700 原文：**
+
+```text
+L700  "任何正向 `PRE_RESET_CHANGE_CLASS = C1 / C2 / C3` 都必须先通过【同一个】Basic L1 gate："
+```
+
+**⇒ 也就是说 R-1..R-5 是【C1/C2/C3 三者共有的 gate】，不是 C1 的专属条件。**
+
+**⇒ 而 R-6（L722-724）才是 C1 专属的 class rule。**
+**⇒ 对应的 C2 专属在 §16、C3 专属在 §19-20（见 §1.1 的 X-1..X-4）。**
+
+**⇒ 因此正确的层级是三层，而我上一版把它们平铺成同一列：**
+
+```text
+第一层 · Basic L1 gate（共享）
+  R-1 §13 L702 / R-2 §13 L703 / R-3 §13 L704 / R-4 §13 L705+L708 / R-5 §13 L711
+  ⇒ 任何 class 都必须过
+  ⇒ 过不了 ⇒ 连"疑似 C1"都谈不上，L1 层就没有正向结果
+
+第二层 · C1 class rule（C1 专属）
+  R-6 §13 L722-724 episode-specific registered storage write
+  ⇒ 只有这一条区分 C1 与 C2/C3
+
+第三层 · 本设计新增（比 prereg 更严格，且仅在 AuthorityGate 层）
+  R-7 writer 关联 / R-8 execution 来源绑定 / R-9 通路登记
+  ⇒ 不在冻结 prereg 里
+  ⇒ 因此 AuthorityGate = ESTABLISHED 严格强于 prereg 的 C1
+
+约束项 · 不得借用（跨层）
+  R-10 §16 L958：C1 的 ATTRIBUTED 不得满足 C2 conjunct
+  ⇒ 它是"禁止"而不是"条件"（见 §12.1 的教训）
+```
+
+## 2.0b 第七轮续查：R-8 其实已被 gate 5 覆盖，R-7 只覆盖了一半
+
+**⇒ 第七轮第二个问题：R-7/R-8/R-9 里，有哪些其实不是"新增"，而是 gate 5 的既有要求？**
+
+```text
+核 §31 Machine Provenance（L1913-1954）"至少记录"清单：
+  L1948  execution_id
+  L1949  execution_hash
+  L1950  baseline_state_id
+  L1952  base_model_hash
+  L1953  execution_environment_identity
+
+⇒ 所以 execution 身份【已经是 provenance 的必备内容】
+⇒ 而 gate 5（L711）要求 "required provenance 完整"
+⇒ 因此 R-8（execution 来源绑定）【不是新增条件】
+   ⇒ 它是 gate 5 的具体实现要求
+⇒ 我上一版把它标为"本设计新增"，这是错的。
+```
+
+**⇒ 而 R-7（writer 身份）要分两半：**
+
+```text
+§31 的 provenance 清单里【没有】write_operator（我 grep 过，零命中）
+⇒ writer 身份不在 §31 的 provenance 必备项里
+
+但 §4 L169-171 要求在启动前冻结：
+  write_operator_identity / write_operator_version / write_operator_hash
+
+⇒ 所以 writer 身份【有冻结要求】，但【不在 gate 5 的 provenance 完整性范围】
+⇒ 因此 R-7 的真缺口是：
+   "已冻结 ≠ 已与实际执行主体核对"
+   ⇒ 冻结了三个值，但没有任何机制证明"实际执行的是这个 writer"
+⇒ 这一半确实是新增（BF-8 的真身）
+```
+
+**⇒ 而 R-9（通路登记）呢：**
+
+```text
+§37 L2253-2254 有 UNREGISTERED_EPISODE_REINJECTION / UNREGISTERED_RETRIEVAL_INDUCED_WRITE
+⇒ 说明"未登记"是被禁止的状态
+⇒ 但 prereg 没有规定"登记在哪里、以什么形式"
+⇒ 所以 R-9 的【禁止对象存在】，而【登记机制未定义】
+⇒ 这一半是"规范有要求、实现无定义"，不是我凭空新增
+```
+
+**⇒ 修正后的三层：**
+
+```text
+第一层 · Basic L1 gate（共享，5 项）
+  R-1..R-5
+
+第二层 · C1 class rule（C1 专属，1 项）
+  R-6
+
+第三层 · 本设计【真正的】新增（2 项 + 1 项部分）
+  R-7  writer 身份与实际执行主体的核对机制   ← 新增（冻结值已有，核对机制无）
+  R-8  ❌ 撤回"新增"标注：§31 L1948-1949 已要求 execution_id/hash 为 provenance 必备
+       ⇒ 应归入 gate 5 的具体化，不是新条件
+  R-9  通路登记的【机制定义】               ← 部分新增（禁止对象已有，登记机制无）
+
+约束项
+  R-10 不得借用（禁止性）
+```
+
+**⇒ 于是"AuthorityGate 比 prereg 更严格"这个论断，也要收窄：**
+
+```text
+✗ 旧：因为 R-7/R-8/R-9 是新增的
+✓ 新：真正超出 prereg 的只有 R-7（writer 实际核对）
+      和 R-9 的【机制定义】部分
+      R-8 属于 prereg 已有要求的具体化
+```
+
+**⇒ 而这一格的意义在于：**
+
+```text
+⇒ 上一版我把 R-1..R-6 平铺，读者会以为这六条都是 C1 的门槛
+⇒ 实际上 R-1..R-5 是"入场券"，R-6 才是"C1 的名牌"
+⇒ 而 R-7..R-9 是"本设计额外加的门"
+⇒ 三者混淆会导致：把 gate 失败误读为"C1 不成立"
+   ⇒ 而正确的读法是：gate 失败 ⇒ 连 class 都没到
+   ⇒ 这与 G-11 / G-12（不得把 invalidity 写成 FAIL）直接相关
+```
+
+**⇒ 因此 §8 的负向测试矩阵也须按三层重排（见 §8.1 分层）。**
 
 **⇒ 而 `R-7 / R-8 / R-9` 我必须标明它们是**本设计新增**，不在冻结 prereg 里。**
 **⇒ 这意味着 `AuthorityGate = ESTABLISHED` 比 prereg 的 C1 更严格，不是相等。**
@@ -203,7 +330,10 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
 
 ```text
 ⇒ prereg §13 全部满足，不自动意味着 AuthorityGate 会输出 ESTABLISHED
-   （因为 R-7/R-8/R-9 是新增的）
+   ⇒ 真正超出 prereg 的只有：R-7 的【核对机制】与 R-9 的【登记机制定义】
+   ⇒ R-8 不超出（属 gate 5 具体化）
+   ⇒ 而 prereg 满足仍不意味着 AuthorityGate 会输出 ESTABLISHED，
+     因为 R-7 / R-9 的机制尚未存在
 ⇒ 也不意味着 AuthorityGate 不误判：
    漏判（该建立的没建立）、误判（不该建立的建立了）、
    越权签发、非法消费 —— 四条路径都未验证。
@@ -745,20 +875,48 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 
 **凌翼要求：必要条件、充分条件、invalidity 和 class priority 的负向测试矩阵。**
 
-## 8.1 必要条件（R-1..R-10）逐项缺失测试
+## 8.1 必要条件逐项缺失测试（第七轮按三层重排）
+
+**⇒ 第七轮改正：原表把 R-1..R-10 平铺，看不出"gate 失败"与"C1 不成立"的区别。**
+**⇒ 现按 §2.0 的三层分开，并明确各自的期望输出。**
+
+### 8.1a 第一层 · Basic L1 gate（共享，C1/C2/C3 都要过）
+
+| # | 移除哪一项 | 期望输出 | 理由 | 关键区别 |
+|---|---|---|---|---|
+| N-01 | R-1 规则/hash 无效 | `INVALID` | §13 L702 + L741 | **不是** C1 不成立，是**执行无效** |
+| N-02 | R-2 observer 不合法 | `INVALID` | §13 L703；§37 `STATE_OBSERVER_NOT_INDEPENDENT` | 同上 |
+| N-03 | R-3 两臂未实际执行 | `INVALID` | §13 L704；witness 缺失 | 同上 |
+| N-04 | R-4 D_ATTRIBUTION 未 ATTRIBUTED | **分两种，不能统一**：<br>① 结构有效且已执行，attribution 给出**确定负结果** ⇒ `L1 = FAIL`（L729-732）<br>② 结果落入 indeterminate region ⇒ `L1 = UNRESOLVED`（L735-738）<br>③ rule 缺失 / outcome 后改变 ⇒ **INVALID**（L741） | §13 L705 + L708 + L729-741 | **这一格第七轮改正**：原来我写"不得 ESTABLISHED 且不得写成 FAIL"，把三种情况混成一团 |
+| N-05 | R-5 provenance 不完整 | `INVALID` | §13 L711；`PROVENANCE_BREAK` | 同上 |
+
+### 8.1b 第二层 · C1 class rule（C1 专属）
+
+| # | 移除哪一项 | 期望输出 | 理由 | 关键区别 |
+|---|---|---|---|---|
+| N-06 | R-6 episode-specific write 未成立 | 不得 `ESTABLISHED`（AuthorityGate 不签发 C1 要素） | §13 L722-724（L717/L725 为围栏） | **gate 可能全过，只是 C1 的专属判据没成立** ⇒ 此时可能 C2/C3 成立 |
+
+### 8.1c 第三层 · 本设计新增（比 prereg 更严格）
 
 | # | 移除哪一项 | 期望输出 | 理由 |
 |---|---|---|---|
-| N-01 | R-1 规则/hash 无效 | `INVALID` | §13 L702 + L741 |
-| N-02 | R-2 observer 不合法 | `INVALID` | §13 L703；§37 `STATE_OBSERVER_NOT_INDEPENDENT` |
-| N-03 | R-3 两臂未实际执行 | `INVALID` | §13 L704；witness 缺失 |
-| N-04 | R-4 D_ATTRIBUTION 未 ATTRIBUTED | 不得 `ESTABLISHED` | §13 L705 + L708 |
-| N-05 | R-5 provenance 不完整 | `INVALID` | §13 L711；`PROVENANCE_BREAK` |
-| N-06 | R-6 episode-specific write 未成立 | 不得 `ESTABLISHED` | §13 L722-724（L717/L725 为围栏） |
 | N-07 | R-7 writer ≠ 注册主体 | `INVALID` | 本设计新增 |
 | N-08 | R-8 旧快照冒充本轮 after | `INVALID` | 本设计新增 |
 | N-09 | R-9 通路未登记且已发生 | `INVALID` | 凌翼 §4；§37 `UNREGISTERED_EPISODE_REINJECTION` |
-| N-09a | R-10 C1 的 ATTRIBUTED 被借用去满足 C2 conjunct | C2 **不得**因此建立 | §16 L958 明文："Basic L1 / C1 scope 的 D_ATTRIBUTION result 不得满足这一 conjunct" |
+
+### 8.1d 约束项 · 不得借用（跨层）
+
+| # | 情形 | 期望输出 | 理由 |
+|---|---|---|---|
+| N-09a | R-10 C1 的 ATTRIBUTED 被借用去满足 C2 conjunct | C2 **不得**因此建立 | §16 L958："Basic L1 / C1 scope 的 D_ATTRIBUTION result 不得满足这一 conjunct" |
+
+**⇒ 三层分开之后，有一条以前看不出来的区别现在显出来了：**
+
+```text
+第一层失败（N-01..N-05）⇒ INVALID ⇒ 整次执行无效，连 class 都到不了
+第二层失败（N-06）      ⇒ 只是 C1 要素未建立 ⇒ 若 C2/C3 独立成立，报告 C2/C3
+第三层失败（N-07..N-09）⇒ 按本设计判 INVALID ⇒ 但注意：prereg 本身不管这三条
+```
 
 ## 8.2 充分性反向测试（凌翼 Q1_REVERSE_SUFFICIENCY = NOT ESTABLISHED）
 
