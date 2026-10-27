@@ -87,10 +87,52 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 | **§13** 五项 gate | L700-711 | 正向 pre-reset class 的**共同入口** | **必要条件集合**（全部须满足） |
 | **§13** class 选择 | L715-725 | C3 → C2 → C1 的**优先级** | **优先于** AuthorityGate 的 C1 结论 |
 | **§28.1** | L1711-1741 | C1 的 **mandatory failure witness**（两臂对照） | 必要条件中的**一项** |
-| **§24** | L1379-1559 | **post-reset** C1 | **超出 pre-reset AuthorityGate 范围** |
-| **§37** | L2203-2262 | stop conditions | 任一命中 ⇒ 不建立 |
+| **§24** | L1379-1556 | **post-reset** C1 | **超出 pre-reset AuthorityGate 范围** |
+| **§37** | L2203-2261 | stop conditions（L2207 为代码块起始围栏，L2208-2261 为 39 条条款行） | 任一命中 ⇒ 不建立 |
 
 **⇒ 关键：`§28.1` 是 §13 class 选择里的一个**限定词**（L723 "under the Basic L1 / §28.1 scope"），不是独立成立条件。**
+
+## 1.1 表五之二 · 规则级映射（凌翼 §4 要求的"完整规则映射"，第四轮补）
+
+**第四轮自检发现：上面那张表是【章节级】，回答"每一章讲什么"。**
+**而凌翼 §4 要求的是"AuthorityGate 与冻结 prereg §12、§13、§28.1 及适用条款之间的完整规则映射"——那是【规则级】。**
+
+**⇒ 本章补上。规则级 = AuthorityGate 的每一个判定点，对应到哪一条款、哪一句、什么判定。**
+**⇒ 而章节级那不张表不删，因为两者回答不同的问题。**
+
+| # | AuthorityGate 判定点 | 冻结条款（精确） | 条款原文（节录） | 判定性质 |
+|---|---|---|---|---|
+| **G-1** | 规则/hash 有效性 | §13 L702 | "本次 execution 与该 claim scope 所需 manifests / frozen rules 均有效" | 必要条件 |
+| **G-2** | observer 合法性 + before/after 已完成 | §13 L703 → §11 L604-625 | L703："§11 Independent State Observer 合法，并完成 registered before / after observation"；§11 L606："before / after state 必须由独立于 W 的 observer 采集"；L619-625 四条 + "W 不能认证自己已经改变 state" | 必要条件 |
+| **G-3** | 两臂已实际执行 | §13 L704 | "§28.1 preregistered TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL 已实际执行" | 必要条件 |
+| **G-4** | D_ATTRIBUTION 给出 ATTRIBUTED | §13 L705-709 | "frozen D_ATTRIBUTION 在该 §28.1 scope 的 canonical ΔS_identity_masked 上给出 Basic-L1/C1-scope：attribution_result = ATTRIBUTED" | 必要条件 |
+| **G-5** | provenance 完整 + 无命中 stop condition | §13 L711 | "required provenance 完整，且没有命中与该 attempted claim 相关的 §37 invalidity / stop condition" | 必要条件 |
+| **G-6** | episode-specific write 成立 | §13 L722-724 | "else if an episode-specific registered storage write is established in preregistered LITERAL_STORAGE_COMPONENTS under the Basic L1 / §28.1 scope: PRE_RESET_CHANGE_CLASS = C1" | 必要条件 |
+| **G-7** | 两臂 witness 形态合格 | §28.1 L1715-1719 | "TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL" | G-3 的具体形态约束 |
+| **G-8** | witness 回答的问题 | §28.1 L1721-1723 | "attributable registered write/change 是否真的发生？" | G-3/G-6 的语义锚点 |
+| **G-9** | C1 不要求 C2/C3 结构 | §28.1 L1727-1731 + L1741 | L1727："它不要求："；L1730-1731：same-E ON/OFF nonstorage counterfactual / content-class contrast；L1741："仍可合法尝试并建立 C1" | 排除性规定 |
+| **G-10** | class 优先级 | §13 L718-724 | C3 → C2 → C1（else-if 链） | **覆盖类**（决定 reported class） |
+| **G-11** | gate PASS ≠ class 成立 | §13 L727 | "因此 Basic L1 PASS 本身不得被引用为 C1/C2/C3；PRE_RESET_CHANGE_CLASS 必须来自对应 class rule" | **禁止性规定** |
+| **G-12** | invalidity 不得写成 FAIL | §13 L741 | "不得把 protocol/execution invalidity 写成 L1 = FAIL" | **禁止性规定** |
+| **G-13** | C1 的科学含义 | §12 L633-637 | "C1 表示：storage write 是目前最高被正向建立的 change class" | 语义定义 |
+| **G-14** | 最强允许 claim | §12 L643-646 | "REGISTERED_STORAGE_WRITE_OBSERVED" | 输出上限 |
+| **G-15** | C1 是证据断言 | §12 L649 | "因此 C1 是证据断言，不是世界断言" | 语义边界 |
+| **G-16** | META 不进 STATE digest | §7.2 L326 + L343-350 | "不得进入 substrate state digest"；"digest input = STATE_FIELDS only；digest output = META_FIELD" | **硬约束** |
+| **G-17** | post-reset 不覆盖 | §24 L1379-1556 | POST_RESET_CLASS_RULE | **范围排除** |
+| **G-18** | stop condition 清单 | §37 L2208-2261 | 39 条（逐行计数，无空行） | 触发即 INVALID |
+
+**⇒ 而 AuthorityGate 还有三项【本设计新增、无冻结条款对应】的判定点：**
+
+| # | 判定点 | 对应条款 | 性质 |
+|---|---|---|---|
+| **G-19** | writer—execution—observation 关联（R-7） | **无** | 本设计新增；比 prereg 更严格 |
+| **G-20** | execution 来源绑定（R-8） | **无** | 同上 |
+| **G-21** | 通路登记（R-9） | 部分对应 §37 L2253-2254 | 部分新增 |
+
+**⇒ 这三项是"AuthorityGate ≠ prereg C1"的具体所在。**
+**⇒ 因此 `ESTABLISHED` 蕴含 prereg C1，但 prereg C1 不蕴含 `ESTABLISHED`（见 §2.1）。**
+
+**⇒ 本章仍是【设计】，未执行、未验证。规则映射的准确性请睫核。**
 
 ---
 
@@ -160,7 +202,7 @@ AuthorityResult 必须携带两个不同字段：
 
 ```text
 ⇒ 本文的 AuthorityGate 只覆盖 pre-reset C1 claim。
-⇒ post-reset C1 由 §24（L1379-1559）的规则决定，不得由本文的 AuthorityGate 自动覆盖。
+⇒ post-reset C1 由 §24（L1379-1556）的规则决定，不得由本文的 AuthorityGate 自动覆盖。
 ⇒ 也不得扩展成 Memory Qualification。
 ```
 
@@ -193,6 +235,93 @@ import 行 = 4 处（这才是关键）：
    正式 C1 旁路（谁能签发正式 C1）
      = 可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）
 ```
+
+## 2.4b 补正：`__all__` 存在，但它管不到这条路径（第四轮自检新增）
+
+**第四轮自检时我发现 `afterglow_harness/__init__.py` 里有 `__all__`，必须说明它是否削弱上面的论证。**
+
+```text
+afterglow_harness/__init__.py（209 字节）：
+  __all__ = [
+      "harness_constants", "storage", "readers",
+      "writers", "observer", "perturbation_j",
+  ]
+  ⇒ 六项，【不含 evaluator】
+```
+
+**⇒ 这说明两件事，方向相反：**
+
+```text
+① 包层确实做了导出白名单 —— 说明作者有意识地限制对外暴露
+② 但 evaluator 不在白名单里，而四个调用方用的是【绝对导入】：
+   from evaluator import (...)        （evidence_bundle / fixtures / smoke_evaluator）
+   import evaluator as ev             （recompute_from_ledger）
+   ⇒ 都是 import 顶层模块名，不是 from afterglow_harness import evaluator
+   ⇒ 所以 __all__ 对这条路径【完全无效】
+```
+
+**⇒ 结论不变，但理由必须写准：**
+
+```text
+✗ 不完全的说法：evaluator 是公开函数，谁都能 import
+✓ 准确的说法：
+   · 包层有 __all__ 白名单（说明作者想过这件事）
+   · 但白名单不包含 evaluator
+   · 且实际调用方走的是顶层绝对导入，绕过了白名单
+   · ⇒ 在【不改任何现有文件】的前提下，新增调用者只需写一行
+        from evaluator import evaluate_basic_l1
+     即可，无任何机制阻止
+   ⇒ 这是"不可枚举"的具体机制，而不仅仅是一个断言
+```
+
+**⇒ 并且这把 §4.1b 的消费边界要求变得更具体：**
+
+```text
+⇒ 若将来要把 evaluator 纳入白名单管理，须改 __init__.py
+   ⇒ 而 __init__.py 是否在执行关键角色表里？须核（本轮未核，列为待查）
+⇒ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED  [第四轮新增]
+```
+
+### 2.4c 第四轮追加核验：`__init__.py` 不在冻结角色表内
+
+**我上一句写"本轮未核，列为待查"。第四轮我核了，结果比预期糟：**
+
+```text
+MANIFEST         grep "__init__"          → 零命中                    [终端核验]
+role_registry    grep "__init__"          → 零命中                    [终端核验]
+manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [读文件]
+                  其中含：harness_constants / storage / writers / readers /
+                  observer / perturbation_j / reset / evaluator / fixtures /
+                  fixture_contracts / evidence_bundle / qualification_role_registry /
+                  qualification_binding / run_known_answer_suite / qualify_phase_a /
+                  verify_manifest_binding / adversarial_regression /
+                  recompute_from_ledger ＋ BUILD_PROVENANCE 两项
+```
+
+**⇒ 结论：**
+
+```text
+① __init__.py 存在，且有 __all__ 白名单（六项）
+② 但 __init__.py 本身【不在冻结角色表】，也不在 COMPONENT_FILES
+③ ⇒ 它不在任何冻结 hash 底下 ⇒ 可以改它，而不改变任何已登记 hash
+④ ⇒ 也就是说：包层的"导出控制"是一个可以被静默修改的表面
+```
+
+**⇒ 这独立于 BF-8，是第四轮新发现的一格：**
+
+```text
+T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
+  ├ __all__ 存在                  = YES
+  ├ __all__ 含 evaluator          = NO
+  ├ __init__.py 是否冻结          = NO（不在 role_registry / COMPONENT_FILES / MANIFEST）
+  ├ 实际调用方是否走白名单         = NO（走顶层绝对导入）
+  └ 结论：导出控制层既不被使用，也不被冻结。
+          它看起来像一道门，但不锁，也不记账。
+```
+
+**⇒ 我不判定这是不是缺陷。** 它可能是有意的（`__init__.py` 只是包标记）。
+**⇒ 但它必须被记录**，因为将来若有人用"我们有 `__all__` 控制导出"来论证旁路已封闭，这句话是不成立的。
+**⇒ 请知微核："`__init__.py` 不在冻结表内"是有意设计还是遗漏。**
 
 ## 2.5 post-reset 扩展到 Memory Qualification 的排除
 
@@ -476,7 +605,37 @@ T-15b  读取通路是否作为 pre-reset C1 的通用条件 = NOT ESTABLISHED�
       参考校准成功不提供真实摘要的测量资格。
 ```
 
-## 7.1 T-13 · 「有无因果路径」的判定（承接 v0.2，本版补定义）
+## 7.1 P-1 后续读取证据 vs C1 最小科学条件的明确分离（凌翼 §4 要求，第四轮补）
+
+**第四轮自检发现：凌翼 §4 要求「P-1 后续读取证据与 C1 最小科学条件的明确分离」，而本文只有零散的 T-15a/T-15b，没有一张明确的分离表。**
+
+| 项 | "注册存储写入已被证明"（C1 最小条件） | "该记忆后来确实参与业务计算"（后续读取证据） |
+|---|---|---|
+| **证据内容** | 本次 episode 的 registered write 确实发生且可归属 | 后续某个 episode 实际读取了该记录 |
+| **归属条款** | prereg §13 L700-724（五项 gate + class rule） | **无冻结条款**（§13 C1 规则里没有这一条） |
+| **是否 C1 成立的必要条件** | **是** | **否**（凌翼 2026-10-27 明文：不得自动提升为所有 pre-reset C1 的通用定义条件） |
+| **是否 P-1 候选的 claim 必要前提** | 是 | **是**（睫 2026-10-27：属 claim 定义性前提，须在 outcome 前回答） |
+| **证明方式** | 按 gate + class rule 判定 | **须一次真实观测**，不是设计论证（睫） |
+| **未满足时的后果** | C1 不建立 | P-1 的 claim 不成立；**但不得据此把通用 C1 判为不成立** |
+| **本书编号** | R-1..R-7 | T-15a（存在性）/ T-15b（是否通用门槛） |
+
+**⇒ 这一格最容易被两个方向的误用：**
+
+```text
+误用 A  把"后续读取"当成 C1 的通用必要条件
+        ⇒ 凌翼已禁（会扩大 prereg §13 的规则）
+误用 B  因为"后续读取"不是 C1 通用条件，就在 P-1 里也不要求它
+        ⇒ 睫已禁（那样 P-1 的写入即使成立，也不证明记忆被用上）
+```
+
+**⇒ 正确关系：**
+
+```text
+C1（通用）     ─ 不需要后续读取
+P-1 的 claim   ─ 需要后续读取（但这是【候选语义】，不是【C1 规则】）
+```
+
+## 7.2 T-13 · 「有无因果路径」的判定（承接 v0.2，本版补定义）
 
 ```text
 T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
@@ -586,12 +745,13 @@ T_5_META_RECORD_STORE            = NOT ESTABLISHED（承接 v0.2，本版未丢�
 T_9_NEGATIVE_CASE_DETECTION      = NOT ESTABLISHED（承接 v0.2，本版未丢）
 T_10_STATISTICAL_UNIT_RULE       = PREREGISTRATION_REQUIRED（承接 v0.2，本版未丢）
 T_12_AUTHORITY_CONSUMER_PERMISSION = NOT ESTABLISHED（承接 v0.2，本版未丢）
-T_13_CAUSAL_PATH_ADJUDICATION    = NOT ESTABLISHED（§7.1 有定义）
+T_13_CAUSAL_PATH_ADJUDICATION    = NOT ESTABLISHED（§7.2 有定义）
 T_14_P1_PAYLOAD_IDENTITY         = NOT ESTABLISHED（§7.0 有定义）
 T_15a_P1_READ_PATH_EXISTENCE     = NOT ESTABLISHED（候选内，须观测）
 T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 在此拆开]
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
+T_18_MODULE_EXPORT_CONTROL       = NOT ESTABLISHED（§2.4c 有定义，第四轮新增）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
