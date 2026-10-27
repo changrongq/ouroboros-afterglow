@@ -164,6 +164,43 @@ AuthorityResult 必须携带两个不同字段：
 ⇒ 也不得扩展成 Memory Qualification。
 ```
 
+## 2.4 BF-8 的旁路结论为什么是"结构性不可能"（承接 v0.2 §0.2，睫 NB-30）
+
+**v0.3 上一稿把这一段弄丢了，只在状态表留了一行孤立的子项。补回。**
+
+```text
+evaluate_basic_l1 是【可 import 的公开函数】。
+
+调用点 = 11 处（可枚举）：
+  evidence_bundle.py        L519
+  fixtures.py               L252 / L299 / L399
+  recompute_from_ledger.py  L86 / L106
+  smoke_evaluator.py        L63 / L70 / L74 / L79 / L86
+
+import 行 = 4 处（这才是关键）：
+  evidence_bundle.py        L56
+  fixtures.py               L30
+  recompute_from_ledger.py  L95
+  smoke_evaluator.py        L34
+
+⇒ 11 个调用点可枚举，而"将来谁再 import 一次"不可枚举。
+⇒ 所以在【不动 evaluator.py】的前提下，函数层旁路封闭是【结构性不可能】，
+  不是"我暂时还没证明"。
+
+⇒ 两条结论必须分开（凌翼 v0.2 裁定 §2）：
+   函数层旁路（谁能调用 evaluate_basic_l1）
+     = 不动 evaluator.py 则结构性不可封闭
+   正式 C1 旁路（谁能签发正式 C1）
+     = 可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）
+```
+
+## 2.5 post-reset 扩展到 Memory Qualification 的排除
+
+```text
+⇒ AuthorityGate 的 ESTABLISHED 不构成 Memory Qualification。
+⇒ 也不构成 post-reset C1（§24 独立规则）。
+```
+
 ---
 
 # 3 · NB-31 · `L1_local` 的准确映射（凌翼 §1，条件接受）
@@ -515,10 +552,22 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 
 ```text
 BF8_STATUS                        = OPEN
-BF8_AUTHORITY_BOUNDARY           = NOT ESTABLISHED
+  ├ BF8_PATH_B_BYPASS_FREE        = NOT PROVEN（v0.2 原键，本版保留）
+  ├ BF8_PATH_B_CLOSURE_WITHOUT_TOUCHING_EVALUATOR = STRUCTURALLY_IMPOSSIBLE（睫 NB-30，§2.4）
+  ├ 函数层封闭（不动 evaluator.py） = STRUCTURALLY_IMPOSSIBLE（§2.4）
+  ├ 正式 C1 消费边界               = NOT ESTABLISHED（本版 §4.1b 给出表一，凌翼判"边界未闭合"）
+  └ BF8_CODE_IMPLEMENTATION        = NOT AUTHORIZED
+
+BF9_SOURCE_BINDING_GAP           = ACCEPTED（v0.2 原键，本版保留）
+BF9_SECTION_7_2_CONFLICT         = REJECTED（凌翼；我原判断错）
 BF9_EPISODE_SOURCE_BINDING       = NOT ESTABLISHED
+  └ 准确表述：尚未建立真实候选所需的独立 episode/execution 来源绑定链
+    （META 载体在 reference 中存在：Ledger / suite manifest）
+STATE_DIGEST_DOMAIN              = UNCHANGED
+
 NB31_NON_NORMATIVE_ALIAS         = CONDITIONALLY ACCEPTED
 NB31_PREREG_CHANGE               = NOT AUTHORIZED
+NB_31_L1_LOCAL_NAMING            = 呈请凌翼裁 → 已裁：CONDITIONALLY ACCEPTED（见 §3）
 Q1_FULL_EQUIVALENCE              = NOT ESTABLISHED
 Q1_ONE_WAY_NECESSITY             = APPROVED_FOR_DESIGN
 Q1_REVERSE_SUFFICIENCY           = NOT ESTABLISHED
@@ -526,23 +575,41 @@ Q1_POST_RESET_SCOPE              = EXCLUDED
 Q1_CLASS_PRIORITY_PRESERVATION   = REQUIRED
 
 COND_6_EPISODE_SPECIFIC_BINDING  = NOT ESTABLISHED
+FOLLOWUP_READ_REGISTRATION       = TWO_LEVEL_BINDING_REQUIRED
 REGISTERED_PATH_AUTO_C1          = NO（凌翼 2026-10-26）
 UNREGISTERED_READ_AUTO_STOP      = NO（凌翼 2026-10-26）
 
 T_1_W_SHAPE                      = PENDING_QIANXING
 T_2_SUBSTRATE_SCHEMA             = NOT ESTABLISHED
 T_4_WRITER_SINGULARITY           = PENDING_QIANXING
-T_13_CAUSAL_PATH_ADJUDICATION    = NOT ESTABLISHED
-T_14_P1_PAYLOAD_IDENTITY         = NOT ESTABLISHED
+T_5_META_RECORD_STORE            = NOT ESTABLISHED（承接 v0.2，本版未丢）
+T_9_NEGATIVE_CASE_DETECTION      = NOT ESTABLISHED（承接 v0.2，本版未丢）
+T_10_STATISTICAL_UNIT_RULE       = PREREGISTRATION_REQUIRED（承接 v0.2，本版未丢）
+T_12_AUTHORITY_CONSUMER_PERMISSION = NOT ESTABLISHED（承接 v0.2，本版未丢）
+T_13_CAUSAL_PATH_ADJUDICATION    = NOT ESTABLISHED（§7.1 有定义）
+T_14_P1_PAYLOAD_IDENTITY         = NOT ESTABLISHED（§7.0 有定义）
 T_15a_P1_READ_PATH_EXISTENCE     = NOT ESTABLISHED（候选内，须观测）
-T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [本版拆开]
-T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED  [本版新增]
-T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED  [本版新增]
+T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 在此拆开]
+T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
+T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
+C1_END_TO_END_FEASIBILITY        = PENDING_DESIGN_VALIDATION
+
+D1_EXTERNAL_EXPLANATORY_RECORD   = ALLOWED_NON_NORMATIVE（本文即此类）
+D1_FROZEN_MANIFEST_EDITS         = FORBIDDEN（本文未改任何冻结件）
+D2_LEGACY_HASH_PROVENANCE        = NOT ESTABLISHED
+D2_RENAME_AS_REPAIR              = REJECTED
+
+NEW_B_LINEAGE                    = DESIGN_PARKED
+RE-3_RESET_OBSERVER_IDENTITY     = NOT ESTABLISHED
+G2_END_TO_END                    = NOT ESTABLISHED
+PERSISTENT_WORKER_CLEAN_BLOCK    = ACTIVE
+
 FROZEN_Q3_RC11                   = UNCHANGED
 CODE_CHANGE                      = NOT AUTHORIZED
+IMPLEMENTATION_AUTHORIZATION     = NONE
 SCIENTIFIC_EXECUTION             = MAY NOT START
 ```
 
