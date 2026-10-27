@@ -87,7 +87,7 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 | **§13** 五项 gate | L700-711 | 正向 pre-reset class 的**共同入口** | **必要条件集合**（全部须满足） |
 | **§13** class 选择 | L715-725 | C3 → C2 → C1 的**优先级** | **优先于** AuthorityGate 的 C1 结论 |
 | **§28.1** | L1711-1741 | C1 的 **mandatory failure witness**（两臂对照） | 必要条件中的**一项** |
-| **§24** | L1379-1556 | **post-reset** C1 | **超出 pre-reset AuthorityGate 范围** |
+| **§24** | L1379-1556 | **post-reset** class 规则（含 24.3 Post-reset C1，L1528-1536） | **超出 pre-reset AuthorityGate 范围**（不是"无 post-reset C1"，是"由 §24 独立定义"） |
 | **§37** | L2203-2261 | stop conditions（L2207 为代码块起始围栏，L2208-2261 为 39 条条款行） | 任一命中 ⇒ 不建立 |
 
 **⇒ 关键：`§28.1` 是 §13 class 选择里的一个**限定词**（L723 "under the Basic L1 / §28.1 scope"），不是独立成立条件。**
@@ -105,20 +105,20 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 | **G-1** | 规则/hash 有效性 | §13 L702 | "本次 execution 与该 claim scope 所需 manifests / frozen rules 均有效" | 必要条件 |
 | **G-2** | observer 合法性 + before/after 已完成 | §13 L703 → §11 L604-625 | L703："§11 Independent State Observer 合法，并完成 registered before / after observation"；§11 L606："before / after state 必须由独立于 W 的 observer 采集"；L619-625 四条 + "W 不能认证自己已经改变 state" | 必要条件 |
 | **G-3** | 两臂已实际执行 | §13 L704 | "§28.1 preregistered TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL 已实际执行" | 必要条件 |
-| **G-4** | D_ATTRIBUTION 给出 ATTRIBUTED | §13 L705-709 | "frozen D_ATTRIBUTION 在该 §28.1 scope 的 canonical ΔS_identity_masked 上给出 Basic-L1/C1-scope：attribution_result = ATTRIBUTED" | 必要条件 |
+| **G-4** | D_ATTRIBUTION 给出 ATTRIBUTED | §13 L705 + L708 | L705："frozen D_ATTRIBUTION 在该 §28.1 scope 的 canonical ΔS_identity_masked 上给出 Basic-L1/C1-scope"；L708（代码块内）："attribution_result = ATTRIBUTED"（L707/L709 为围栏） | 必要条件 |
 | **G-5** | provenance 完整 + 无命中 stop condition | §13 L711 | "required provenance 完整，且没有命中与该 attempted claim 相关的 §37 invalidity / stop condition" | 必要条件 |
 | **G-6** | episode-specific write 成立 | §13 L722-724 | "else if an episode-specific registered storage write is established in preregistered LITERAL_STORAGE_COMPONENTS under the Basic L1 / §28.1 scope: PRE_RESET_CHANGE_CLASS = C1" | 必要条件 |
-| **G-7** | 两臂 witness 形态合格 | §28.1 L1715-1719 | "TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL" | G-3 的具体形态约束 |
+| **G-7** | 两臂 witness 形态合格 | §28.1 L1716-1718 | 代码块内三行（L1715/L1719 为围栏）："TARGET WRITE ARM" / "vs" / "NO-WRITE / MATCHED BASELINE CONTROL" | G-3 的具体形态约束 |
 | **G-8** | witness 回答的问题 | §28.1 L1721-1723 | "attributable registered write/change 是否真的发生？" | G-3/G-6 的语义锚点 |
 | **G-9** | C1 不要求 C2/C3 结构 | §28.1 L1727-1731 + L1741 | L1727："它不要求："；L1730-1731：same-E ON/OFF nonstorage counterfactual / content-class contrast；L1741："仍可合法尝试并建立 C1" | 排除性规定 |
-| **G-10** | class 优先级 | §13 L718-724 | C3 → C2 → C1（else-if 链） | **覆盖类**（决定 reported class） |
+| **G-10** | class 优先级 | §13 L718-724（L717/L725 为围栏） | 代码块内 else-if 链：L718-719 C3；L720-721 C2；L722-724 C1 | **覆盖类**（决定 reported class） |
 | **G-11** | gate PASS ≠ class 成立 | §13 L727 | "因此 Basic L1 PASS 本身不得被引用为 C1/C2/C3；PRE_RESET_CHANGE_CLASS 必须来自对应 class rule" | **禁止性规定** |
 | **G-12** | invalidity 不得写成 FAIL | §13 L741 | "不得把 protocol/execution invalidity 写成 L1 = FAIL" | **禁止性规定** |
 | **G-13** | C1 的科学含义 | §12 L633-637 | "C1 表示：storage write 是目前最高被正向建立的 change class" | 语义定义 |
 | **G-14** | 最强允许 claim | §12 L643-646 | "REGISTERED_STORAGE_WRITE_OBSERVED" | 输出上限 |
 | **G-15** | C1 是证据断言 | §12 L649 | "因此 C1 是证据断言，不是世界断言" | 语义边界 |
-| **G-16** | META 不进 STATE digest | §7.2 L326 + L343-350 | "不得进入 substrate state digest"；"digest input = STATE_FIELDS only；digest output = META_FIELD" | **硬约束** |
-| **G-17** | post-reset 不覆盖 | §24 L1379-1556 | POST_RESET_CLASS_RULE | **范围排除** |
+| **G-16** | META 不进 STATE digest | §7.2 L326 + L346-347 + L350 | L326："不得进入 substrate state digest"；L346-347（代码块内，L345/L348 为围栏）："digest input = STATE_FIELDS only" / "digest output = META_FIELD"；L350："digest 输出不得回灌进自己的输入" | **硬约束** |
+| **G-17** | post-reset C1 的独立定义（pre-reset 权威门不得代替它） | §24 L1379-1556，其中 post-reset C1 在 L1528-1536（**24.3 Post-reset C1**，L1533 `POST_RESET_SUPPORTED_CLASS = C1`） | §24 定义的是 **post-reset** 的 class 规则本身（含 L1415-1417 "C1 persistence scope"、L1528-1536 "Post-reset C1"）；**不是"不涉及 C1"** | **范围隔离**：本文 AuthorityGate 只覆盖 pre-reset，不得代替 §24 的 post-reset 判定 |
 | **G-18** | stop condition 清单 | §37 L2208-2261 | 39 条（逐行计数，无空行） | 触发即 INVALID |
 
 **⇒ 而 AuthorityGate 还有三项【本设计新增、无冻结条款对应】的判定点：**
@@ -128,6 +128,27 @@ E-9   §28.1 当成 C1 成立规则           ← 章节错（本次）
 | **G-19** | writer—execution—observation 关联（R-7） | **无** | 本设计新增；比 prereg 更严格 |
 | **G-20** | execution 来源绑定（R-8） | **无** | 同上 |
 | **G-21** | 通路登记（R-9） | 部分对应 §37 L2253-2254 | 部分新增 |
+
+**⇒ 而 G-10（class 优先级）实际依赖的 C2/C3 独立性判据，第五轮补上：**
+
+| # | AuthorityGate 判定点 | 冻结条款（精确） | 条款原文（节录） | 判定性质 |
+|---|---|---|---|---|
+| **G-10a** | C2 是否「独立成立」 | §16 L944-960 | L948-956："只有当 C2 所要求的 paired evidence 已实际执行，并且对应 ledger entries 满足：registered ON/OFF treatment contrast established AND D_NONSTORAGE_BASELINE_ROLE_HASH = <the frozen registered role hash> AND attribution_result = ATTRIBUTED"；L960："才可建立 C2" | **G-10 的前置判据** |
+| **G-10b** | C2 的 ATTRIBUTED 不得借用 C1 的 | §16 L958 | "Basic L1 / C1 scope 的 D_ATTRIBUTION result 不得满足这一 conjunct" | **禁止性规定**（关键） |
+| **G-10c** | C3 是否「独立成立」 | §19 L1081-1090+ | L1081："Every C3 Member Must Be Individually Attributed"；L1086："FOR EVERY e IN CONTENT_CLASS_EVIDENCE_SET" | **G-10 的前置判据** |
+| **G-10d** | C3 的比较对象 | §20 L1136-1142 | L1138："C3 的 canonical comparison object 是"；L1141："T_CONTRAST_RESULT(E)" | **G-10 的前置判据** |
+
+**⇒ 为什么必须补这四条：**
+
+```text
+⇒ G-10 说"若 C3 独立成立则报 C3，否则若 C2 则报 C2，否则 C1"
+⇒ 但"独立成立"不是自明的 —— 它由 §16 / §19-20 各自的规则定义
+⇒ 若不映射 §16 / §19-20，"class 优先级"这句话就是空的
+⇒ 而 G-10b 尤其关键：C2 不得借用 C1 的 ATTRIBUTED
+   ⇒ 这正是"gate PASS ≠ class 成立"（G-11）在 C2 侧的具体形态
+```
+
+**⇒ 而这一条（G-10b）我上一轮完全没提。** 它说明：`D_ATTRIBUTION` 拿到 `ATTRIBUTED` 之后，**不能顺势满足 C2 的 conjunct**。
 
 **⇒ 这三项是"AuthorityGate ≠ prereg C1"的具体所在。**
 **⇒ 因此 `ESTABLISHED` 蕴含 prereg C1，但 prereg C1 不蕴含 `ESTABLISHED`（见 §2.1）。**
@@ -158,13 +179,15 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
   R-1  §13 L702  本次 execution 与 claim scope 所需 manifests / frozen rules 均有效
   R-2  §13 L703  §11 Independent State Observer 合法，完成 registered before/after observation
   R-3  §13 L704  §28.1 TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL 已实际执行
-  R-4  §13 L705-709  frozen D_ATTRIBUTION 在 canonical ΔS_identity_masked 上给出 ATTRIBUTED
+  R-4  §13 L705 + L708  frozen D_ATTRIBUTION 在 canonical ΔS_identity_masked
+                       上给出 ATTRIBUTED（L707/L709 为围栏）
   R-5  §13 L711  required provenance 完整，且无命中与本次 claim 相关的 §37 invalidity / stop condition
   R-6  §13 L722-724  episode-specific registered storage write 在 preregistered
-                     LITERAL_STORAGE_COMPONENTS 上成立
+                     LITERAL_STORAGE_COMPONENTS 上成立（L717/L725 为围栏）
   R-7  BF-8 的 writer—execution—observation 关联成立（本设计新增，非 prereg 原有）
   R-8  BF-9 的 execution 来源绑定成立（本设计新增）
   R-9  NB-29 通路登记成立（本设计新增）
+  R-10 C1 的 ATTRIBUTED 未被借用去满足 C2 conjunct（§16 L958 明文禁止）
 ```
 
 **⇒ 而 `R-7 / R-8 / R-9` 我必须标明它们是**本设计新增**，不在冻结 prereg 里。**
@@ -521,7 +544,7 @@ V-3  采集主体验证
 | 8 | 通路已登记 + 事件合规 + **有**因果路径 | 有效 | 正常 | 按规则 | 可纳入证据；**不等于** C1 已建立 |
 | 9 | 全部 required structure 有效且已执行，测量为负 | 有效 | **FAIL** | 不建立 | `FAIL`（此时才允许） |
 | 10 | 同上，落入不确定区 | 有效 | **UNRESOLVED** | 不建立 | `UNRESOLVED` |
-| 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 有效 | **PASS** | **待定，须按 §13 L718-724 优先级** | 若 C3 独立成立 ⇒ `C3`；否则若 C2 ⇒ `C2`；否则 ⇒ `C1`（R-1..R-9 全过才可） |
+| 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 有效 | **PASS** | **待定，须按 §13 L718-724 优先级** | 若 C3 独立成立 ⇒ `C3`；否则若 C2 ⇒ `C2`；否则 ⇒ `C1`（R-1..R-10 全过才可） |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
 
@@ -617,7 +640,7 @@ T-15b  读取通路是否作为 pre-reset C1 的通用条件 = NOT ESTABLISHED�
 | **是否 P-1 候选的 claim 必要前提** | 是 | **是**（睫 2026-10-27：属 claim 定义性前提，须在 outcome 前回答） |
 | **证明方式** | 按 gate + class rule 判定 | **须一次真实观测**，不是设计论证（睫） |
 | **未满足时的后果** | C1 不建立 | P-1 的 claim 不成立；**但不得据此把通用 C1 判为不成立** |
-| **本书编号** | R-1..R-7 | T-15a（存在性）/ T-15b（是否通用门槛） |
+| **本书编号** | R-1..R-6（C1 自身）+ R-10（不得借用给 C2） | T-15a（存在性）/ T-15b（是否通用门槛） |
 
 **⇒ 这一格最容易被两个方向的误用：**
 
@@ -661,26 +684,27 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 
 **凌翼要求：必要条件、充分条件、invalidity 和 class priority 的负向测试矩阵。**
 
-## 8.1 必要条件（R-1..R-9）逐项缺失测试
+## 8.1 必要条件（R-1..R-10）逐项缺失测试
 
 | # | 移除哪一项 | 期望输出 | 理由 |
 |---|---|---|---|
 | N-01 | R-1 规则/hash 无效 | `INVALID` | §13 L702 + L741 |
 | N-02 | R-2 observer 不合法 | `INVALID` | §13 L703；§37 `STATE_OBSERVER_NOT_INDEPENDENT` |
 | N-03 | R-3 两臂未实际执行 | `INVALID` | §13 L704；witness 缺失 |
-| N-04 | R-4 D_ATTRIBUTION 未 ATTRIBUTED | 不得 `ESTABLISHED` | §13 L705-709 |
+| N-04 | R-4 D_ATTRIBUTION 未 ATTRIBUTED | 不得 `ESTABLISHED` | §13 L705 + L708 |
 | N-05 | R-5 provenance 不完整 | `INVALID` | §13 L711；`PROVENANCE_BREAK` |
-| N-06 | R-6 episode-specific write 未成立 | 不得 `ESTABLISHED` | §13 L722-724 |
+| N-06 | R-6 episode-specific write 未成立 | 不得 `ESTABLISHED` | §13 L722-724（L717/L725 为围栏） |
 | N-07 | R-7 writer ≠ 注册主体 | `INVALID` | 本设计新增 |
 | N-08 | R-8 旧快照冒充本轮 after | `INVALID` | 本设计新增 |
 | N-09 | R-9 通路未登记且已发生 | `INVALID` | 凌翼 §4；§37 `UNREGISTERED_EPISODE_REINJECTION` |
+| N-09a | R-10 C1 的 ATTRIBUTED 被借用去满足 C2 conjunct | C2 **不得**因此建立 | §16 L958 明文："Basic L1 / C1 scope 的 D_ATTRIBUTION result 不得满足这一 conjunct" |
 
 ## 8.2 充分性反向测试（凌翼 Q1_REVERSE_SUFFICIENCY = NOT ESTABLISHED）
 
 | # | 情形 | 期望输出 |
 |---|---|---|
 | N-10 | R-1..R-6 全部满足，但 R-7 未验证 | `NOT_ESTABLISHED`（不得 `ESTABLISHED`） |
-| N-11 | R-1..R-6 全部满足，R-7..R-9 全过 | `ESTABLISHED` |
+| N-11 | R-1..R-6 全部满足，R-7..R-10 全过 | `ESTABLISHED`（再按 G-10 优先级定 reported class） |
 | N-12 | 同 N-11，但 C2 独立成立 | `reported_pre_reset_change_class = C2`（**不是 C1**） |
 | N-13 | 同 N-11，但 C3 独立成立 | `reported_pre_reset_change_class = C3`（**不是 C1**） |
 
@@ -703,7 +727,7 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 | N-21 | 替换证据包后重新封存 | 拒绝（plan 引用不符） |
 | N-22 | 用改名把 `L1_local` 声明为 `C1` | 拒绝（NB-31 禁 3） |
 
-**⇒ 全部 22 条：只列设计，未执行。**
+**⇒ 全部 23 条（N-01..N-09a / N-10..N-13 / N-14..N-17 / N-18..N-22）：只列设计，未执行。**
 
 ---
 
@@ -784,7 +808,7 @@ SCIENTIFIC_EXECUTION             = MAY NOT START
 - 未把 `L1_local` 声明为等价于正式 C1
 - 未宣称表一闭合
 - 未把 h>=2 写成通用规则
-- 未把 22 条负向测试说成已执行
+- 未把 23 条负向测试说成已执行
 
 ---
 
