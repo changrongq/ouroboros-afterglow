@@ -177,7 +177,7 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
 
 > ⚠️ **【本代码块已作废：它把 class selection 塞进了 AuthorityResult】
 > 下方 `reported_pre_reset_change_class` 字段的设计是错的——它把 §13 的 class 选择职责塞给了 AuthorityGate。
-> **当前有效版本见 §2.2c。**
+> **当前有效版本见 §2.2b。**
 
 ```text
 （作废）AuthorityResult 必须携带两个不同字段：
@@ -189,7 +189,7 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
 ⇒ 这一条我 v0.2 完全没写。
 ```
 
-## 2.2c 结果的三根轴（不是单一枚举）
+## 2.2b 结果的三根轴（不是单一枚举）
 
 **⇒ 全文只定义了 `ESTABLISHED`，此前从未说"不成立"时返回什么。**
 **⇒ 而 `INVALID` 在文中出现 30 次，没有任何一处说明它属于 `AuthorityResult`。**
@@ -241,14 +241,14 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 ```text
 表三第 1-5 行  → 轴 A = INVALID（轴 B/C 不产生）
 表三第 6 行    → 不签发任何轴
-表三第 7 行    → 独立的【逐项】标记（见 §2.2d），不属于三轴
-表三第 8 行    → 独立的【逐项】标记（见 §2.2d），不属于三轴
+表三第 7 行    → 独立的【逐项】标记（见 §2.2c），不属于三轴
+表三第 8 行    → 独立的【逐项】标记（见 §2.2c），不属于三轴
 表三第 9 行    → 轴 A=VALID, 轴 B=FAIL, 轴 C=NOT_ESTABLISHED
 表三第 10 行   → 轴 A=VALID, 轴 B=UNRESOLVED, 轴 C=NOT_ESTABLISHED
 表三第 11 行   → 轴 A=VALID, 轴 B=PASS, 轴 C=C1_STORAGE_ELEMENT_ESTABLISHED（若 R-1..R-10 全过）
 ```
 
-## 2.2d 逐项标记与整体结果分离（睫 NB-35 / NB-36）
+## 2.2c 逐项标记与整体结果分离（睫 NB-35 / NB-36）
 
 **⇒ 睫的两条裁定，我接受：**
 
@@ -275,7 +275,7 @@ NEUTRAL_REVIEWED         ← 某一条边界外读取经独立审查确无相关
    必带三项（T-13）：谁判 / 引用什么证据 / 何时封存
 ```
 
-## 2.2e 停用"正式 C1"一词（凌翼指出的歧义）
+## 2.2d 停用"正式 C1"一词（凌翼指出的歧义）
 
 **⇒ 凌翼指出：v0.3 §2.4a 把"正式 C1"定义为"AuthorityGate 证明 C1 要素成立"，但 §12 的表述是「storage write 是目前最高被正向建立的 change class」——指的是【最终报告的类别】。**
 
@@ -469,12 +469,7 @@ prereg §13 L722-724 的 C1 class rule 原文：
 
 ⇒ 因此：**C1 的证据重心在【执行过程】，不在【状态数据】。**
 
-## 2.5 post-reset 扩展到 Memory Qualification 的排除
 
-```text
-⇒ AuthorityGate 的 ESTABLISHED 不构成 Memory Qualification。
-⇒ 也不构成 post-reset C1（§24 独立规则）。
-```
 ---
 
 # 3 · NB-31 · `L1_local` 的准确映射（凌翼 §1，条件接受）
