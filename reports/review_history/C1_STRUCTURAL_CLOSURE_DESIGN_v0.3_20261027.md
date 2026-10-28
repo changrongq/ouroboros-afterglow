@@ -212,7 +212,7 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 |---|---|---|---|
 | **轴 A · 执行/证据有效性** | `VALID` / `INVALID` | 本次执行与证据是否成立。`INVALID` **不是**科学负结果 | §13 L741 |
 | **轴 B · 测量结果** | `FAIL` / `UNRESOLVED` / `PASS` | 仅当轴 A = `VALID` 时才有意义。轴 A = `INVALID` 时轴 B 为 `NOT_INSTANTIATED`（**接口状态，不是第四种科学测量结果**） | §13 L729-738 |
-| **轴 C · C1 要素建立** | `C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` / `UNDETERMINED` / `NOT_INSTANTIATED` | 仅当轴 A = `VALID` 时才有意义 | §13 L722-724 |
+| **轴 C · C1 要素建立** | 轴 A = `VALID` 时：`C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` / `UNDETERMINED`<br>轴 A = `INVALID` 时：`NOT_INSTANTIATED`（不实例化） | 轴 A = `VALID` 时才有科学含义；`INVALID` 时为接口占位 | §13 L722-724 |
 
 **⇒ 三轴的依赖规则（已按睫 T-19 裁定与知微 §3.1 收紧）：**
 
@@ -256,14 +256,19 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
      而 INVALID 是【测了，但执行/证据无效】，
      那恰恰是 L64 排除在 NOT_ASSESSED 之外的东西。
 
-⇒ 因此二者不得互换，否则会违反：
-   · prereg L1556：未尝试的 higher class 仍记为 NOT_ASSESSED；
-     不得把它包装成 FAIL、UNRESOLVED 或 INVALID。
-   · prereg L2007：禁止把 NOT_ASSESSED、NOT_ESTABLISHED 或其他字段
-     拆开后重新拼接成 higher-class claim。
+⇒ 而 L1556 / L2007 各自的作用域必须写准（本轮核字节更正）：
+   · L1556 位于 §24（POST_RESET_CLASS_RULE）内，
+     说的是【post-reset 未尝试的 higher class】记为 NOT_ASSESSED，
+     ⇒ 它约束的是 post-reset 语境，不是 pre-reset 轴 A/B/C。
+   · L2007 位于 §32（Result Citation Discipline，L1966 起），
+     约束的是【不得把字段拆开重拼】，
+     ⇒ 它同时适用于本文的轴模型：三个轴的值不得被拆开重组为另一种 claim。
 
-⇒ 若将来要与冻结词对齐，应优先使用 NOT_ASSESSED 并说明它与 INVALID 的关系；
-   本文保留 NOT_INSTANTIATED 仅因它是【接口层标记】，不是科学结果。
+⇒ 因此本文与冻结词的关系是：
+   · 本文不改变、不替换 NOT_ASSESSED 的任何冻结含义
+   · 本文的 NOT_INSTANTIATED 只用于【pre-reset 轴 C 的接口占位】
+   · 二者作用域不同（post-reset higher class vs pre-reset 轴 C），
+     不得互换，也不得据此推断对方的状态
 ```
 
 **⇒ 而此前我把它们压成一列，会导致一个具体错误：**
