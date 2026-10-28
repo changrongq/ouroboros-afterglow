@@ -211,22 +211,59 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 | 轴 | 取值 | 含义 | 权威条款 |
 |---|---|---|---|
 | **轴 A · 执行/证据有效性** | `VALID` / `INVALID` | 本次执行与证据是否成立。`INVALID` **不是**科学负结果 | §13 L741 |
-| **轴 B · 测量结果** | `FAIL` / `UNRESOLVED` / `PASS` | 仅当轴 A = `VALID` 时才有意义 | §13 L729-738 |
-| **轴 C · C1 要素建立** | `C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` / `NOT_INSTANTIATED` | 仅当轴 A = `VALID` 时才有意义 | §13 L722-724 |
+| **轴 B · 测量结果** | `FAIL` / `UNRESOLVED` / `PASS` | 仅当轴 A = `VALID` 时才有意义。轴 A = `INVALID` 时轴 B 为 `NOT_INSTANTIATED`（**接口状态，不是第四种科学测量结果**） | §13 L729-738 |
+| **轴 C · C1 要素建立** | `C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` / `UNDETERMINED` / `NOT_INSTANTIATED` | 仅当轴 A = `VALID` 时才有意义 | §13 L722-724 |
 
-**⇒ 三轴的依赖规则（已统一，知微问题 A / 凌翼 §1）：**
+**⇒ 三轴的依赖规则（已按睫 T-19 裁定与知微 §3.1 收紧）：**
 
 ```text
-轴 A = INVALID            ⇒ 轴 B、轴 C 均为 NOT_INSTANTIATED（不产生任何结论）
-                              但【保留】原始局部结果供审查，不得删除历史证据
-轴 A = VALID, 轴 B = PASS ⇒ 轴 C ∈ { C1_STORAGE_ELEMENT_ESTABLISHED, NOT_ESTABLISHED }
-轴 A = VALID, 轴 B = FAIL / UNRESOLVED
-                          ⇒ 轴 C = NOT_ESTABLISHED（含义：未建立正向要素）
+轴 A = INVALID
+    ⇒ 轴 B、轴 C 均为 NOT_INSTANTIATED（不实例化）
+      注：这是【接口状态】，不是第四种科学测量结果
+      但【保留】原始局部结果供审查，不得删除历史证据
 
-⇒ 关键区别：
-   · FAIL / UNRESOLVED 是可引用的【科学负结果】（§13 L729-738）
-   · 轴 C 的 NOT_ESTABLISHED 不是负结果，只是“未建立正向要素”
-   · 二者不得互相替代
+轴 A = VALID, 轴 B = PASS
+    ⇒ 轴 C ∈ { C1_STORAGE_ELEMENT_ESTABLISHED, NOT_ESTABLISHED }
+
+轴 A = VALID, 轴 B = FAIL
+    ⇒ 轴 C = NOT_ESTABLISHED（确定地没有建立正向要素）
+
+轴 A = VALID, 轴 B = UNRESOLVED
+    ⇒ 轴 C = UNDETERMINED（不知道有没有建立正向要素）
+    ⇒ 【不得】并入 NOT_ESTABLISHED
+
+⇒ 关键区别（三条，不得互相替代）：
+   · FAIL        = 有效执行中的【确定负结果】（§13 L729-732）
+   · UNRESOLVED  = 有效执行中的【不确定结果】（§13 L735-738），不得据此作否定结论
+   · 轴 C 的 NOT_ESTABLISHED / UNDETERMINED 是【要素是否建立】的记录，
+     不等于轴 B 的测量结果
+
+⇒ 为什么 UNRESOLVED 必须单列（睫）：
+   若共用 NOT_ESTABLISHED，"不知道"会以"确定没有"的名义出现。
+   而 NOT_ESTABLISHED 听起来是一个结论；在 UNRESOLVED 底下，它其实是一个没结论。
+```
+
+**⇒ 关于 `NOT_INSTANTIATED` 这个词（睫 NB-43，必须明写）：**
+
+```text
+⇒ NOT_INSTANTIATED 是【本文新造的接口状态词】，不是 prereg 的冻结词。
+
+⇒ 它与 prereg 已有的 NOT_ASSESSED 【不是同义词】：
+   · NOT_ASSESSED（prereg / evaluator.py L64, L72, L181）
+     = 没有测。且 L64 明文排除 "attempted-but-not-run"。
+   · NOT_INSTANTIATED（本文新造）
+     = 轴 A = INVALID 之后"不产生结论"。
+     而 INVALID 是【测了，但执行/证据无效】，
+     那恰恰是 L64 排除在 NOT_ASSESSED 之外的东西。
+
+⇒ 因此二者不得互换，否则会违反：
+   · prereg L1556：未尝试的 higher class 仍记为 NOT_ASSESSED；
+     不得把它包装成 FAIL、UNRESOLVED 或 INVALID。
+   · prereg L2007：禁止把 NOT_ASSESSED、NOT_ESTABLISHED 或其他字段
+     拆开后重新拼接成 higher-class claim。
+
+⇒ 若将来要与冻结词对齐，应优先使用 NOT_ASSESSED 并说明它与 INVALID 的关系；
+   本文保留 NOT_INSTANTIATED 仅因它是【接口层标记】，不是科学结果。
 ```
 
 **⇒ 而此前我把它们压成一列，会导致一个具体错误：**
@@ -342,8 +379,9 @@ import 行 = 4 处（这才是关键）：
    ① 函数接口层：当前接口不认证 writer（见上）；
       这是"接口缺少 writer 参数"的事实，不是"部署权限也无法限制"的结论。
    ② 正式消费边界层（谁能签发 C1_STORAGE_ELEMENT_ESTABLISHED）：
-      可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）；
-      但当前 T-18 仍 = NOT ESTABLISHED。
+      **拟议可封闭**（设计假设），封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）；
+      但封闭性本身 = **NOT ESTABLISHED**，须由负向测试（§8.4）证伪而非证实；
+      且当前 T-18 仍 = NOT ESTABLISHED。
 ```
 
 ## 2.4a 术语对照表（已停用「正式 C1」）
@@ -463,10 +501,30 @@ prereg §13 L722-724 的 C1 class rule 原文：
 ⇒ 它从来就是【执行侧】的属性。
 ⇒ 该 schema 把 episode-specific 的证明责任，整体推给了执行侧。
 
-⇒ 若 COND_6 那条链建起来 ⇒ C1 可建立（episode-specific 完全由执行侧提供）；
+⇒ 若 COND_6 那条链建起来 ⇒ episode/execution 来源绑定这一必要条件得到支持
+                              （不等于 C1 建立；还须其余 R-1..R-10 全过）；
 ⇒ 若那条链建不起来 ⇒ C1 不可建立，而失败的原因不在 STATE，在 META↔执行 的绑定。
 ```
 
+**⇒ 必须收窄的一点（知微 §3.2）：**
+
+```text
+✗ 旧写法：若 COND_6 那条链建起来 ⇒ C1 可建立
+✓ 收窄为：
+   COND_6 建立后，episode/execution 来源绑定这一必要条件得到支持；
+   还须满足其余适用 gate 与独立 C1 class rule，才能建立注册存储写入证据。
+
+⇒ 直接反例：执行身份与采集来源完整可信，但目标臂没有产生注册判据所要求的变化。
+   ⇒ COND_6 可以成立，而科学结果仍可为 FAIL，不能签发 C1。
+   ⇒ （依据：evaluator.py L237-245 的 h==0 分支）
+
+⇒ 两类证据的分工（知微要求）：
+   STATE 的独立观察 = 证明【发生了什么注册变化】
+                     （包括 B 内容是否等于注册 payload，不只变化幅度）
+   执行侧 META      = 证明【这些观察、writer、对象与本轮 episode/execution 的关联】
+   ⇒ 两类证据共同承担 C1 的证明责任。
+   ⇒ “证据重心在执行侧”不等于“可以弱化 STATE 内容核验”。
+```
 ⇒ 因此：**C1 的证据重心在【执行过程】，不在【状态数据】。**
 
 
@@ -635,7 +693,7 @@ V-3  采集主体验证
 | 7 | 边界外读取，经独立审查**确无相关因果路径** | — | — | — | **逐项标记**：`NEUTRAL_REVIEWED`（**必带 T-13 三项**：谁判/引用什么/何时封存；睫 NB-35）。**不产生任何轴的值**，也不判 INVALID |
 | 8 | 通路已登记 + 事件合规 + **有**因果路径 | — | — | — | **逐项标记**：`EVIDENCE_ADMITTED`（睫 NB-36）。**不等于任何轴的值**；"C1 尚未成立"与"这一项被收下"是两件事 |
 | 9 | 全部 required structure 有效且已执行，测量为负 | 轴 A = VALID | 轴 B = **FAIL** | 轴 C = NOT_ESTABLISHED | `FAIL`（此时才允许） |
-| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = NOT_ESTABLISHED | `UNRESOLVED` |
+| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **UNDETERMINED**（不得并入 NOT_ESTABLISHED） | `UNRESOLVED` |
 | 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 轴 A = VALID | 轴 B = **PASS** | 轴 C = **C1_STORAGE_ELEMENT_ESTABLISHED**（若 R-1..R-10 全过） | AuthorityGate 输出轴 C；**最终 `PRE_RESET_CHANGE_CLASS` 仍由 §13 L715-725 机制另行赋值** |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
@@ -832,6 +890,8 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 | N-10 | **设计尚未实现**（R-7 机制未建立，未执行） | `NOT_ESTABLISHED`（不得 `ESTABLISHED`） |
 | N-10a | **某次实际执行**缺少本 claim 必需来源证据 | 按适用条款记 `INVALID`（与 N-10 场景不同） |
 | N-11 | R-1..R-6 全部满足，R-7..R-10 全过 | `ESTABLISHED`（= C1 要素成立；**不**等于最终 class = C1） |
+| N-12 | 同 N-11，但 C2 独立成立 | AuthorityGate 仍只报 C1 要素成立；**最终 class 由 §13 机制赋为 C2**（不是 AuthorityGate 输出 C2） |
+| N-13 | 同 N-11，但 C3 独立成立 | 同上；最终 class 赋为 C3（不是 AuthorityGate 输出 C3） |
 
 **⇒ 关于 N-11 的三点限定（凌翼 §4 要求）：**
 
@@ -844,8 +904,6 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
    ⇒ 须由独立于被测 AuthorityGate 的主体给出预期
    ⇒ 该主体与判定程序 = NOT ESTABLISHED（T-18 相关）
 ```
-| N-12 | 同 N-11，但 C2 独立成立 | AuthorityGate 仍只报 C1 要素成立；**最终 class 由 §13 机制赋为 C2**（不是 AuthorityGate 输出 C2） |
-| N-13 | 同 N-11，但 C3 独立成立 | 同上；最终 class 赋为 C3（不是 AuthorityGate 输出 C3） |
 
 ## 8.3 invalidity 不得被局部结果掩盖（凌翼 §3 表三裁定）
 
@@ -915,7 +973,7 @@ T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 �
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 T_18_FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED（§2.4b 有定义；与函数可导入性无关）
-T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴方向已定；轴 C 在 B 非 PASS 时的语义已统一为 NOT_ESTABLISHED，待睫/凌翼复核）
+T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴已定；FAIL ⇒ NOT_ESTABLISHED，UNRESOLVED ⇒ UNDETERMINED，INVALID ⇒ NOT_INSTANTIATED；待睫/凌翼确认收口）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
