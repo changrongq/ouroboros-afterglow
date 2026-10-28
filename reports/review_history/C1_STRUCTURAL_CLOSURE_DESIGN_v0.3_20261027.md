@@ -265,20 +265,80 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
    · 而 AuthorityGate 另设一个派生字段表达"不确定"
    · 二者并存，不得静默替换
 
-   具体做法（本文拟议，须凌翼裁）：
+   具体做法（本文拟议 → 凌翼已于 2026-10-28 裁定：ALLOWED AS NON-NORMATIVE DERIVED ANNOTATION ONLY）：
      冻结字段   change_class            = NOT_ESTABLISHED（不改，原样保留）
      派生字段   c1_element_establishment = UNDETERMINED（本设计新增，仅用于消费侧语义）
    ⇒ 消费者若只读 change_class，看到的是 NOT_ESTABLISHED（冻结语义不变）
    ⇒ 消费者若读派生字段，才知道"这是不确定，不是确定没有"
    ⇒ 但【不得】声明派生字段替换或改写了 change_class
 
-⇒ 这一格须凌翼裁定：是"另设一格"（可行，不改冻结件），还是"改写语义"（不可，须授权）。
+⇒ 裁定结果：BF11_SEMANTIC_DECISION = RESOLVED / FROZEN_FIELD_REWRITE = PROHIBITED / NORMATIVE_EXTENSION = NOT AUTHORIZED
 ```
 
-**⇒ 关于 `NOT_INSTANTIATED` 这个词（睫 NB-43，必须明写）：**
+
+## 2.2b-1 派生的六项条件与四种情况（凌翼 2026-10-28 裁定原文）
+
+**⇒ 凌翼裁定的六项必须同时满足的条件，逐条落点：**
 
 ```text
-⇒ NOT_INSTANTIATED 是【本文新造的接口状态词】，不是 prereg 的冻结词。
+① 原始 result / change_class / 相关证据保持不变
+   ⇒ 本文：change_class 原样保留 = NOT_ESTABLISHED
+
+② UNDETERMINED 须明确标记为非规范派生字段
+   ⇒ 本文：已标"派生字段"（本节 + 表三第 10 行）
+
+③ 派生过程须记录【来源字段 / 适用规则 / 版本】，且可独立复算
+   ⇒ 此前缺失，现补：派生记录至少须含
+      · source_result        = raw_l1.result        （= UNRESOLVED）
+      · source_change_class  = raw_l1.change_class  （= NOT_ESTABLISHED）
+      · derivation_rule_id   = 本文 §2.2b 轴映射规则标识
+      · derivation_rule_version
+      · 独立复算条件：同一 (source_result, source_change_class,
+        derivation_rule_version) 必得同一派生值
+   ⇒ 缺任一项，派生值不得被引用
+
+④ 只允许在执行/证据有效性已确认、且测量确为 UNRESOLVED 时派生
+   不得仅凭未经验证的局部结果签发科学结论
+   ⇒ 本文：轴 A = VALID 前提；不得绕过 AuthorityGate
+
+⑤ 派生字段不得单独充当正式 C1 判定或最终 PRE_RESET_CHANGE_CLASS
+   ⇒ 本文：已写明（表三第 11 行、§2.2d）
+
+⑥ 不得用该字段改变冻结的 FAIL / UNRESOLVED / INVALID 判据
+   ⇒ 本文：已写明"不得改写 change_class"
+```
+
+**⇒ 四种情况的区分（凌翼 §3，本文照录为唯一权威）：**
+
+```text
+A = VALID, B = FAIL       → 正向 C1 不建立 → 可记录 NOT_ESTABLISHED
+A = VALID, B = UNRESOLVED → 测量尚无确定结果 → 冻结 change_class 仍为 NOT_ESTABLISHED
+                            → 可以另记派生注释 UNDETERMINED
+A = INVALID               → 不产生有效的科学测量结论 → 保留原始局部数据与无效原因
+A = VALID, B = PASS       → 仍须独立审核 C1 专属建立条件
+                            → 不得自动签发 C1_STORAGE_ELEMENT_ESTABLISHED
+```
+
+**⇒ 四类禁止的越界（凌翼 §4）：**
+
+```text
+· 将冻结 change_class=NOT_ESTABLISHED 改写成 UNDETERMINED
+· 宣称冻结 prereg 已定义新的 UNDETERMINED 科学结果
+· 用派生字段改变测量有效性、class selection 或证据接纳条件
+· 未获授权前，将非规范注释升级为具有判定效力的 AuthorityGate 正式输出
+```
+
+**⇒ 认识论边界（凌翼原文）：**
+
+> UNRESOLVED = 本次测量落入冻结的不确定区；
+> NOT_ESTABLISHED = 本次没有建立正向 C1 类别。
+> **没有建立，不等于已经证明不存在。**
+
+⇒ 因此不得把冻结的 NOT_ESTABLISHED 重新解释为"确定没有发生存储写入"。
+
+### 关于 `NOT_INSTANTIATED` 这个词（睫 NB-43）
+
+```text
 
 ⇒ 它与 prereg 已有的 NOT_ASSESSED 【不是同义词】：
    · NOT_ASSESSED（prereg / evaluator.py L64, L72, L181）
@@ -1026,7 +1086,12 @@ T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 �
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 T_18_FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED（§2.4b 有定义；与函数可导入性无关）
-T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴已定；但 BF-11：UNDETERMINED 须为派生字段，不得改写冻结 change_class，待凌翼裁）
+T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴方向已定；BF-11 语义问题已由凌翼 2026-10-28 裁定 RESOLVED，但 T-19 不因该裁定宣告实现及验证完成）
+BF11_SEMANTIC_DECISION         = RESOLVED（凌翼 2026-10-28）
+BF11_NON_NORMATIVE_DERIVATION  = ALLOWED_FOR_DESIGN
+BF11_FROZEN_FIELD_REWRITE      = PROHIBITED
+BF11_NORMATIVE_EXTENSION       = NOT AUTHORIZED
+AUTHORITY_RESULT_IMPLEMENTED   = NO
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
