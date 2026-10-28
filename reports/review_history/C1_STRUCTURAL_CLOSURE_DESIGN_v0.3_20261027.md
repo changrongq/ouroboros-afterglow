@@ -14,7 +14,7 @@
 | 1 | `L1_local` 与原始字段、正式科学输出的准确映射 | **§3** | 已给映射表 + 三条禁令 |
 | 2 | 表一权限与权威消费边界的**可验证性** | **§4**（含 §4.1b 五角色表、P-1..P-5 五项待明确） | **只到"待明确"，未验证** |
 | 3 | AuthorityGate 与冻结 prereg §12、§13、§28.1 及适用条款的**完整规则映射** | **§1**（章节级 + 规则级 G-1..G-21 + X-1..X-4）、**§2**（三层必要条件） | 已给；**"完整"待睫核** |
-| 4 | 必要条件、充分条件、invalidity 和 class priority 的**负向测试矩阵** | **§8**（23 条，按三层重排） | 已给设计；**未执行** |
+| 4 | 必要条件、充分条件、invalidity 和 class priority 的**负向测试矩阵** | **§8**（24 条，按三层重排） | 已给设计；**未执行** |
 | 5 | P-1 后续读取证据与 C1 最小科学条件的**明确分离** | **§7.1** | 已给七行对照表 |
 
 **⇒ 第 2 项须标清：本文只做到"列出五项待明确"，尚未做到"可验证"。**
@@ -212,9 +212,22 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 |---|---|---|---|
 | **轴 A · 执行/证据有效性** | `VALID` / `INVALID` | 本次执行与证据是否成立。`INVALID` **不是**科学负结果 | §13 L741 |
 | **轴 B · 测量结果** | `FAIL` / `UNRESOLVED` / `PASS` | 仅当轴 A = `VALID` 时才有意义 | §13 L729-738 |
-| **轴 C · C1 要素建立** | `C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` | 仅当轴 B = `PASS` 时才有意义 | §13 L722-724 |
+| **轴 C · C1 要素建立** | `C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` / `NOT_INSTANTIATED` | 仅当轴 A = `VALID` 时才有意义 | §13 L722-724 |
 
-**⇒ 三个轴有严格的先后依赖：A 无效 ⇒ B、C 均不产生；B 非 PASS ⇒ C 不产生。**
+**⇒ 三轴的依赖规则（已统一，知微问题 A / 凌翼 §1）：**
+
+```text
+轴 A = INVALID            ⇒ 轴 B、轴 C 均为 NOT_INSTANTIATED（不产生任何结论）
+                              但【保留】原始局部结果供审查，不得删除历史证据
+轴 A = VALID, 轴 B = PASS ⇒ 轴 C ∈ { C1_STORAGE_ELEMENT_ESTABLISHED, NOT_ESTABLISHED }
+轴 A = VALID, 轴 B = FAIL / UNRESOLVED
+                          ⇒ 轴 C = NOT_ESTABLISHED（含义：未建立正向要素）
+
+⇒ 关键区别：
+   · FAIL / UNRESOLVED 是可引用的【科学负结果】（§13 L729-738）
+   · 轴 C 的 NOT_ESTABLISHED 不是负结果，只是“未建立正向要素”
+   · 二者不得互相替代
+```
 
 **⇒ 而此前我把它们压成一列，会导致一个具体错误：**
 ```text
@@ -433,13 +446,35 @@ manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [�
 **⇒ 若真实候选会执行包初始化代码，该代码及实际加载路径应纳入候选依赖与绑定审查。**
 **⇒ 这是运行依赖问题，不是星号导入清单问题。**
 
+## 2.4d episode-specific 是执行侧属性（睫 NB-41）
+
+**⇒ 这是 §9 中 `BF9_EPISODE_SOURCE_BINDING = NOT ESTABLISHED` 那一格的理由，必须写在正文。**
+
+```text
+prereg §13 L722-724 的 C1 class rule 原文：
+   "an episode-specific registered storage write is established
+    in preregistered LITERAL_STORAGE_COMPONENTS"
+
+⇒ 读这句话，会以为 "episode-specific" 是那个 write 在 STATE 上的属性。
+⇒ 而字节说：那个 write 在 STATE 上只有"变了"和"没变"两件事。
+   "哪一次"它一点都不知道（digest 输入域 24 字节，§7.2 禁 episode_id 进入）。
+
+⇒ 所以 episode-specific 从来就不在 STATE 里。
+⇒ 它从来就是【执行侧】的属性。
+⇒ 该 schema 把 episode-specific 的证明责任，整体推给了执行侧。
+
+⇒ 若 COND_6 那条链建起来 ⇒ C1 可建立（episode-specific 完全由执行侧提供）；
+⇒ 若那条链建不起来 ⇒ C1 不可建立，而失败的原因不在 STATE，在 META↔执行 的绑定。
+```
+
+⇒ 因此：**C1 的证据重心在【执行过程】，不在【状态数据】。**
+
 ## 2.5 post-reset 扩展到 Memory Qualification 的排除
 
 ```text
 ⇒ AuthorityGate 的 ESTABLISHED 不构成 Memory Qualification。
 ⇒ 也不构成 post-reset C1（§24 独立规则）。
 ```
-
 ---
 
 # 3 · NB-31 · `L1_local` 的准确映射（凌翼 §1，条件接受）
@@ -510,7 +545,7 @@ manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [�
 | **证据采集者**（observer） | BEFORE/AFTER 原始字节 + digest + 采集阶段身份 | 否 | 只读；不参与判别 |
 | **权威裁决者**（`C1AuthorityGate`，拟建） | `AuthorityResult` | **拟为唯一** | 须经注册与独立登记（T-16/T-17 未建立） |
 | **正式结果存储** | AuthorityGate 的 C1 要素判定结果（**不是最终 `PRE_RESET_CHANGE_CLASS`**；后者由 §13 L715-725 机制写入） | 否（存储不生产） | 只接受受信入口写入 |
-| **正式结果组装/引用者**（补，知微 §3 要求） | 按 §13 组装最终 class、生成正式 result tuple | **是（唯一有权组装者）** | 须登记其输入来源、身份、权限与失败后果；须回答：能否接受用户提供的假结果、能否绕过权威来源、能否交叉拼接不同 execution 的结果。**当前 NOT ESTABLISHED** |
+| **正式结果组装/引用者**（补，知微 §3 要求） | 按 §13 组装最终 class、生成正式 result tuple | **不能自行签发该要素**；仅验证并引用受信 AuthorityGate 的要素结果 | 须登记其输入来源、身份、权限与失败后果；须回答：能否接受用户提供的假结果、能否绕过权威来源、能否交叉拼接不同 execution 的结果。**当前 NOT ESTABLISHED** |
 | **任意其他调用者** | 局部 `L1Result` | **否（无资格）** | 见 N-18/N-19 |
 
 **⇒ 两张必须分开的校验（知微 §2 第 4 条）：**
@@ -802,6 +837,18 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 | N-10 | **设计尚未实现**（R-7 机制未建立，未执行） | `NOT_ESTABLISHED`（不得 `ESTABLISHED`） |
 | N-10a | **某次实际执行**缺少本 claim 必需来源证据 | 按适用条款记 `INVALID`（与 N-10 场景不同） |
 | N-11 | R-1..R-6 全部满足，R-7..R-10 全过 | `ESTABLISHED`（= C1 要素成立；**不**等于最终 class = C1） |
+
+**⇒ 关于 N-11 的三点限定（凌翼 §4 要求）：**
+
+```text
+① 「期望拒绝」不等于「已经具有可验证的拒绝机制」
+   ⇒ 本矩阵列的是【期望】，不是【已实现的检测能力】
+② N-11 的预期 ESTABLISHED 是【待验证设计】，不是充分性已证明
+③ N-11 的测试预期【不能由待测 AuthorityGate 自己生成】
+   ⇒ 否则形成循环验证
+   ⇒ 须由独立于被测 AuthorityGate 的主体给出预期
+   ⇒ 该主体与判定程序 = NOT ESTABLISHED（T-18 相关）
+```
 | N-12 | 同 N-11，但 C2 独立成立 | AuthorityGate 仍只报 C1 要素成立；**最终 class 由 §13 机制赋为 C2**（不是 AuthorityGate 输出 C2） |
 | N-13 | 同 N-11，但 C3 独立成立 | 同上；最终 class 赋为 C3（不是 AuthorityGate 输出 C3） |
 
@@ -833,8 +880,8 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 ```text
 BF8_STATUS                        = OPEN
   ├ BF8_PATH_B_BYPASS_FREE        = NOT PROVEN（v0.2 原键，本版保留）
-  ├ BF8_PATH_B_CLOSURE_WITHOUT_TOUCHING_EVALUATOR = STRUCTURALLY_IMPOSSIBLE（睫 NB-30，§2.4）
-  ├ 函数层封闭（不动 evaluator.py） = STRUCTURALLY_IMPOSSIBLE（§2.4）
+  ├ BF8_PATH_B_CLOSURE_WITHOUT_TOUCHING_EVALUATOR = 已撤回（原标 STRUCTURALLY_IMPOSSIBLE，范围过宽）
+  ├ 函数接口层                       = 当前接口不认证 writer（事实）；不推导“部署权限也无法限制”
   ├ 正式结果消费边界               = NOT ESTABLISHED（本版 §4.1b 给出表一，凌翼判"边界未闭合"）
   └ BF8_CODE_IMPLEMENTATION        = NOT AUTHORIZED
 
@@ -873,7 +920,7 @@ T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 �
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 T_18_FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED（§2.4b 有定义；与函数可导入性无关）
-T_19_RESULT_AXIS_STRUCTURE = RESOLVED（§2.2c 已改为三轴；§2.2d 分离逐项标记）
+T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴方向已定；轴 C 在 B 非 PASS 时的语义已统一为 NOT_ESTABLISHED，待睫/凌翼复核）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
@@ -906,7 +953,7 @@ SCIENTIFIC_EXECUTION             = MAY NOT START
 - 未把 `L1_local` 声明为等价于 C1_STORAGE_ELEMENT_ESTABLISHED
 - 未宣称表一闭合
 - 未把 h>=2 写成通用规则
-- 未把 23 条负向测试说成已执行
+- 未把 24 条负向测试说成已执行
 
 ---
 
