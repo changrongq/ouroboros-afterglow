@@ -212,7 +212,7 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 |---|---|---|---|
 | **轴 A · 执行/证据有效性** | `VALID` / `INVALID` | 本次执行与证据是否成立。`INVALID` **不是**科学负结果 | §13 L741 |
 | **轴 B · 测量结果** | `FAIL` / `UNRESOLVED` / `PASS` | 仅当轴 A = `VALID` 时才有意义。轴 A = `INVALID` 时轴 B 为 `NOT_INSTANTIATED`（**接口状态，不是第四种科学测量结果**） | §13 L729-738 |
-| **轴 C · C1 要素建立** | 轴 A = `VALID` 时：`C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` / `UNDETERMINED`<br>轴 A = `INVALID` 时：`NOT_INSTANTIATED`（不实例化） | 轴 A = `VALID` 时才有科学含义；`INVALID` 时为接口占位 | §13 L722-724 |
+| **轴 C · C1 要素建立** | 轴 A = `VALID` 时（规范值）：`C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED`<br>轴 A = `INVALID` 时：`NOT_INSTANTIATED`（接口占位）<br>**非规范派生**：轴 B = `UNRESOLVED` 时另设 `derived.c1_element_establishment = UNDETERMINED`（凌翼 2026-10-28：仅作注释，**不是**轴 C 的规范值） | 轴 A = `VALID` 时才有科学含义；`INVALID` 时为接口占位 | §13 L722-724 |
 
 **⇒ 三轴的依赖规则（已按睫 T-19 裁定与知微 §3.1 收紧）：**
 
@@ -229,21 +229,23 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
     ⇒ 轴 C = NOT_ESTABLISHED（确定地没有建立正向要素）
 
 轴 A = VALID, 轴 B = UNRESOLVED
-    ⇒ 轴 C = UNDETERMINED（不知道有没有建立正向要素）
-    ⇒ 【不得】并入 NOT_ESTABLISHED
-
+    ⇒ 轴 C 的【规范值】仍为 NOT_ESTABLISHED（冻结 change_class 原样保留）
+    ⇒ 另设【非规范派生注释】derived.c1_element_establishment = UNDETERMINED
+    ⇒ 二者并存，UNDETERMINED 不得替换或改写 change_class（凌翼 BF-11）
 ⇒ 关键区别（三条，不得互相替代）：
    · FAIL        = 有效执行中的【确定负结果】（§13 L729-732）
    · UNRESOLVED  = 有效执行中的【不确定结果】（§13 L735-738），不得据此作否定结论
-   · 轴 C 的 NOT_ESTABLISHED / UNDETERMINED 是【要素是否建立】的记录，
-     不等于轴 B 的测量结果
+   · NOT_ESTABLISHED 是"C1 类别未建立"；它不等于"已证明不存在"（凌翼）
+   · UNDETERMINED 是派生注释，不是轴 C 的规范值，也不改判据
 
-⇒ 为什么 UNRESOLVED 必须单列（睫）：
-   若共用 NOT_ESTABLISHED，"不知道"会以"确定没有"的名义出现。
-   而 NOT_ESTABLISHED 听起来是一个结论；在 UNRESOLVED 底下，它其实是一个没结论。
+⇒ 为什么 UNRESOLVED 需要单独注释（睫，经凌翼裁定后修正表述）：
+   冻结 change_class 对 FAIL 与 UNRESOLVED 都给 NOT_ESTABLISHED，这是【正确且不改】的。
+   但 NOT_ESTABLISHED 读起来像一个结论；在 UNRESOLVED 底下，它其实是一个没结论。
+   ⇒ 因此需要的不是改冻结值，而是加一个派生注释，让"不确定"不被读成"确定没有"。
+
 ```
 
-**⇒ ⚠️ BF-11（睫提出，必须裁）：`UNDETERMINED` 与冻结代码的关系**
+**⇒ BF-11：`UNDETERMINED` 与冻结代码的关系（睫提出，凌翼 2026-10-28 已裁）**
 
 ```text
 冻结 evaluator.py L246-249（字节）：
@@ -267,7 +269,7 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 
    具体做法（本文拟议 → 凌翼已于 2026-10-28 裁定：ALLOWED AS NON-NORMATIVE DERIVED ANNOTATION ONLY）：
      冻结字段   change_class            = NOT_ESTABLISHED（不改，原样保留）
-     派生字段   c1_element_establishment = UNDETERMINED（本设计新增，仅用于消费侧语义）
+     派生字段   derived.c1_element_establishment = UNDETERMINED（本设计新增，非规范派生注释）
    ⇒ 消费者若只读 change_class，看到的是 NOT_ESTABLISHED（冻结语义不变）
    ⇒ 消费者若读派生字段，才知道"这是不确定，不是确定没有"
    ⇒ 但【不得】声明派生字段替换或改写了 change_class
@@ -795,7 +797,7 @@ V-3  采集主体验证
 | 7 | 边界外读取，经独立审查**确无相关因果路径** | — | — | — | **逐项标记**：`NEUTRAL_REVIEWED`（**必带 T-13 三项**：谁判/引用什么/何时封存；睫 NB-35）。**不产生任何轴的值**，也不判 INVALID |
 | 8 | 通路已登记 + 事件合规 + **有**因果路径 | — | — | — | **逐项标记**：`EVIDENCE_ADMITTED`（睫 NB-36）。**不等于任何轴的值**；"C1 尚未成立"与"这一项被收下"是两件事 |
 | 9 | 全部 required structure 有效且已执行，测量为负 | 轴 A = VALID | 轴 B = **FAIL** | 轴 C = NOT_ESTABLISHED | `FAIL`（此时才允许） |
-| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **UNDETERMINED**（派生字段；**change_class 冻结值仍为 NOT_ESTABLISHED**） | `UNRESOLVED` |
+| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **UNDETERMINED**（字段：`derived.c1_element_establishment`；**change_class 冻结值仍为 NOT_ESTABLISHED**） | `UNRESOLVED` |
 | 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 轴 A = VALID | 轴 B = **PASS** | 轴 C = **C1_STORAGE_ELEMENT_ESTABLISHED**（若 R-1..R-10 全过） | AuthorityGate 输出轴 C；**最终 `PRE_RESET_CHANGE_CLASS` 仍由 §13 L715-725 机制另行赋值** |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
