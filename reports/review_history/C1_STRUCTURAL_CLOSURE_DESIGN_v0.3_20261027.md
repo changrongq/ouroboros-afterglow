@@ -243,6 +243,38 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
    而 NOT_ESTABLISHED 听起来是一个结论；在 UNRESOLVED 底下，它其实是一个没结论。
 ```
 
+**⇒ ⚠️ BF-11（睫提出，必须裁）：`UNDETERMINED` 与冻结代码的关系**
+
+```text
+冻结 evaluator.py L246-249（字节）：
+   if h == 1:
+       return L1Result(
+           result=UNRESOLVED,
+           change_class=NOT_ESTABLISHED,      ← 冻结字段
+           ...
+
+⇒ 也就是说：【冻结代码已规定 UNRESOLVED 时 change_class = NOT_ESTABLISHED】
+
+⇒ 而本文让轴 C 输出 UNDETERMINED
+   ⇒ 若被理解为【改写 change_class 的值】
+     ⇒ 那就是实质规范变更
+     ⇒ 而 NB31_PREREG_CHANGE = NOT AUTHORIZED
+
+⇒ 因此必须明确：UNDETERMINED 是【外部接口派生字段】，不是 change_class 的替代
+   · change_class 的原始字节值【原样保留】= NOT_ESTABLISHED
+   · 而 AuthorityGate 另设一个派生字段表达"不确定"
+   · 二者并存，不得静默替换
+
+   具体做法（本文拟议，须凌翼裁）：
+     冻结字段   change_class            = NOT_ESTABLISHED（不改，原样保留）
+     派生字段   c1_element_establishment = UNDETERMINED（本设计新增，仅用于消费侧语义）
+   ⇒ 消费者若只读 change_class，看到的是 NOT_ESTABLISHED（冻结语义不变）
+   ⇒ 消费者若读派生字段，才知道"这是不确定，不是确定没有"
+   ⇒ 但【不得】声明派生字段替换或改写了 change_class
+
+⇒ 这一格须凌翼裁定：是"另设一格"（可行，不改冻结件），还是"改写语义"（不可，须授权）。
+```
+
 **⇒ 关于 `NOT_INSTANTIATED` 这个词（睫 NB-43，必须明写）：**
 
 ```text
@@ -253,7 +285,10 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
      = 没有测。且 L64 明文排除 "attempted-but-not-run"。
    · NOT_INSTANTIATED（本文新造）
      = 轴 A = INVALID 之后"不产生结论"。
-     而 INVALID 是【测了，但执行/证据无效】，
+     而 INVALID 表示【执行/证据无效】，它本身不证明测量已实际发生：
+     本文已将必需规则、witness 或来源证据缺失列为 invalidity。
+     ⇒ 是否执行、是否采到数据，应另据运行记录判断，
+       不能从 INVALID 反推出“已经测了”。
      那恰恰是 L64 排除在 NOT_ASSESSED 之外的东西。
 
 ⇒ 而 L1556 / L2007 各自的作用域必须写准（本轮核字节更正）：
@@ -266,7 +301,9 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 
 ⇒ 因此本文与冻结词的关系是：
    · 本文不改变、不替换 NOT_ASSESSED 的任何冻结含义
-   · 本文的 NOT_INSTANTIATED 只用于【pre-reset 轴 C 的接口占位】
+   · 本文的 NOT_INSTANTIATED 是【外部接口的占位状态】：
+     当执行/证据有效性轴 A 为 INVALID 时，B、C 不签发有效科学结论。
+     它不改写冻结输出，不与 NOT_ASSESSED 互换；原始局部结果仍保留。
    · 二者作用域不同（post-reset higher class vs pre-reset 轴 C），
      不得互换，也不得据此推断对方的状态
 ```
@@ -286,7 +323,7 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 表三第 7 行    → 独立的【逐项】标记（见 §2.2c），不属于三轴
 表三第 8 行    → 独立的【逐项】标记（见 §2.2c），不属于三轴
 表三第 9 行    → 轴 A=VALID, 轴 B=FAIL, 轴 C=NOT_ESTABLISHED
-表三第 10 行   → 轴 A=VALID, 轴 B=UNRESOLVED, 轴 C=NOT_ESTABLISHED
+表三第 10 行   → 轴 A=VALID, 轴 B=UNRESOLVED, 轴 C=UNDETERMINED（派生字段；change_class 冻结值仍为 NOT_ESTABLISHED）
 表三第 11 行   → 轴 A=VALID, 轴 B=PASS, 轴 C=C1_STORAGE_ELEMENT_ESTABLISHED（若 R-1..R-10 全过）
 ```
 
@@ -698,7 +735,7 @@ V-3  采集主体验证
 | 7 | 边界外读取，经独立审查**确无相关因果路径** | — | — | — | **逐项标记**：`NEUTRAL_REVIEWED`（**必带 T-13 三项**：谁判/引用什么/何时封存；睫 NB-35）。**不产生任何轴的值**，也不判 INVALID |
 | 8 | 通路已登记 + 事件合规 + **有**因果路径 | — | — | — | **逐项标记**：`EVIDENCE_ADMITTED`（睫 NB-36）。**不等于任何轴的值**；"C1 尚未成立"与"这一项被收下"是两件事 |
 | 9 | 全部 required structure 有效且已执行，测量为负 | 轴 A = VALID | 轴 B = **FAIL** | 轴 C = NOT_ESTABLISHED | `FAIL`（此时才允许） |
-| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **UNDETERMINED**（不得并入 NOT_ESTABLISHED） | `UNRESOLVED` |
+| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **UNDETERMINED**（派生字段；**change_class 冻结值仍为 NOT_ESTABLISHED**） | `UNRESOLVED` |
 | 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 轴 A = VALID | 轴 B = **PASS** | 轴 C = **C1_STORAGE_ELEMENT_ESTABLISHED**（若 R-1..R-10 全过） | AuthorityGate 输出轴 C；**最终 `PRE_RESET_CHANGE_CLASS` 仍由 §13 L715-725 机制另行赋值** |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
@@ -898,6 +935,17 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 | N-12 | 同 N-11，但 C2 独立成立 | AuthorityGate 仍只报 C1 要素成立；**最终 class 由 §13 机制赋为 C2**（不是 AuthorityGate 输出 C2） |
 | N-13 | 同 N-11，但 C3 独立成立 | 同上；最终 class 赋为 C3（不是 AuthorityGate 输出 C3） |
 
+**⇒ 关于 N-12 / N-13 的简写禁止（睫 NB-45）：**
+
+```text
+⇒ 轴 C 的值【不得简写为 "C1"】
+   · 轴 C 只有 C1_STORAGE_ELEMENT_ESTABLISHED，没有 "C1"
+   · "C1" 只属于 PRE_RESET_CHANGE_CLASS（§13 机制赋值）
+⇒ 若在测试预期、日志、摘要中把轴 C 写成 "C1"
+   ⇒ 就是把要素成立读成了最终类别成立
+   ⇒ 正是 §2.2d 停用「正式 C1」要防的那件事
+```
+
 **⇒ 关于 N-11 的三点限定（凌翼 §4 要求）：**
 
 ```text
@@ -978,7 +1026,7 @@ T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 �
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 T_18_FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED（§2.4b 有定义；与函数可导入性无关）
-T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴已定；FAIL ⇒ NOT_ESTABLISHED，UNRESOLVED ⇒ UNDETERMINED，INVALID ⇒ NOT_INSTANTIATED；待睫/凌翼确认收口）
+T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴已定；但 BF-11：UNDETERMINED 须为派生字段，不得改写冻结 change_class，待凌翼裁）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
