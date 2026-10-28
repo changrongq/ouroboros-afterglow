@@ -189,7 +189,7 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
 ⇒ 这一条我 v0.2 完全没写。
 ```
 
-## 2.2c AuthorityResult 的完整取值集合
+## 2.2c 结果的三根轴（不是单一枚举）
 
 **⇒ 全文只定义了 `ESTABLISHED`，此前从未说"不成立"时返回什么。**
 **⇒ 而 `INVALID` 在文中出现 30 次，没有任何一处说明它属于 `AuthorityResult`。**
@@ -473,9 +473,9 @@ manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [�
 **⇒ 三条禁止：**
 
 ```text
-禁 1  L1_local == C1 不得被读成"正式 C1 已建立"
+禁 1  L1_local == C1 不得被读成"C1_STORAGE_ELEMENT_ESTABLISHED 已建立"
 禁 2  不得把 change_class 字段值替换成 L1_local（那是静默替换冻结字段）
-禁 3  不得声明 L1_local ⟺ 正式 C1（那是把别名升级成等价）
+禁 3  不得声明 L1_local ⟺ C1_STORAGE_ELEMENT_ESTABLISHED（那是把别名升级成等价）
 ```
 
 ---
@@ -504,7 +504,7 @@ manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [�
 
 **⇒ 原因：v0.3 若只列五个待明确项而不重排角色表，单独看 v0.3 的人无法审“边界长什么样”。**
 
-| 角色 | 产出 | 是否可形成正式 C1 | 边界依据 |
+| 角色 | 产出 | 是否可形成 C1_STORAGE_ELEMENT_ESTABLISHED | 边界依据 |
 |---|---|---|---|
 | **校准消费者**（`smoke_evaluator.py` / `recompute_from_ledger.py` / `fixtures.py` / `evidence_bundle.py` 现有路径） | 局部 `L1Result`（含 `change_class=C1`） | **否** | `PHASE_A` / `SCIENTIFIC_CLAIM_ELIGIBILITY = "NONE"`（fixtures.py L50-51；suite L159-160） |
 | **证据采集者**（observer） | BEFORE/AFTER 原始字节 + digest + 采集阶段身份 | 否 | 只读；不参与判别 |
@@ -602,11 +602,11 @@ V-3  采集主体验证
 | 4 | 实际 writer ≠ 注册主体 | INVALID | 保留 | 不建立 | `INVALID`，reason=`WRITER_MISMATCH` |
 | 5 | 对象在 BEGIN/END 之间被替换 | INVALID | 保留 | 不建立 | `INVALID`，reason=`OBJECT_IDENTITY_CHANGED` |
 | 6 | 仅**设计阶段存在未验证风险** | — | — | 不建立 | **不签发任何结论**；不得冒充实际违规，也不得冒充已执行的科学 FAIL |
-| 7 | 边界外读取，经独立审查**确无相关因果路径** | 有效 | 正常 | 照常 | `NEUTRAL_REVIEWED`，保存排除依据（睫 NB-33 第五行） |
-| 8 | 通路已登记 + 事件合规 + **有**因果路径 | 有效 | 正常 | 按规则 | 可纳入证据；**不等于** C1 已建立 |
-| 9 | 全部 required structure 有效且已执行，测量为负 | 有效 | **FAIL** | 不建立 | `FAIL`（此时才允许） |
-| 10 | 同上，落入不确定区 | 有效 | **UNRESOLVED** | 不建立 | `UNRESOLVED` |
-| 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 有效 | **PASS** | **C1 要素成立（不等于最终 class = C1）** | AuthorityGate 输出 `ESTABLISHED` = C1 要素成立；**最终 `PRE_RESET_CHANGE_CLASS` 由 §13 L715-725 机制另行赋值**（可能因 C2/C3 独立成立而取更高类别） |
+| 7 | 边界外读取，经独立审查**确无相关因果路径** | — | — | — | **逐项标记**：`NEUTRAL_REVIEWED`（**必带 T-13 三项**：谁判/引用什么/何时封存；睫 NB-35）。**不产生任何轴的值**，也不判 INVALID |
+| 8 | 通路已登记 + 事件合规 + **有**因果路径 | — | — | — | **逐项标记**：`EVIDENCE_ADMITTED`（睫 NB-36）。**不等于任何轴的值**；"C1 尚未成立"与"这一项被收下"是两件事 |
+| 9 | 全部 required structure 有效且已执行，测量为负 | 轴 A = VALID | 轴 B = **FAIL** | 轴 C = NOT_ESTABLISHED | `FAIL`（此时才允许） |
+| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = NOT_ESTABLISHED | `UNRESOLVED` |
+| 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 轴 A = VALID | 轴 B = **PASS** | 轴 C = **C1_STORAGE_ELEMENT_ESTABLISHED**（若 R-1..R-10 全过） | AuthorityGate 输出轴 C；**最终 `PRE_RESET_CHANGE_CLASS` 仍由 §13 L715-725 机制另行赋值** |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
 **⇒ 第 11 行「正式 class」列：** AuthorityGate 只判 C1 要素，不判最终 class（见 §2 开头的三层划分）。
@@ -685,7 +685,7 @@ T-15b  读取通路是否作为 pre-reset C1 的通用条件 = NOT ESTABLISHED�
 **⇒ 权威门消费声明（知微 §6.1，我接受）：**
 
 ```text
-✗ 旧：正式 C1 必须以 evaluate_basic_l1 返回 C1 为必要条件
+✗ 旧：C1 要素必须依赖 evaluate_basic_l1 返回 C1
 ✓ 新：权威门消费的是【经该候选注册的判别实现的结果】。
       只有在证明 schema 与语义适用时，才可具体复用旧函数。
       参考校准成功不提供真实摘要的测量资格。
@@ -835,7 +835,7 @@ BF8_STATUS                        = OPEN
   ├ BF8_PATH_B_BYPASS_FREE        = NOT PROVEN（v0.2 原键，本版保留）
   ├ BF8_PATH_B_CLOSURE_WITHOUT_TOUCHING_EVALUATOR = STRUCTURALLY_IMPOSSIBLE（睫 NB-30，§2.4）
   ├ 函数层封闭（不动 evaluator.py） = STRUCTURALLY_IMPOSSIBLE（§2.4）
-  ├ 正式 C1 消费边界               = NOT ESTABLISHED（本版 §4.1b 给出表一，凌翼判"边界未闭合"）
+  ├ 正式结果消费边界               = NOT ESTABLISHED（本版 §4.1b 给出表一，凌翼判"边界未闭合"）
   └ BF8_CODE_IMPLEMENTATION        = NOT AUTHORIZED
 
 BF9_SOURCE_BINDING_GAP           = ACCEPTED（v0.2 原键，本版保留）
@@ -903,7 +903,7 @@ SCIENTIFIC_EXECUTION             = MAY NOT START
 - 未改 `evaluator.py` / `fixtures.py` / prereg / MANIFEST
   （`fa644a9b…` / `ad0855b0…` / `78bdb90f…` 均未变，见 §11）
 - 未修改 prereg 中 C1 的定义域（凌翼明确不批准）
-- 未把 `L1_local` 声明为等价于正式 C1
+- 未把 `L1_local` 声明为等价于 C1_STORAGE_ELEMENT_ESTABLISHED
 - 未宣称表一闭合
 - 未把 h>=2 写成通用规则
 - 未把 23 条负向测试说成已执行
