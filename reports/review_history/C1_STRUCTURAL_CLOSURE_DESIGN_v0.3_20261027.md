@@ -112,7 +112,7 @@ SCIENTIFIC_EXECUTION           = MAY NOT START
 
 **⇒ 这三项是"AuthorityGate ≠ prereg C1"的具体所在。**
 **⇒ 其中只有 G-19（writer 核对机制）与 G-21（通路登记机制）真正超出 prereg；G-20 在 prereg §31 L1948-1949 已有要求。**
-**⇒ 因此 `ESTABLISHED` 蕴含 prereg C1，但 prereg C1 不蕴含 `ESTABLISHED`（见 §2.1）。**
+**⇒ 因此 `C1_STORAGE_ELEMENT_ESTABLISHED` 蕴含 prereg 中注册存储写入证据要素及适用 gate 成立，但它不指最终 `PRE_RESET_CHANGE_CLASS=C1`；且 prereg C1 不蕴含前者（见 §2.1）。**
 **⇒ 本章仍是【设计】，未执行、未验证。规则映射的准确性请睫核。**
 
 ---
@@ -195,44 +195,94 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
 **⇒ 而 `INVALID` 在文中出现 30 次，没有任何一处说明它属于 `AuthorityResult`。**
 **⇒ 这是一处真实的定义缺口，不是措辞问题。**
 
-**⇒ 补全为四值（对齐 §13 L729-741 的三种否定形态 + 证据缺失）：**
+**⇒ 已更正：此前称"四值"是错的。实际不是四个值，而是【三根轴】。**
 
-| 值 | 含义 | 何时产生 | 权威条款 |
+**⇒ 凌翼指出：`NOT_ESTABLISHED` 属于证据类别的建立状态，`FAIL`/`UNRESOLVED` 属于测量结果，`INVALID` 属于执行/证据有效性。三件事不在同一根轴上。**
+
+**⇒ 核 `evaluator.py` 实际输出：**
+
+```text
+result 有四个值：INVALID（L232） / FAIL（L241） / UNRESOLVED（L248） / PASS（L257, L263）
+change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
+```
+
+**⇒ 所以正确写法是分轴，不是单一枚举：**
+
+| 轴 | 取值 | 含义 | 权威条款 |
 |---|---|---|---|
-| `ESTABLISHED` | C1 要素成立 | R-1..R-10 全过 | §13 L722-724 |
-| `NOT_ESTABLISHED` | C1 要素未成立（结构有效、无违规） | R-6 不成立；或其他 gate 通过但 C1 专属判据不满足 | §13 L722-724 |
-| `INVALID` | 本次执行/证据无效（**不是科学负结果**） | R-1/R-2/R-3/R-5/R-7/R-8/R-9 任一失败；或命中 §37 | §13 L741 |
-| `FAIL` / `UNRESOLVED` | **科学** 确定负结果 / 不确定区 | 仅当 required structure 有效且已执行时 | §13 L729-732 / L735-738 |
+| **轴 A · 执行/证据有效性** | `VALID` / `INVALID` | 本次执行与证据是否成立。`INVALID` **不是**科学负结果 | §13 L741 |
+| **轴 B · 测量结果** | `FAIL` / `UNRESOLVED` / `PASS` | 仅当轴 A = `VALID` 时才有意义 | §13 L729-738 |
+| **轴 C · C1 要素建立** | `C1_STORAGE_ELEMENT_ESTABLISHED` / `NOT_ESTABLISHED` | 仅当轴 B = `PASS` 时才有意义 | §13 L722-724 |
 
-**⇒ 而这四个值必须与表三的十一行一一对齐：**
+**⇒ 三个轴有严格的先后依赖：A 无效 ⇒ B、C 均不产生；B 非 PASS ⇒ C 不产生。**
 
+**⇒ 而此前我把它们压成一列，会导致一个具体错误：**
 ```text
-表三第 1-5 行  → AuthorityResult = INVALID
-表三第 6 行    → 不签发（无 AuthorityResult）
-表三第 7 行    → NEUTRAL_REVIEWED（不是 AuthorityResult 的四个值之一，是独立标记）
-表三第 8 行    → 不产生 ESTABLISHED（只是"可纳入证据"）
-表三第 9 行    → AuthorityResult = FAIL
-表三第 10 行   → AuthorityResult = UNRESOLVED
-表三第 11 行   → AuthorityResult = ESTABLISHED（若 R-1..R-10 全过）
+⇒ 读者会把 INVALID 与 FAIL 当成同一个枚举里的两个值
+⇒ 于是"执行无效"与"科学负结果"变成可互换的
+⇒ 而这正是 §13 L741 明文禁止的："不得把 protocol/execution invalidity 写成 L1 = FAIL"
 ```
 
-**⇒ 两处仍不一致，我必须指出而不假装解决：**
+**⇒ 与表三的对应关系（分轴后清晰）：**
 
 ```text
-① 表三第 7 行 NEUTRAL_REVIEWED 不在四值里
-   ⇒ 我倾向它不属于 AuthorityResult，而是独立的审查记录标记
-   ⇒ 但这一点须睫确认
-② 表三第 8 行"可纳入证据"到底对应哪个值？
-   ⇒ 它可能不对应任何 AuthorityResult 值，只是"这一个证据项被接受"
-   ⇒ 也可能是 NOT_ESTABLISHED（因为 C1 未建立）
-   ⇒ 须睫确认
-⇒ 落为 T-19 AUTHORITY_RESULT_ENUM_COMPLETENESS = NOT ESTABLISHED
+表三第 1-5 行  → 轴 A = INVALID（轴 B/C 不产生）
+表三第 6 行    → 不签发任何轴
+表三第 7 行    → 独立的【逐项】标记（见 §2.2d），不属于三轴
+表三第 8 行    → 独立的【逐项】标记（见 §2.2d），不属于三轴
+表三第 9 行    → 轴 A=VALID, 轴 B=FAIL, 轴 C=NOT_ESTABLISHED
+表三第 10 行   → 轴 A=VALID, 轴 B=UNRESOLVED, 轴 C=NOT_ESTABLISHED
+表三第 11 行   → 轴 A=VALID, 轴 B=PASS, 轴 C=C1_STORAGE_ELEMENT_ESTABLISHED（若 R-1..R-10 全过）
 ```
+
+## 2.2d 逐项标记与整体结果分离（睫 NB-35 / NB-36）
+
+**⇒ 睫的两条裁定，我接受：**
+
+```text
+NB-35  NEUTRAL_REVIEWED 不得并入三轴，否则会成为"万能排除键"
+       ⇒ 任何不想处理的边界外读取，都可以被标成"无因果路径"，然后消失
+       ⇒ 而它消失的方式是【被记录】，不是【被删除】
+       ⇒ 所以 T-13 三项（谁判 / 引用什么证据 / 何时封存）
+          必须挂在 NEUTRAL_REVIEWED 这个标记本身上，不能挂在别处
+
+NB-36  表三第 8 行"可纳入证据"不得等于任何轴的值
+       ⇒ 三轴是【整体】结论（一个）
+       ⇒ 第 8 行说的是【逐项】接受（可以有多个）
+       ⇒ 若它等于 NOT_ESTABLISHED，"有一个证据被接受了"
+          会以"C1 尚未成立"的名义出现
+       ⇒ 而"尚未成立"听起来像【快成立了】，实际它只是"这一项被收下了"
+```
+
+**⇒ 因此另设两个【逐项】标记，与三轴分开，且允许同时存在多个：**
+
+```text
+EVIDENCE_ADMITTED        ← 某一条证据项被接受（不等于 C1 建立）
+NEUTRAL_REVIEWED         ← 某一条边界外读取经独立审查确无相关因果路径
+   必带三项（T-13）：谁判 / 引用什么证据 / 何时封存
+```
+
+## 2.2e 停用"正式 C1"一词（凌翼指出的歧义）
+
+**⇒ 凌翼指出：v0.3 §2.4a 把"正式 C1"定义为"AuthorityGate 证明 C1 要素成立"，但 §12 的表述是「storage write 是目前最高被正向建立的 change class」——指的是【最终报告的类别】。**
+
+**⇒ 于是我用一个新词解决了旧混淆，同时制造了新混淆。**
+
+**⇒ 更正：停用「正式 C1」。改用两个独立术语：**
+
+```text
+C1_STORAGE_ELEMENT_ESTABLISHED    ← 单项证据成立（AuthorityGate 的输出，轴 C）
+PRE_RESET_CHANGE_CLASS = C1       ← 最终 class（§13 L715-725 机制赋值）
+⇒ 二者在 C2/C3 都不成立时才重合
+```
+
+**⇒ 本文所有出现「正式 C1」处，均应读作 `C1_STORAGE_ELEMENT_ESTABLISHED`。**
 
 **⇒ 一条附注：**
 
 > **我定义了"成功"的形态，却从没定义"失败"的形态。**
 > **而一个只有成功分支的接口，无法被实现。**
+> （睫补：它还会让"失败"在将来被【就近归类】到任何一个看起来像失败的格子里。）
 
 **⇒ 于是 G-10a..G-10d 的定位也要改：**
 
@@ -252,7 +302,7 @@ AuthorityResult.ESTABLISHED 只有在下列全部为真时才可产生：
 ⇒ 也不得扩展成 Memory Qualification。
 ```
 
-## 2.4 BF-8 的旁路结论为什么是"结构性不可能"（睫 NB-30）
+## 2.4 BF-8 的旁路分析（结论已按知微/凌翼意见收窄）
 
 **v0.3 上一稿把这一段弄丢了，只在状态表留了一行孤立的子项。补回。**
 
@@ -272,43 +322,43 @@ import 行 = 4 处（这才是关键）：
   smoke_evaluator.py        L34
 
 ⇒ 11 个调用点可枚举，而"将来谁再 import 一次"不可枚举。
-⇒ 所以在【不动 evaluator.py】的前提下，函数层旁路封闭是【结构性不可能】，
-  不是"我暂时还没证明"。
+⇒ 收窄后（知微、凌翼要求）：
+   对已经能够读取并执行该代码的任意 Python 调用者，当前函数接口不认证 writer；只依赖该接口无法强制科学授权。
 
-⇒ 两条结论必须分开（凌翼 v0.2 裁定 §2）：
-   函数层旁路（谁能调用 evaluate_basic_l1）
-     = 不动 evaluator.py 则结构性不可封闭
-   正式 C1 旁路（谁能签发正式 C1）
-     = 可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）
+⇒ 两条结论必须分开：
+   ① 函数接口层：当前接口不认证 writer（见上）；
+      这是"接口缺少 writer 参数"的事实，不是"部署权限也无法限制"的结论。
+   ② 正式消费边界层（谁能签发 C1_STORAGE_ELEMENT_ESTABLISHED）：
+      可以封闭，封点在【正式消费边界 + 合同层命名】（见 §4.1b / §3）；
+      但当前 T-18 仍 = NOT ESTABLISHED。
 ```
 
-## 2.4a 术语对照表（正式 C1 / C1 要素 / 最终 class）
+## 2.4a 术语对照表（已停用「正式 C1」）
 
-**⇒ 全文曾出现三个近义词：正式 C1 / C1 要素 / 最终 class，然从未给出对照。**
-**⇒ 三者不是同一个东西，但我从未给出对照。读者会误以为它们同义。**
+**⇒ 凌翼指出：本节此前把「正式 C1」定义为「AuthorityGate 证明 C1 要素成立」，但 §12 的表述是「storage write 是目前最高被正向建立的 change class」——指的是【最终报告的类别】。**
 
-| 本文用词 | 精确定义 | 由谁产生 | 与 §13 的关系 |
+**⇒ 于是我用一个新词解决了旧混淆，同时制造了新混淆。已更正：停用「正式 C1」。**
+
+| 术语 | 精确定义 | 由谁产生 | 权威条款 |
 |---|---|---|---|
 | **`L1_local`** | `evaluate_basic_l1` 返回的局部计算结果（含 `change_class=C1`） | reference 函数 | 非规范别名（凌翼 NB-31） |
-| **C1 要素成立** | `episode-specific registered storage write` 这一条独立判据成立 | AuthorityGate | §13 L722-724 的 C1 分支 |
-| **「正式 C1」** | 承凌翼/知微措辞：经权威消费边界签发、可作为科学输出的 C1 判定结果 | AuthorityGate（唯一） | = C1 要素成立 + R-1..R-10 全过 |
-| **`PRE_RESET_CHANGE_CLASS = C1`** | §13 的 **class selection 结果** | §13 L715-725 机制 | **不是 AuthorityGate 输出** |
+| **`C1_STORAGE_ELEMENT_ESTABLISHED`** | `episode-specific registered storage write` 这一条独立判据成立（轴 C） | AuthorityGate | §13 L722-724 的 C1 分支 |
+| **`PRE_RESET_CHANGE_CLASS = C1`** | §13 的 **class selection 结果**（最终报告类别） | §13 L715-725 机制 | §12 L635-637 的语义 |
 
 **⇒ 关键区分（必须记住）：**
 
 ```text
-「正式 C1」       = C1 要素成立（AuthorityGate 的输出）
-「最终 class = C1」= §13 机制赋值的结果
+C1_STORAGE_ELEMENT_ESTABLISHED ≠ PRE_RESET_CHANGE_CLASS = C1
 ⇒ 二者在【C2/C3 都不成立】时才重合
-⇒ 若 C2/C3 独立成立，则「正式 C1」可能仍为真，而「最终 class」是 C2/C3
+⇒ 若 C2/C3 独立成立，前者可能为真，而后者的值是 C2/C3
+⇒ 停用「正式 C1」：它既可能被读成前者，也可能被读成后者
 ```
 
-**⇒ 所以本文用「正式 C1」时，指的都是** AuthorityGate 的输出 **，不是最终报告类别。**
-**⇒ 若发现任何一处用法与之不符，那一处是错的。**
+**⇒ 本文其余各处用到「正式 C1」时，均应读作 `C1_STORAGE_ELEMENT_ESTABLISHED`。**
 
-## 2.4b `__all__` 存在，但管不到顶层绝对导入路径
+## 2.4b `__all__` 不是访问控制 —— 它不能用来论证旁路是否封闭
 
-**⇒ 须说明 `afterglow_harness/__init__.py` 里的 `__all__` 是否削弱上面的论证。**
+**⇒ 本节已更正（知微、凌翼均指出）。此前的表述把 `__all__` 当成"一道门"，这是错的。**
 
 ```text
 afterglow_harness/__init__.py（209 字节）：
@@ -316,82 +366,72 @@ afterglow_harness/__init__.py（209 字节）：
       "harness_constants", "storage", "readers",
       "writers", "observer", "perturbation_j",
   ]
-  ⇒ 六项，【不含 evaluator】
+  ⇒ 六项，不含 evaluator
 ```
 
-**⇒ 这说明两件事，方向相反：**
+**⇒ 但 `__all__` 的语义是：**
 
 ```text
-① 包层确实做了导出白名单 —— 说明作者有意识地限制对外暴露
-② 但 evaluator 不在白名单里，而四个调用方用的是【绝对导入】：
-   from evaluator import (...)        （evidence_bundle / fixtures / smoke_evaluator）
-   import evaluator as ev             （recompute_from_ledger）
-   ⇒ 都是 import 顶层模块名，不是 from afterglow_harness import evaluator
-   ⇒ 所以 __all__ 对这条路径【完全无效】
+__all__ 只决定 `from package import *` 时导入哪些名字。
+它【不】限制 `from package import name` 这种显式导入。
+它【不】提供任何调用权限校验。
+⇒ 它不是访问控制机制。
 ```
 
-**⇒ 结论不变，但理由必须写准：**
+**⇒ 因此：**
 
 ```text
-✗ 不完全的说法：evaluator 是公开函数，谁都能 import
-✓ 准确的说法：
-   · 包层有 __all__ 白名单（说明作者想过这件事）
-   · 但白名单不包含 evaluator
-   · 且实际调用方走的是顶层绝对导入，绕过了白名单
-   · ⇒ 在【不改任何现有文件】的前提下，新增调用者只需写一行
-        from evaluator import evaluate_basic_l1
-     即可，无任何机制阻止
-   ⇒ 这是"不可枚举"的具体机制，而不仅仅是一个断言
+✗ 旧表述：包层有白名单，但绝对导入"绕过"了它
+✓ 更正：
+   __all__ 与"谁能调用 evaluate_basic_l1"无关。
+   不存在"绕过"——因为它本来就不管这件事。
+   所以它不能作为"旁路是否封闭"的证据，无论哪个方向。
 ```
 
-**⇒ 并且这把 §4.1b 的消费边界要求变得更具体：**
+**⇒ 真正的事实只有一条：**
 
 ```text
-⇒ 若将来要把 evaluator 纳入白名单管理，须改 __init__.py
-   ⇒ 而 __init__.py 是否在执行关键角色表里？须核（本轮未核，列为待查）
-⇒ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
+evaluate_basic_l1 是模块级公开函数。
+任何能读取并执行该代码的 Python 调用者，都可以写一行
+    from evaluator import evaluate_basic_l1
+⇒ 当前函数接口既不认证 writer，也不强制科学授权。
 ```
 
-### 2.4c `__init__.py` 不在冻结角色表内
+**⇒ 而这与"部署权限能否限制可执行主体"是另一个层次的问题，不能混为一谈。**
+**⇒ 也不等于"正式消费边界不可能封闭"。**
 
-**⇒ 核验结果：**
+```text
+T-18 已更名：
+  旧：T-18 MODULE_EXPORT_CONTROL            ← 命名错误（__all__ 不承担此功能）
+  新：T-18 FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED
+      含义：正式科学结果的签发与消费授权边界尚未建立。
+      注：与"函数是否可被普通 Python 代码导入"无关。
+```
+
+## 2.4c `__init__.py` 的冻结核验（保留事实，删除结论性解读）
+
+**⇒ 事实部分保留：**
 
 ```text
 MANIFEST         grep "__init__"          → 零命中                    [终端核验]
 role_registry    grep "__init__"          → 零命中                    [终端核验]
 manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [读文件]
-                  其中含：harness_constants / storage / writers / readers /
-                  observer / perturbation_j / reset / evaluator / fixtures /
-                  fixture_contracts / evidence_bundle / qualification_role_registry /
-                  qualification_binding / run_known_answer_suite / qualify_phase_a /
-                  verify_manifest_binding / adversarial_regression /
-                  recompute_from_ledger ＋ BUILD_PROVENANCE 两项
 ```
 
-**⇒ 结论：**
+**⇒ 而解读必须收窄（知微指出）：**
 
 ```text
-① __init__.py 存在，且有 __all__ 白名单（六项）
-② 但 __init__.py 本身【不在冻结角色表】，也不在 COMPONENT_FILES
-③ ⇒ 它不在任何冻结 hash 底下 ⇒ 可以改它，而不改变任何已登记 hash
-④ ⇒ 也就是说：包层的"导出控制"是一个可以被静默修改的表面
+✗ 旧解读：包层的"导出控制"是一个可以被静默修改的表面
+✓ 更正：
+   · 上述 grep 只能说明它不在【逐文件冻结清单】里
+   · 不能证明作者当初是有意遗漏还是无意遗漏（作者意图不能由 grep 判定）
+   · 不等于它不受任何版本摘要约束
+   · 更不等于当前已获修改授权
+   · 也不应为了让 __all__ 成为安全白名单而补冻或改写它 —— 它不承担这种功能
 ```
 
-**⇒ 这独立于 BF-8 的一格：**
-
-```text
-T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
-  ├ __all__ 存在                  = YES
-  ├ __all__ 含 evaluator          = NO
-  ├ __init__.py 是否冻结          = NO（不在 role_registry / COMPONENT_FILES / MANIFEST）
-  ├ 实际调用方是否走白名单         = NO（走顶层绝对导入）
-  └ 结论：导出控制层既不被使用，也不被冻结。
-          它看起来像一道门，但不锁，也不记账。
-```
-
-**⇒ 我不判定这是不是缺陷。** 它可能是有意的（`__init__.py` 只是包标记）。
-**⇒ 但它必须被记录**，因为将来若有人用"我们有 `__all__` 控制导出"来论证旁路已封闭，这句话是不成立的。
-**⇒ 请知微核："`__init__.py` 不在冻结表内"是有意设计还是遗漏。**
+**⇒ 若真实候选会执行包初始化代码，该代码及实际加载路径应纳入候选依赖与绑定审查。**
+**⇒ 这是运行依赖问题，不是星号导入清单问题。**
 
 ## 2.5 post-reset 扩展到 Memory Qualification 的排除
 
@@ -470,6 +510,7 @@ T-18 MODULE_EXPORT_CONTROL = NOT ESTABLISHED
 | **证据采集者**（observer） | BEFORE/AFTER 原始字节 + digest + 采集阶段身份 | 否 | 只读；不参与判别 |
 | **权威裁决者**（`C1AuthorityGate`，拟建） | `AuthorityResult` | **拟为唯一** | 须经注册与独立登记（T-16/T-17 未建立） |
 | **正式结果存储** | AuthorityGate 的 C1 要素判定结果（**不是最终 `PRE_RESET_CHANGE_CLASS`**；后者由 §13 L715-725 机制写入） | 否（存储不生产） | 只接受受信入口写入 |
+| **正式结果组装/引用者**（补，知微 §3 要求） | 按 §13 组装最终 class、生成正式 result tuple | **是（唯一有权组装者）** | 须登记其输入来源、身份、权限与失败后果；须回答：能否接受用户提供的假结果、能否绕过权威来源、能否交叉拼接不同 execution 的结果。**当前 NOT ESTABLISHED** |
 | **任意其他调用者** | 局部 `L1Result` | **否（无资格）** | 见 N-18/N-19 |
 
 **⇒ 两张必须分开的校验（知微 §2 第 4 条）：**
@@ -732,7 +773,7 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 |---|---|---|---|
 | N-07 | R-7 writer ≠ 注册主体 | `INVALID` | 超出 prereg：§4 冻结了三字段，但无核对机制 |
 | N-08 | R-8 旧快照冒充本轮 after | `INVALID` | **属 gate 5 的具体化**（§31 L1948-1949 已要求 execution_id/hash）；本设计只是补核对机制，非新增条件 |
-| N-09 | R-9 通路未登记且已发生 | `INVALID` | 凌翼 §4；§37 `UNREGISTERED_EPISODE_REINJECTION`（禁止对象已有，登记机制未定义） |
+| N-09 | R-9 通路未登记且已发生 **且与本 claim 有因果路径** | `INVALID` | 凌翼 §4；§37 `UNREGISTERED_EPISODE_REINJECTION`。**须同时满足**：① 未登记 ② 已实际发生 ③ 引入先前 episode 信息 ④ 与本 claim 有因果路径。边界外、无因果路径者不得判停（见 N-17） |
 
 ### 8.1d 约束项 · 不得借用（跨层）
 
@@ -743,16 +784,23 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 **⇒ 三层分开之后，有一条以前看不出来的区别现在显出来了：**
 
 ```text
-第一层失败（N-01..N-05）⇒ INVALID ⇒ 整次执行无效，连 class 都到不了
+第一层失败（N-01..N-03、N-05）⇒ 轴 A = INVALID ⇒ 整次执行无效
+第一层中的 N-04 例外：
+  · attribution 确定负结果 ⇒ 轴 B = FAIL（不是 INVALID）
+  · 落入 indeterminate region ⇒ 轴 B = UNRESOLVED（不是 INVALID）
+  · rule 缺失 / outcome 后改变 ⇒ 轴 A = INVALID
+  ⇒ 【不得用“N-01..N-05 全为 INVALID”的概括句覆盖 N-04】
 第二层失败（N-06）      ⇒ 只是 C1 要素未建立 ⇒ 若 C2/C3 独立成立，报告 C2/C3
-第三层失败（N-07..N-09）⇒ 按本设计判 INVALID ⇒ 但注意：prereg 本身不管这三条
+第三层（N-07..N-09）    ⇒ N-07/N-09 判 INVALID；
+                          N-08 属 gate 5 具体化，实现机制未提供 ≠ 规范无义务
 ```
 
 ## 8.2 充分性反向测试（凌翼 Q1_REVERSE_SUFFICIENCY = NOT ESTABLISHED）
 
 | # | 情形 | 期望输出 |
 |---|---|---|
-| N-10 | R-1..R-6 全部满足，但 R-7 未验证 | `NOT_ESTABLISHED`（不得 `ESTABLISHED`） |
+| N-10 | **设计尚未实现**（R-7 机制未建立，未执行） | `NOT_ESTABLISHED`（不得 `ESTABLISHED`） |
+| N-10a | **某次实际执行**缺少本 claim 必需来源证据 | 按适用条款记 `INVALID`（与 N-10 场景不同） |
 | N-11 | R-1..R-6 全部满足，R-7..R-10 全过 | `ESTABLISHED`（= C1 要素成立；**不**等于最终 class = C1） |
 | N-12 | 同 N-11，但 C2 独立成立 | AuthorityGate 仍只报 C1 要素成立；**最终 class 由 §13 机制赋为 C2**（不是 AuthorityGate 输出 C2） |
 | N-13 | 同 N-11，但 C3 独立成立 | 同上；最终 class 赋为 C3（不是 AuthorityGate 输出 C3） |
@@ -773,10 +821,10 @@ T-13 CAUSAL_PATH_ADJUDICATION = NOT ESTABLISHED
 | N-18 | 直接调用 `evaluate_basic_l1`，读到 `change_class=C1`，提交为正式结论 | 拒绝（无权威签发） |
 | N-19 | 自行构造 `AuthorityResult`，字段全对、自算 hash 也对 | 拒绝（生产者身份不可证） |
 | N-20 | 重放上一 execution 的有效 `AuthorityResult` | 拒绝（execution_id 与本轮不符） |
-| N-21 | 替换证据包后重新封存 | 拒绝（plan 引用不符） |
+| N-21 | 同 plan 引用下，替换 BEFORE/AFTER 原始字节后重新封存 | 拒绝。**检出依据不足**：仅校 plan 引用无法发现（plan 仍正确）。须校④层：原始事件承诺 / 事件来源 / 完整事件集合 / 受信封存身份（知微反例） |
 | N-22 | 用改名把 `L1_local` 声明为 `C1` | 拒绝（NB-31 禁 3） |
 
-**⇒ 全部 23 条（N-01..N-09a / N-10..N-13 / N-14..N-17 / N-18..N-22）：只列设计，未执行。**
+**⇒ 全部 24 条（N-01..N-09a / N-10..N-13 / N-14..N-17 / N-18..N-22）：只列设计，未执行。**
 
 ---
 
@@ -824,8 +872,8 @@ T_15a_P1_READ_PATH_EXISTENCE     = NOT ESTABLISHED（候选内，须观测）
 T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 在此拆开]
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
-T_18_MODULE_EXPORT_CONTROL       = NOT ESTABLISHED（§2.4c 有定义）
-T_19_AUTHORITY_RESULT_ENUM       = PARTIALLY_DEFINED（§2.2c 给四值；两处不对齐待睫确认）
+T_18_FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED（§2.4b 有定义；与函数可导入性无关）
+T_19_RESULT_AXIS_STRUCTURE = RESOLVED（§2.2c 已改为三轴；§2.2d 分离逐项标记）
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
 C1_SCIENTIFIC_RESULT             = NOT ASSESSED
