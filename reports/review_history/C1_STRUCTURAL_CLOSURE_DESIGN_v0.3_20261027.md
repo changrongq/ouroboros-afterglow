@@ -216,6 +216,16 @@ change_class 有两个值：NOT_ESTABLISHED（L242, L249, L258） / C1（L264）
 
 **⇒ 三轴的依赖规则（已按睫 T-19 裁定与知微 §3.1 收紧）：**
 
+**⇒ 术语声明（凌翼 2026-10-28 要求）：**
+
+```text
+本文所说的「轴 C 规范值」是本设计的【映射用语】，
+不是冻结 prereg 新增的结果字段。
+⇒ 冻结 prereg / evaluator 中只有 result 与 change_class，没有"轴"这一层。
+⇒ 三个轴是本设计为了区分三类语义而建立的【外部映射层】。
+⇒ 因此不得据「轴 C 规范值」宣称冻结件新增了任何结果字段。
+```
+
 ```text
 轴 A = INVALID
     ⇒ 轴 B、轴 C 均为 NOT_INSTANTIATED（不实例化）
@@ -797,7 +807,7 @@ V-3  采集主体验证
 | 7 | 边界外读取，经独立审查**确无相关因果路径** | — | — | — | **逐项标记**：`NEUTRAL_REVIEWED`（**必带 T-13 三项**：谁判/引用什么/何时封存；睫 NB-35）。**不产生任何轴的值**，也不判 INVALID |
 | 8 | 通路已登记 + 事件合规 + **有**因果路径 | — | — | — | **逐项标记**：`EVIDENCE_ADMITTED`（睫 NB-36）。**不等于任何轴的值**；"C1 尚未成立"与"这一项被收下"是两件事 |
 | 9 | 全部 required structure 有效且已执行，测量为负 | 轴 A = VALID | 轴 B = **FAIL** | 轴 C = NOT_ESTABLISHED | `FAIL`（此时才允许） |
-| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **UNDETERMINED**（字段：`derived.c1_element_establishment`；**change_class 冻结值仍为 NOT_ESTABLISHED**） | `UNRESOLVED` |
+| 10 | 同上，落入不确定区 | 轴 A = VALID | 轴 B = **UNRESOLVED** | 轴 C = **NOT_ESTABLISHED**（冻结字段原样保留）<br>非规范派生注释：`derived.c1_element_establishment = UNDETERMINED` | `UNRESOLVED` |
 | 11 | 同上，h≥2 且 payload 匹配，且 1-8 全过 | 轴 A = VALID | 轴 B = **PASS** | 轴 C = **C1_STORAGE_ELEMENT_ESTABLISHED**（若 R-1..R-10 全过） | AuthorityGate 输出轴 C；**最终 `PRE_RESET_CHANGE_CLASS` 仍由 §13 L715-725 机制另行赋值** |
 
 **⇒ 第 11 行的 `h>=2` 适用范围，见 §6.1。**
@@ -1088,11 +1098,25 @@ T_15b_READ_PATH_AS_GENERAL_GATE  = NOT ESTABLISHED（须规范授权）  [T-15 �
 T_16_AUTHORITY_PERMISSION_ROOT   = NOT ESTABLISHED（§4.1 有定义）
 T_17_AUTHORITY_ISSUER_IDENTITY   = NOT ESTABLISHED（§4.2 有定义）
 T_18_FORMAL_RESULT_CONSUMER_AUTHORIZATION = NOT ESTABLISHED（§2.4b 有定义；与函数可导入性无关）
-T_19_RESULT_AXIS_STRUCTURE = PARTIALLY_RESOLVED（三轴方向已定；BF-11 语义问题已由凌翼 2026-10-28 裁定 RESOLVED，但 T-19 不因该裁定宣告实现及验证完成）
+T_19_RESULT_AXIS_STRUCTURE = RESOLVED (DESIGN_SCOPE_ONLY)（凌翼 2026-10-28 裁定：设计语义已收口，不等于实现或验证完成）
+T_19_RESOLUTION_SCOPE        = DESIGN_ONLY
+DERIVATION_INDEPENDENT_RECOMPUTATION = NOT VERIFIED
 BF11_SEMANTIC_DECISION         = RESOLVED（凌翼 2026-10-28）
 BF11_NON_NORMATIVE_DERIVATION  = ALLOWED_FOR_DESIGN
 BF11_FROZEN_FIELD_REWRITE      = PROHIBITED
 BF11_NORMATIVE_EXTENSION       = NOT AUTHORIZED
+
+```text
+⇒ 记账分离（凌翼 2026-10-28 明确要求）：
+   T19 = RESOLVED 只说明【结果轴的定义与语义边界已收口】，
+   ⇒ 不说明 AuthorityGate 可用
+   ⇒ 不说明派生可独立复算（DERIVATION_INDEPENDENT_RECOMPUTATION = NOT VERIFIED）
+   ⇒ 不说明消费者侧已建立（T-18 = NOT ESTABLISHED）
+   ⇒ 不说明 C1 科学结论可签发
+
+   ⇒ 禁止用"仅引用 T19=RESOLVED"推导出 AuthorityGate 可用或 C1 可签发。
+```
+
 AUTHORITY_RESULT_IMPLEMENTED   = NO
 
 C1_MEASUREMENT_CHAIN_QUALIFIED   = NOT ESTABLISHED
