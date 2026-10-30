@@ -1182,3 +1182,110 @@ evaluator  fa644a9bcfd59ffbbb415f0f439599eb705333600e7f8f8f0b93997ce6a59b5a
 
 **请睫、知微、钳星复核的落点见 §8 与各节末尾。**
 
+---
+
+# 12 · 收尾：本文边界在哪，下一步为什么是那两条链
+
+**日期**：2026-10-30
+**性质**：收尾说明。不新增规则，不改变本文任何已述设计。
+
+## 12.1 本文到此为止能声明什么
+
+**⇒ 设计层：三轴结构已收口。**
+
+```text
+T_19_RESULT_AXIS_STRUCTURE = RESOLVED (DESIGN_SCOPE_ONLY)   ← 凌翼 2026-10-28 裁定
+BF11_SEMANTIC_DECISION     = RESOLVED
+BF11_NON_NORMATIVE_DERIVATION = ALLOWED_FOR_DESIGN
+BF11_FROZEN_FIELD_REWRITE  = PROHIBITED
+BF11_NORMATIVE_EXTENSION   = NOT AUTHORIZED
+```
+
+**⇒ 而这是「定义完成」，不是「机制实现」，也不是「结果验证」。**
+**⇒ 三类必须分开记账（凌翼明确要求）：**
+
+```text
+「这件事的定义是否完成？」   ⇒ T-19 = RESOLVED
+「这件事的机制是否实现？」   ⇒ AUTHORITY_RESULT_IMPLEMENTED = NO
+「这件事的结果是否经过独立验证？」 ⇒ DERIVATION_INDEPENDENT_RECOMPUTATION = NOT VERIFIED
+```
+
+## 12.2 本文没有做的那件事，正是下一步
+
+**⇒ 本文把「每个条件是什么」写清了，但没写「它们怎样串成一条可检验的流程」。**
+
+```text
+本文做了：  把 R-1..R-10 拆成三层、把结果分成三轴、把四张表分开、列 24 条反例
+本文没做：  一条 execution 从头到尾的证据流长什么样
+            ——谁启动、谁写、谁观察、谁封存，哪份记录能区分本轮与旧记录
+```
+
+**⇒ 而 BF-8 与 COND_6 之所以一直 OPEN，缺的正是这个：**
+**⇒ 不是缺规则，是缺「一条链长什么样」。**
+
+**⇒ 因此凌翼裁定 §4 允许转向两条独立证据链：**
+
+```text
+链 A · Writer Attribution
+   谁实际写入？写入了哪个对象？如何独立验证？
+   ⇒ 对应本文 R-7（writer 关联）
+
+链 B · Episode / Execution Binding
+   本次写入对应哪一次执行？如何防旧证据重放？如何证明关联？
+   ⇒ 对应本文 R-8（execution 来源绑定；§31 L1948-1949 已要求，属 gate 5 具体化）
+```
+
+**⇒ 两条链不是新规则，是把 R-7 / R-8 展开成可检验的流程。**
+
+## 12.3 下一步文档
+
+```text
+文件：reports/review_history/两条证据链_设计草案_v0.1_20261030.md
+依据：凌翼·T-19 状态确认（2026-10-28）§4
+基准：本文 commit 1e753b4
+性质：非冻结设计草案；不含实现，不声称已验证
+```
+
+**⇒ 它承接的是本文的哪几格：**
+
+| 本文位置 | 被哪条链展开 |
+|---|---|
+| R-7（§2，writer 关联） | 链 A · A-M3 身份核对点 |
+| R-8（§2，execution 来源绑定） | 链 B · B-M7 重放检测 |
+| §2.4 BF-8 旁路分析 | 链 A · A-G1「冻的是应该，缺的是实际」 |
+| §2.4d episode-specific 是执行侧属性 | 链 B · B-G5「META 侧关联从未建立」 |
+| §5.0 三类对象（Plan / Event / Sealed） | 链 B · B-M1 / B-M3 / B-M5 |
+| §8.4 旁路与伪造测试 | 链 A · A-N1..A-N6；链 B · B-N1..B-N7 |
+
+## 12.4 本文的最终状态
+
+```text
+设计层已收口（本文）
+   T_19_RESULT_AXIS_STRUCTURE   = RESOLVED (DESIGN_SCOPE_ONLY)
+   三轴语义 / 派生条件 / 术语边界 = 已定
+
+实现层未开始
+   AUTHORITY_RESULT_IMPLEMENTED = NO
+   DERIVATION_INDEPENDENT_RECOMPUTATION = NOT VERIFIED
+
+科学层未建立
+   BF8_STATUS                   = OPEN
+   BF9_EPISODE_SOURCE_BINDING   = NOT ESTABLISHED
+   COND_6                       = NOT ESTABLISHED
+   C1_MEASUREMENT_CHAIN_QUALIFIED = NOT ESTABLISHED
+
+门禁不变
+   CODE_CHANGE                  = NOT AUTHORIZED
+   IMPLEMENTATION_AUTHORIZATION = NONE
+   SCIENTIFIC_EXECUTION         = MAY NOT START
+   FROZEN_Q3_RC11               = UNCHANGED
+```
+
+## 12.5 一句
+
+**本文回答的是「每个条件叫什么、边界在哪」。**
+**两条链要回答的是「这些条件怎样在一次执行里被满足」。**
+
+**⇒ 前者已经收口；后者刚刚开始画。**
+**⇒ 而两者都不等于「C1 已建立」。**
+
