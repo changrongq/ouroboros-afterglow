@@ -1,18 +1,30 @@
-B-1 隔离诊断 · 原始终端输出（归档）
-=====================================
+B-1 隔离诊断 · 归档材料（2026-10-31 更正版）
+=============================================
 
-归档目的：凌翼 2026-10-31 裁定要求补存原始输出，
-以便区分「执行者报告」与「独立核实」。
+【本文件的结构，先说明】
+凌翼第三节指出：原文件标为「原始输出逐字」的部分，
+与归档脚本的实际 print 文本并非完全一致。
+⇒ 已重写为三段【分开标注】的材料：
+     A 段：原始终端输出（逐字，未整理）
+     B 段：归档脚本当前的 print 文本（可复算，但非该次运行的逐字输出）
+     C 段：事后分析（明确标为分析，不是输出）
 
-原始运行时间：2026-10-31
+【重要更正】
+原文件曾把 (L0,Q1) 描述为「StateSnapshot 的实际返回记录」。**这是错的。**
+归档脚本在交错中【没有】调用 st.snapshot()，
+而是分别调用 read_literal_bytes() 与 read_substrate_bytes()，
+再把两个返回字节配对。
+⇒ 因此正确说法是：INCONSISTENT_READ_PAIR = OBSERVED_AS_REPORTED，
+   而 TORN_STATESNAPSHOT_RETURN = NOT DIRECTLY DEMONSTRATED。
+
 原始运行环境：Python 3.11.15 / win32
 原始沙箱路径：C:\Users\Administrator\AppData\Local\Temp\b1diag_2ogshr66
-（注：tempfile.mkdtemp 每次运行生成不同路径）
-
-命令：python <脚本路径>
 退出码：0
 
----- 原始输出（逐字）----
+
+==================================================
+A 段 · 原始终端输出（逐字，未整理）
+==================================================
 
 SANDBOX = C:\Users\Administrator\AppData\Local\Temp\b1diag_2ogshr66
 
@@ -33,37 +45,94 @@ SANDBOX = C:\Users\Administrator\AppData\Local\Temp\b1diag_2ogshr66
   真实序列 (L0,Q0)->(L1,Q0)->(L1,Q1) 中无 (L0,Q1)
   => 该快照为【从未存在过的组合状态】
 
----- 输出结束 ----
+A 段结束。
 
-StateSnapshot 实际返回记录
---------------------------
-literal 前 12 字节  : b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-q                   : 2
-（据 storage.py L83 return StateSnapshot(literal=lit, q_raw=sub)
-  该组合 = (L0, Q1)）
+【注意】该次运行的脚本版本，末尾还打印过下面这段（现已删除）：
 
-注入方式说明
+  === StateSnapshot 实际返回记录 ===
+    snapshot().literal 前12字节 = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    snapshot().q                = 2
+    组合是否为真实状态之一      = False
+
+⇒ 这三行是【错误表述】的来源：
+   它打印的两个值来自 read_literal_bytes() 与 read_substrate_bytes()，
+   不是 snapshot() 的返回对象，却标成了「StateSnapshot 实际返回记录」。
+⇒ 已从归档脚本中删除并改写。
+
+
+==================================================
+B 段 · 归档脚本当前的 print 文本
+==================================================
+
+（可复算，但【不是】该次运行的逐字输出；
+ 脚本已按凌翼第三节要求收窄措辞。
+ 按凌翼要求：未重新执行诊断。）
+
+  当前脚本结尾打印：
+    === 结论（2026-10-31 收窄后）===
+      交织得到的【读取对】= (L0, Q1)
+      真实序列 (L0,Q0)->(L1,Q0)->(L1,Q1) 中无 (L0,Q1)
+      => 该读取对为【从未存在过的组合状态】
+
+      ⚠ 证明边界（凌翼第三节）:
+        本脚本【未】在该交错中调用 st.snapshot()。
+        上述 (L0,Q1) 由两次【独立底层读】分别取得后配对，
+        不是 snapshot() 的实际返回对象。
+        => TORN_STATESNAPSHOT_RETURN = NOT DIRECTLY DEMONSTRATED
+
+    === 底层读取值（非 StateSnapshot 对象）===
+      literal 前12字节 = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+      substrate q      = 2
+      该读取对是否为真实状态之一 = False
+
+
+==================================================
+C 段 · 事后分析（明确是分析，不是输出）
+==================================================
+
+注入方式
+--------
+本诊断不使用并发或竞态，而是【确定性人工交错】：
+
+  1. 主线程调用 read_literal_bytes()（对应 storage.py L73 的动作）
+  2. 主线程在写入窗口内依次 write_literal(L1)、write_substrate(Q1)
+  3. 主线程调用 read_substrate_bytes()（对应 storage.py L74 的动作）
+
+即：把 storage.py L71-83 的两次读取在时间上【手工拉开】，中间插入真实写入。
+
+能证明什么
+----------
+  MANUAL_INTERLEAVING          = CONSTRUCTED
+  INCONSISTENT_READ_PAIR       = OBSERVED_AS_REPORTED
+  ⇒ 在指定交错下，两次底层读可以取得一对【从未同时存在过】的字节值。
+
+不能证明什么
 ------------
-本诊断不使用并发或竞态。
-它是【确定性人工交错】：
-  1. 主线程先调用 read_literal_bytes()（即 snapshot 的 L73 动作）
-  2. 主线程在窗口内依次 write_literal(L1)、write_substrate(Q1)
-  3. 主线程再调用 read_substrate_bytes()（即 snapshot 的 L74 动作）
+  TORN_STATESNAPSHOT_RETURN    = NOT DIRECTLY DEMONSTRATED
+  ⇒ 本归档【未】在该交错中调用 snapshot()，
+    因此不能说「已实测冻结 snapshot() 返回该撕裂对象」。
 
-即：把 storage.py L71-83 的两次读取在时间上【手工拉开】，
-中间插入真实写入。
+  也不能证明：
+    · 真实执行中该交错曾发生
+    · 并发竞态下必然发生
+    · 时序保护未建立（本诊断不涉及该结论）
 
-因此本诊断证明的是：
-  "在该指定交错下，snapshot() 可返回从未存在过的组合"
-不证明：
-  "真实执行中该交错曾发生"
-  "并发竞态下必然发生"
+为什么该收窄
+------------
+凌翼第三节原文：
+  "把两个底层动作分别做过，
+   不等于已经调用并验证了包装它们的完整函数。"
+
+⇒ snapshot() 是包装层（storage.py L71-83，内部依次调用这两个底层函数）。
+⇒ 我验证的是【被拆开后的两个组成部分】，
+   不是【包装层在该交错下的实际返回值】。
+⇒ 二者不能互相替代。
 
 标记
 ----
-B1_COUNTEREXAMPLE_DESIGN      = ACCEPTED（凌翼第四节）
-B1_DIAGNOSTIC_REPORTED        = NON_ATOMIC_SNAPSHOT_OBSERVED
-B1_INDEPENDENT_REPRODUCTION   = 本归档供核，未重跑
+B1_COUNTEREXAMPLE_DESIGN      = ACCEPTED（凌翼第六节）
+B1_SNAPSHOT_RETURN_VERIFIED   = NO
+B1_INDEPENDENT_REPRODUCTION   = NOT VERIFIED
 B1_SCIENTIFIC_CLAIM_ELIGIBILITY = NONE
 
 不得用于：科学 PASS、时序保护已建立的结论、正式科学证据。
