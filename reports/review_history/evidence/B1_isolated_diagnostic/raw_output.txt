@@ -1,0 +1,69 @@
+B-1 隔离诊断 · 原始终端输出（归档）
+=====================================
+
+归档目的：凌翼 2026-10-31 裁定要求补存原始输出，
+以便区分「执行者报告」与「独立核实」。
+
+原始运行时间：2026-10-31
+原始运行环境：Python 3.11.15 / win32
+原始沙箱路径：C:\Users\Administrator\AppData\Local\Temp\b1diag_2ogshr66
+（注：tempfile.mkdtemp 每次运行生成不同路径）
+
+命令：python <脚本路径>
+退出码：0
+
+---- 原始输出（逐字）----
+
+SANDBOX = C:\Users\Administrator\AppData\Local\Temp\b1diag_2ogshr66
+
+  [1_init] {'L0': b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', 'Q0': 0, 'digest': '9d908ecfb6b256de'}
+  [2_read_literal] {'lit': b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'}
+  [3a_write_L1] {'L1': b'\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa', 'digest': '1491a9954d485107'}
+  [3b_write_Q1] {'Q1': 2, 'digest': '7db8c5619fe87172'}
+  [4_read_substrate] {'sub': b'\x02\x00\x00\x00\x00\x00\x00\x00'}
+
+  真实状态序列 = [('0000000000000000', 0), ('AAAAAAAAAAAAAAAA', 0), ('AAAAAAAAAAAAAAAA', 2)]
+  交织得到的组合 = (b'\x00\x00\x00\x00', 2)
+
+  (L0,Q1) 是否曾经真实存在?  NO
+  -> 真实序列中 (L0,Q1) 出现过吗: False
+
+=== 结论 ===
+  交织返回 (L0,Q1)
+  真实序列 (L0,Q0)->(L1,Q0)->(L1,Q1) 中无 (L0,Q1)
+  => 该快照为【从未存在过的组合状态】
+
+---- 输出结束 ----
+
+StateSnapshot 实际返回记录
+--------------------------
+literal 前 12 字节  : b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+q                   : 2
+（据 storage.py L83 return StateSnapshot(literal=lit, q_raw=sub)
+  该组合 = (L0, Q1)）
+
+注入方式说明
+------------
+本诊断不使用并发或竞态。
+它是【确定性人工交错】：
+  1. 主线程先调用 read_literal_bytes()（即 snapshot 的 L73 动作）
+  2. 主线程在窗口内依次 write_literal(L1)、write_substrate(Q1)
+  3. 主线程再调用 read_substrate_bytes()（即 snapshot 的 L74 动作）
+
+即：把 storage.py L71-83 的两次读取在时间上【手工拉开】，
+中间插入真实写入。
+
+因此本诊断证明的是：
+  "在该指定交错下，snapshot() 可返回从未存在过的组合"
+不证明：
+  "真实执行中该交错曾发生"
+  "并发竞态下必然发生"
+
+标记
+----
+B1_COUNTEREXAMPLE_DESIGN      = ACCEPTED（凌翼第四节）
+B1_DIAGNOSTIC_REPORTED        = NON_ATOMIC_SNAPSHOT_OBSERVED
+B1_INDEPENDENT_REPRODUCTION   = 本归档供核，未重跑
+B1_SCIENTIFIC_CLAIM_ELIGIBILITY = NONE
+
+不得用于：科学 PASS、时序保护已建立的结论、正式科学证据。
