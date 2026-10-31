@@ -58,6 +58,22 @@ SCIENTIFIC_EXECUTION           = MAY NOT START
 |---|---|---|---|---|
 | **G-1** | 规则/hash 有效性 | §13 L702 | "本次 execution 与该 claim scope 所需 manifests / frozen rules 均有效" | 必要条件 |
 | **G-2** | observer 合法性 + before/after 已完成 | §13 L703 → §11 L604-625 | L703："§11 Independent State Observer 合法，并完成 registered before / after observation"；§11 L606："before / after state 必须由独立于 W 的 observer 采集"；L619-625 四条 + "W 不能认证自己已经改变 state" | 必要条件 |
+
+**⇒ 而 observer.py L4-7 有一句字节先例（睫 NB-49，此前未进正文）：**
+
+```text
+observer.py L4-7（原文）：
+  "The observer is a read-only component that is NOT the write operator. It
+   collects registered state by reading STATE_FIELDS from the files directly and
+   computing state identities independently. Writer-reported digests are never
+   treated as evidence."
+
+⇒ "Writer-reported digests are never treated as evidence"
+   是 T-B2（身份不得由 writer 自报）在【代码里的先例】
+⇒ 而本文 T-B2 的延伸（writer 也不能认证自己"是哪一次"）
+   同源于这一句，只是从 STATE 扩到 execution。
+```
+
 | **G-3** | 两臂已实际执行 | §13 L704 | "§28.1 preregistered TARGET WRITE ARM vs NO-WRITE / MATCHED BASELINE CONTROL 已实际执行" | 必要条件 |
 | **G-4** | D_ATTRIBUTION 给出 ATTRIBUTED | §13 L705 + L708 | L705："frozen D_ATTRIBUTION 在该 §28.1 scope 的 canonical ΔS_identity_masked 上给出 Basic-L1/C1-scope"；L708（代码块内）："attribution_result = ATTRIBUTED"（L707/L709 为围栏） | 必要条件 |
 | **G-5** | provenance 完整 + 无命中 stop condition | §13 L711 | "required provenance 完整，且没有命中与该 attempted claim 相关的 §37 invalidity / stop condition" | 必要条件 |
@@ -378,6 +394,21 @@ A = VALID, B = PASS       → 仍须独立审核 C1 专属建立条件
      它不改写冻结输出，不与 NOT_ASSESSED 互换；原始局部结果仍保留。
    · 二者作用域不同（post-reset higher class vs pre-reset 轴 C），
      不得互换，也不得据此推断对方的状态
+
+⇒ 【BF-11': 必须写准的一格（睫 2026-10-31 指正）
+   冻结 evaluator 在 INVALID 分支【根本不赋 change_class】：
+     evaluator.py L229-235（q_B != q_A 分支）四个参数里没有 change_class
+     ⇒ 取 L181 的 dataclass 默认值 = ""（空串）
+   ⇒ 所以准确说法是：冻结侧在这一格是【没有值】，不是"声明它不实例化"
+   ⇒ 「空串」≠「我声明它不实例化」
+   ⇒ 本文的 NOT_INSTANTIATED 是【外部接口加上的占位】，
+     不是对冻结字段的重新解释
+
+⇒ 而 BF-11 与 BF-11' 不是同族（睫自己认了这一格）：
+   BF-11  = 已有值（NOT_ESTABLISHED），不许改
+   BF-11' = 没有值（""），不许写成"我声明它不实例化"
+   ⇒ 凌翼的解法（另设派生字段、冻结字段原样保留）只能治前者
+   ⇒ 对后者，另设一个字段恰恰是错的——那正是把空位变成一个值
 ```
 
 **⇒ 而此前我把它们压成一列，会导致一个具体错误：**
@@ -395,7 +426,7 @@ A = VALID, B = PASS       → 仍须独立审核 C1 专属建立条件
 表三第 7 行    → 独立的【逐项】标记（见 §2.2c），不属于三轴
 表三第 8 行    → 独立的【逐项】标记（见 §2.2c），不属于三轴
 表三第 9 行    → 轴 A=VALID, 轴 B=FAIL, 轴 C=NOT_ESTABLISHED
-表三第 10 行   → 轴 A=VALID, 轴 B=UNRESOLVED, 轴 C=UNDETERMINED（派生字段；change_class 冻结值仍为 NOT_ESTABLISHED）
+表三第 10 行   → 轴 A=VALID, 轴 B=UNRESOLVED, 轴 C=NOT_ESTABLISHED（冻结字段原样保留）；非规范派生注释 derived.c1_element_establishment = UNDETERMINED（知微 §2 已要求同步）
 表三第 11 行   → 轴 A=VALID, 轴 B=PASS, 轴 C=C1_STORAGE_ELEMENT_ESTABLISHED（若 R-1..R-10 全过）
 ```
 
@@ -580,7 +611,7 @@ T-18 已更名：
 ```text
 MANIFEST         grep "__init__"          → 零命中                    [终端核验]
 role_registry    grep "__init__"          → 零命中                    [终端核验]
-manifest_bind    COMPONENT_FILES（L85-107）→ 22 项，无 __init__.py     [读文件]
+manifest_bind    COMPONENT_FILES（L85-107）→ **20 项**，无 __init__.py     [终端逐行计数]
 ```
 
 **⇒ 而解读必须收窄（知微指出）：**
@@ -708,7 +739,7 @@ prereg §13 L722-724 的 C1 class rule 原文：
 
 | 角色 | 产出 | 是否可形成 C1_STORAGE_ELEMENT_ESTABLISHED | 边界依据 |
 |---|---|---|---|
-| **校准消费者**（`smoke_evaluator.py` / `recompute_from_ledger.py` / `fixtures.py` / `evidence_bundle.py` 现有路径） | 局部 `L1Result`（含 `change_class=C1`） | **否** | `PHASE_A` / `SCIENTIFIC_CLAIM_ELIGIBILITY = "NONE"`（fixtures.py L50-51；suite L159-160） |
+| **校准消费者**（`smoke_evaluator.py` / `recompute_from_ledger.py` / `fixtures.py` / `evidence_bundle.py` 现有路径） | 局部 `L1Result`（含 `change_class=C1`） | **否** | `PHASE = "PHASE_A_HARNESS_VALIDATION_EXECUTION"` / `SCIENTIFIC_CLAIM_ELIGIBILITY = "NONE"`（fixtures.py L50-51；suite L159-160） |
 | **证据采集者**（observer） | BEFORE/AFTER 原始字节 + digest + 采集阶段身份 | 否 | 只读；不参与判别 |
 | **权威裁决者**（`C1AuthorityGate`，拟建） | `AuthorityResult` | **拟为唯一** | 须经注册与独立登记（T-16/T-17 未建立） |
 | **正式结果存储** | AuthorityGate 的 C1 要素判定结果（**不是最终 `PRE_RESET_CHANGE_CLASS`**；后者由 §13 L715-725 机制写入） | 否（存储不生产） | 只接受受信入口写入 |
