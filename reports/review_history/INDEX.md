@@ -222,3 +222,34 @@ Q3_DESIGN_FREEZE = REGISTERED
 - **验证器**: `../../afterglow_harness/verify_q3_freeze.py`（`Q3_FROZEN_IDENTITY = OK`）
 - **FROZEN_CODE_COMMIT** = `2c92074a9808b1c9acd5ad5a36cba7a34e472892`；**10 角色**；**DIGEST** = 见 `../frozen/Q3_FROZEN_REFERENCE_2c92074.txt`
 - 自此刻起 **10 个 Q3 冻结源码不得修改**；`SCIENTIFIC_EXECUTION = MAY NOT START`。
+
+---
+
+## D1 — 双项架构决策（2026-11-01）
+
+凌翼 `D1_DESIGN_WORK = AUTHORIZED`；两项均为**设计决策记录**，不含实施授权。
+
+| # | 文档 | 提交时 SHA-256（前 16） | 行数 |
+|---|---|---|---|
+| D1-1 | `D1-1_记录不可变性_决策记录_20261101.md` | `f9b726cc5f11b7da` | 303 |
+| D1-2 | `D1-2_WRITE_COMMIT语义边界_决策记录_20261101.md` | `589ebad90521bd32` | 279 |
+
+- **基线提交**：`d9d95f11aab3be8d882dec640578078dcbe29d4b`
+- **复核**：知微（静态文档+源码，4×P1 / 2×P2）、睫（字节自算，NB-53/54/55）、钳星（结构审读，1 条补充）
+- **复核结论**：`D1_1_REVIEW = REVISIONS_REQUIRED`、`D1_2_REVIEW = REVISIONS_REQUIRED`；
+  `DESIGN_DIRECTIONS = SUPPORTED_WITH_REVISIONS`
+- **本轮修正**：见两份文档内各节的「2026-11-01 修正」标注块
+
+```text
+RECORD_IMMUTABILITY_DECISION   = PROPOSED_BASELINE_A
+WRITE_COMMIT_DEFINITION        = PROPOSED（建议弃用该名称）
+CODE_CHANGE                    = NOT AUTHORIZED
+IMPLEMENTATION_AUTHORIZATION   = NONE
+SCIENTIFIC_EXECUTION           = MAY NOT START
+FROZEN_Q3_RC11                 = UNCHANGED
+```
+
+> 注（睫 · 209·五）：D1 两份文档引用的「协议 §3.1 / §3.4 / §4.2b / §5.2」
+> 指 `事件时序协议_v0.1_20261031.md`，**不是冻结 prereg**。
+> 冻结 prereg 无 §3.1（其 §8.2 才是 "Audit log != registered storage"）。
+> 该协议为非冻结设计文档，故其章节号**不可用于规范锚点**。

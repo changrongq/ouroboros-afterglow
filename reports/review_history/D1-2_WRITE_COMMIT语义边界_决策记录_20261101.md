@@ -31,11 +31,27 @@
 
 ```text
 事件                        当前实现能否产生      依据
-WRITE_OPERATION_RETURNED    能                  storage.py L99/L107 正常 return
+WRITE_OPERATION_RETURNED    能                  storage.py L99-105 / L107-109 正常返回
 STATE_WRITE_COMPLETED       能                  storage.py L59-61 with 退出即 close
 STATE_DURABILITY_CONFIRMED  【不能】            storage/observer/writers fsync 计数 = 0
-EVENT_RECORD_ACKNOWLEDGED   【不能】            记录者本身不存在（原语总数 = 0）
+EVENT_RECORD_ACKNOWLEDGED   【不能】            记录者原语不存在
 ```
+
+> **2026-11-01 修正（睫 · 209·二）**
+> ```text
+> 原写「storage.py L99 / L107 正常 return」——
+> 但 L99 是 def write_literal，L107 是 def write_substrate，
+> 【都是 def 行】，return 不在那两行上。
+> ⇒ 语义可达（两函数确实正常返回），但行号指错。
+> ⇒ 已改为 L99-105 / L107-109。
+> ```
+>
+> ```text
+> 另：睫指出「记录者原语总数 = 0」我只能证明【四个文件】内为 0，
+> 不能证明全仓为 0（仓库文件清单取不到）。
+> ⇒ 准确表述：storage / writers / observer / evaluator 四文件内零命中。
+> ⇒ 全仓是否为零 = NOT VERIFIED。
+> ```
 
 ```text
 ⇒ 这不是设计取舍，是【材料现状】。
@@ -52,6 +68,13 @@ EVENT_RECORD_ACKNOWLEDGED   【不能】            记录者本身不存在（�
 答：STATE_WRITE_COMPLETED
     = storage.py L61 f.write(data) 完成且 L60 with 块正常退出（文件对象已关闭）
 ```
+
+> **标记层级说明（知微 Z-D1-06 / 睫 209·二）**
+> ```text
+> ⇒ 本节结论来自【读源码】，不是【跑实验】。
+> ⇒ 因此标 [已核对源码]，不标 [已实测]。
+> ⇒ 标题里若出现「实测」二字，必须附固定运行证据；本文未运行任何实验。
+> ```
 
 **为什么不是 WRITE_OPERATION_RETURNED：**
 
@@ -97,31 +120,84 @@ EVENT_RECORD_ACKNOWLEDGED   【不能】            记录者本身不存在（�
 
 **级 A · 当前可实现的条件（只用可产生的事件）**
 
-```text
-ALLOW_SNAPSHOT 需要：
-  (a) 该次写入已记录 STATE_WRITE_COMPLETED
-  (b) 写入窗口已关闭（storage.py L112-124 __exit__ 已执行）
-  (c) 快照发生时刻晚于窗口关闭
+> **2026-11-01 修正（知微 Z-D1-04）**
+> 原文把 STATE_WRITE_COMPLETED 当作【无条件】前置。
+> 而本文自己的 STORE_NULL 反例就说明这种事件可以不存在。
+> **后果：不写入臂与零效果对照永远不能进入观察。**
 
-⇒ (a)(b) 当前可产生。
-⇒ (c) 当前【不可判定】——没有时序号，无 fb 序。
+```text
+⇒ 规则必须限定为「本次注册计划要求的动作」，
+   而不是「所有臂都必须有写入完成事件」。
+```
+
+**按注册语义分类（writers.py L82-84 / fixtures.py L167-179）：**
+
+| 臂类型 | 应产生的事件 | 阶段完成依据 |
+|---|---|---|
+| 真写入（STORE_FULL / STORE_ONE_BYTE） | STATE_WRITE_COMPLETED | 该事件已记录 |
+| STORE_NULL（调用但零效果） | WRITE_OPERATION_RETURNED，**无** STATE_WRITE_COMPLETED | 零效果语义已执行，且**已观察到状态未变** |
+| OFF / 未调用（如 A 臂不调用本次存储写入） | **两个都无** | 注册为不调用，且**已核实确实未被调用** |
+| 幂等写入（写入值 == 当前值） | STATE_WRITE_COMPLETED | 该事件已记录（按调用判，非按效果） |
+
+```text
+⇒ 共同门不应检查「所有臂都有写入完成事件」，
+   而应检查：
+     (a) 该臂已按【注册语义】结束
+     (b) 对象/执行身份一致
+     (c) 相应能力边界成立
+     (d) 观察时序成立
+
+⇒ 初始化基线属于【不同阶段的动作】，
+   不能拿它冒充本次干预的写入完成。
 ```
 
 ```text
-⇒ 因此级 A 是【必要条件】，不是充分条件。
-⇒ 满足 (a)(b) 仍【不足以】声称快照合法。
+⚠ 不允许的做法：
+  · 为放行而伪造写入事件
+  · 把 no-write 分支无证据地默认通过
+  · 修改冻结 fixtures
+
+NO_WRITE_PATHS_REQUIRE_EVIDENCE = YES
 ```
 
 **级 B · 若要有充分条件（需未来能力）**
 
-```text
-ALLOW_SNAPSHOT（充分）需要：
-  (a) STATE_WRITE_COMPLETED 已发生
-  (b) 记录者确认 WINDOW_CLOSE 已达 L3（EVENT_RECORD_ACKNOWLEDGED）
-  (c) 且顺序证据成立（协议 §4.2b 的 ELIGIBLE_ORDER_EVIDENCE）
+> **2026-11-01 修正（知微 Z-D1-05）**
+> 原文标题写「ALLOW_SNAPSHOT（充分）」，
+> 暗示满足 (a)(b)(c) 就可以接受整个快照。
+> **这是过度承诺。**
 
-⇒ (b)(c) 当前均不具备。
-⇒ 故当前 ALLOW_SNAPSHOT(充分) = NOT ESTABLISHED
+```text
+两者必须分开：
+
+  TIME_GATE_SUFFICIENT_FOR_STAGE_ADVANCE
+    = 级 B 的三项，是【时序门】的局部充分条件
+
+  ALLOW_SNAPSHOT_SUFFICIENT_FOR_CONSISTENT_SNAPSHOT
+    = NOT ESTABLISHED（需另行成立的前提）
+```
+
+**静态反例（知微给出）：**
+
+```text
+注册 writer 已返回并关闭本地窗口，日志与顺序均成立；
+但另一仍有写权限的主体在两次读取之间修改了对象。
+⇒ 级 B 三项可全部满足，但快照并不一致。
+```
+
+```text
+根源：storage.py L120-122 的 __exit__ 只调 _close_write_window()，
+      后者改的是【进程内布尔值】，不是 OS 层权限撤销。
+      L73-74 仍然是两次顺序读。
+```
+
+```text
+⇒ 若要声称整体 ALLOW_SNAPSHOT 充分，必须另行引用：
+    · 对象身份稳定
+    · 观察权限成立
+    · 写能力已被真正限制
+    · 读取区间一致性
+⇒ 本篇【不】重新设计整套隔离，只标注边界。
 ```
 
 ## 问 4 · 哪些保证目前无法建立？
@@ -227,7 +303,31 @@ ALLOW_SNAPSHOT（充分）需要：
 为何错：
   COLLAPSE_SIGN on q=+2 → 摘要不变，但写入确实发生了。
 
-期望：STATE_WRITE_COMPLETED 必须由【调用】而非【效果】判定
+期望：STATE_WRITE_COMPLETED 必须由【真实写入路径正常完成】判定，
+      不由【效果】判定，也不由【调用开始/计数】判定。
+```
+
+> **2026-11-01 修正（知微 Z-D1-06）**
+> 原文结尾写「必须由【调用】判定」——这比问 1 的定义更弱。
+> ```text
+> ⇒ 调用后可能在 open、write 或 close 时异常，不能签发完成事件。
+> ⇒ STORE_NULL 本身就是「调用了但什么都没写」的证据。
+> ⇒ 正确表述：与目标对象绑定的真实写入路径【正常完成并正常关闭】。
+> ```
+
+**三层必须分开（知微 Z-D1-06）：**
+
+```text
+层 1  底层动作在正常路径可发生      ← 当前源码静态可判
+层 2  有独立、可绑定的观测证据      ← 当前【无】
+层 3  已形成并持久化协议事件        ← 当前【无】
+
+⇒ 当前源码只支持层 1 的静态判断。
+⇒ 因此「级 A：已记录 STATE_WRITE_COMPLETED」不能仅凭
+   存在 with/open 路径就宣称已有【记录能力】。
+⇒ 准确说法：
+   STATE_WRITE_COMPLETED_CAN_OCCUR       = YES（静态）
+   STATE_WRITE_COMPLETED_IS_RECORDED     = NOT ESTABLISHED
 ```
 
 ---
