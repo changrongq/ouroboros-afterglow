@@ -1,3 +1,205 @@
+B-1 隔离诊断 · 归档材料（2026-11-01 勘误版）
+=============================================
+
+【本文件是什么，先说清楚】
+凌翼 2026-11-01 裁定：CORRECTION ACCEPTED / MINOR ARCHIVE ERRATA REMAIN
+⇒ 本文按 E-2 修正归档材料的【原始性标注】。
+
+【E-2 的核心：不能称 A 段为「完整逐字终端输出」】
+凌翼原文：
+  "我再次对比了归档脚本与 A 段。
+   例如，早期脚本使用：
+       print("  (L0,Q1) 在真实序列中出现吗:", ...)
+   而 A 段含有另一种输出形式：
+       (L0,Q1) 是否曾经真实存在? NO
+   此外，A 段并未完整包含其后单独注明的错误标题及对应输出。
+   因此，现有材料不足以确认 A 段是未经编辑的完整原始终端记录。"
+
+我核实后确认：
+  · 归档脚本 L85 现为  print("  (L0,Q1) 在真实序列中出现吗:", ...)
+  · A 段文本为         (L0,Q1) 是否曾经真实存在?  NO
+  ⇒ 二者【不是】同一文本。
+  ⇒ 我【无法】证明 A 段是未经编辑的原始记录。
+  ⇒ 因此不再赋予它超出证据的原始性。
+
+【三段的准确命名（凌翼 E-2）】
+  A = HISTORICAL_OUTPUT_EXCERPT
+      (EXACT_VERBATIM STATUS NOT VERIFIED)
+  B = CURRENT_SCRIPT_EXPECTED_OUTPUT
+      (NOT RE-EXECUTED)
+  C = POST-HOC ANALYSIS
+
+
+==================================================
+A 段 · HISTORICAL_OUTPUT_EXCERPT
+       （EXACT_VERBATIM STATUS NOT VERIFIED）
+==================================================
+
+⚠ 本段【不是】已核实的完整原始终端输出。
+   它是当时从终端复制留存的内容，但：
+     · 与当前脚本的 print 文本存在差异（见上方 E-2 说明）
+     · 未能与独立留存的完整终端记录做比对（没有该记录）
+
+⇒ 保留本段的目的：保留当时的构造与结果痕迹，
+   不是主张其原始性。
+
+内容如下：
+
+SANDBOX = C:\Users\Administrator\AppData\Local\Temp\b1diag_2ogshr66
+
+  [1_init] {'L0': b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', 'Q0': 0, 'digest': '9d908ecfb6b256de'}
+  [2_read_literal] {'lit': b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'}
+  [3a_write_L1] {'L1': b'\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa', 'digest': '1491a9954d485107'}
+  [3b_write_Q1] {'Q1': 2, 'digest': '7db8c5619fe87172'}
+  [4_read_substrate] {'sub': b'\x02\x00\x00\x00\x00\x00\x00\x00'}
+
+  真实状态序列 = [('0000000000000000', 0), ('AAAAAAAAAAAAAAAA', 0), ('AAAAAAAAAAAAAAAA', 2)]
+  交织得到的组合 = (b'\x00\x00\x00\x00', 2)
+
+  (L0,Q1) 是否曾经真实存在?  NO
+  -> 真实序列中 (L0,Q1) 出现过吗: False
+
+=== 结论 ===
+  交织返回 (L0,Q1)
+  真实序列 (L0,Q0)->(L1,Q0)->(L1,Q1) 中无 (L0,Q1)
+  => 该快照为【从未存在过的组合状态】
+
+A 段结束。
+
+【该次运行还输出过、但本段未包含的内容】
+当时脚本末尾有一段（现已从脚本删除）：
+
+  === StateSnapshot 实际返回记录 ===
+    snapshot().literal 前12字节 = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    snapshot().q                = 2
+    组合是否为真实状态之一      = False
+
+⇒ 这三行是错误表述的来源：
+   两个值来自 read_literal_bytes() 与 read_substrate_bytes()，
+   不是 snapshot() 的返回对象，却标成了「StateSnapshot 实际返回记录」。
+⇒ 本段未包含它，是因为留存时的复制不完整。
+⇒ 这也正是 A 段不能称为「完整逐字」的直接证据。
+
+
+==================================================
+B 段 · CURRENT_SCRIPT_EXPECTED_OUTPUT
+       （NOT RE-EXECUTED）
+==================================================
+
+⚠ 本段是【当前脚本若重新运行应产生的输出】，
+   不是该次运行的输出。按凌翼要求：未重新执行诊断。
+
+当前脚本（见 b1_diagnostic.py）结尾的 print 语句对应输出：
+
+  === 结论（2026-10-31 收窄后）===
+    交织得到的【读取对】= (L0, Q1)
+    真实序列 (L0,Q0)->(L1,Q0)->(L1,Q1) 中无 (L0,Q1)
+    => 该读取对为【从未存在过的组合状态】
+
+    ⚠ 证明边界（凌翼第三节）:
+      本脚本【未】在该交错中调用 st.snapshot()。
+      上述 (L0,Q1) 由两次【独立底层读】分别取得后配对，
+      不是 snapshot() 的实际返回对象。
+      => TORN_STATESNAPSHOT_RETURN = NOT DIRECTLY DEMONSTRATED
+
+  === 底层读取值（非 StateSnapshot 对象）===
+    literal 前12字节 = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    substrate q      = 2
+    该读取对是否为真实状态之一 = False
+
+⇒ 注意：B 段第 5 行「本脚本【未】在该交错中调用 st.snapshot()」
+   表述不精确，已在 C 段与诊断记录中修正为
+   「用于配对的两次读没有经过 snapshot()」。
+   此处保留原文以便与 C 段对照。
+
+
+==================================================
+C 段 · POST-HOC ANALYSIS
+       （明确是分析，不是输出）
+==================================================
+
+注入方式
+--------
+本诊断不使用并发或竞态，而是【确定性人工交错】：
+
+  1. 主线程调用 read_literal_bytes()（对应 storage.py L73 的动作）
+  2. 主线程在写入窗口内依次 write_literal(L1)、write_substrate(Q1)
+  3. 主线程调用 read_substrate_bytes()（对应 storage.py L74 的动作）
+
+即：把 storage.py L71-83 的两次读取在时间上【手工拉开】，中间插入真实写入。
+
+一处必须的精确性（2026-10-31 补）
+----------------------------------
+脚本 L62 与 L66【确实】调用了 st.snapshot()，且位于 L54 与 L70 之间。
+
+⇒ 但它们不是那次撕裂读取：
+   · 在写入【之后】执行，每次都是完整自洽的整读
+   · 返回的是当时真实存在的 (L1,Q0) 与 (L1,Q1)
+   · 只用于取 digest 写日志，不参与交织配对
+
+⇒ 交织配对 = (L54 的 lit_observed, L70 的 sub_observed) = (L0,Q1)
+⇒ 准确说法：
+   交错中【存在】snapshot() 调用，
+   但撕裂的那一对字节【不是】任何一次 snapshot() 的返回。
+
+能证明什么
+----------
+  MANUAL_INTERLEAVING          = CONSTRUCTED
+  INCONSISTENT_READ_PAIR       = OBSERVED_AS_REPORTED
+  ⇒ 在指定交错下，两次底层读可以取得一对【从未同时存在过】的字节值。
+
+不能证明什么
+------------
+  TORN_STATESNAPSHOT_RETURN    = NOT DIRECTLY DEMONSTRATED
+  ⇒ 本归档【未】在该交错中调用 snapshot() 来产生这一对字节，
+    因此不能说「已实测冻结 snapshot() 返回该撕裂对象」。
+
+  也不能证明：
+    · 真实执行中该交错曾发生
+    · 并发竞态下必然发生
+    · 时序保护未建立（本诊断不涉及该结论）
+
+为什么该收窄
+------------
+凌翼第三节原文：
+  "把两个底层动作分别做过，
+   不等于已经调用并验证了包装它们的完整函数。"
+
+⇒ snapshot() 是包装层（storage.py L71-83，内部依次调用这两个底层函数）。
+⇒ 我验证的是【被拆开后的两个组成部分】，
+   不是【包装层在该交错下的实际返回值】。
+⇒ 二者不能互相替代。
+
+
+==================================================
+标记（2026-11-01 勘误后）
+==================================================
+
+B1_COUNTEREXAMPLE_DESIGN      = ACCEPTED（凌翼 2026-11-01 第一节）
+B1_CORE_WORDING_CORRECTION    = ACCEPTED（凌翼 2026-11-01 第一节）
+B1_DIAGNOSTIC_RESULT          = INCONSISTENT_READ_PAIR_OBSERVED_AS_REPORTED
+B1_SNAPSHOT_RETURN_VERIFIED   = NO
+B1_INDEPENDENT_REPRODUCTION   = NOT VERIFIED
+B1_SCIENTIFIC_CLAIM_ELIGIBILITY = NONE
+
+MANUAL_INTERLEAVING           = CONSTRUCTED
+INCONSISTENT_READ_PAIR        = OBSERVED_AS_REPORTED
+TORN_STATESNAPSHOT_RETURN     = NOT DIRECTLY DEMONSTRATED
+
+A_HISTORICAL_OUTPUT_EXCERPT   = EXACT_VERBATIM_STATUS_NOT_VERIFIED
+B_CURRENT_SCRIPT_OUTPUT       = NOT_RE_EXECUTED
+C_POST_HOC_ANALYSIS           = ANALYSIS_NOT_OUTPUT
+
+ARCHIVED_SCRIPT               = POST_DIAGNOSTIC_CORRECTED_VERSION
+ORIGINAL_EXECUTED_SCRIPT_IDENTITY = NOT_INDEPENDENTLY_VERIFIED
+DIAGNOSTIC_REEXECUTION        = NO
+
+FROZEN_RUNTIME_CODE_CHANGED   = NO
+DIAGNOSTIC_SOURCE_ARCHIVED    = YES
+NEW_RUNTIME_IMPLEMENTATION    = NO
+FROZEN_Q3_RC11                = UNCHANGED
+
+不得用于：科学 PASS、时序保护已建立的结论、正式科学证据。
 B-1 隔离诊断 · 归档材料（2026-10-31 更正版）
 =============================================
 

@@ -1,13 +1,18 @@
-"""B-1 隔离诊断 · 复现脚本（归档副本）
+"""B-1 隔离诊断 · 归档脚本（POST-DIAGNOSTIC CORRECTED VERSION）
 
 归档目的（凌翼 2026-10-31 裁定）：
     "当前报告没有附上用于在 snapshot() 两次读取之间插入写入的
-     实际控制脚本、注入方式及完整原始输出。
-     ... 建议补存已经使用的临时诊断脚本或等价的最小复现说明、
-     原始输出，以及 StateSnapshot 的实际返回记录。
-     不要求擅自重新执行诊断。"
+     实际控制脚本、注入方式及完整原始输出。"
 
-本文件即那次诊断所用脚本的归档副本。
+⚠ **版本身份（凌翼 2026-11-01 E-3）**
+    本脚本在诊断【之后】修改过输出文字，因此：
+
+      ARCHIVED_SCRIPT                   = POST_DIAGNOSTIC_CORRECTED_VERSION
+      ORIGINAL_EXECUTED_SCRIPT_IDENTITY = NOT_INDEPENDENTLY_VERIFIED
+      DIAGNOSTIC_REEXECUTION            = NO
+
+    ⇒ 它是【勘误版】，不是那次运行时所用脚本的无差异副本。
+    ⇒ 不构成「已重新执行诊断」。
 
 授权边界（凌翼 O-7）：
     B1_ISOLATED_DIAGNOSTIC   = CONDITIONALLY AUTHORIZED
@@ -15,7 +20,7 @@
     REPOSITORY_CODE_CHANGE   = NOT AUTHORIZED
     SCIENTIFIC_EXECUTION     = MAY NOT START
 
-⇒ 本文件是【归档】，不是新诊断。
+⇒ 本文件是【归档】＋勘误，不是新诊断。
 ⇒ 它只使用 tempfile 沙箱，不写入、不修改任何仓库源文件。
 ⇒ 按凌翼要求：不主动重新执行。
 
