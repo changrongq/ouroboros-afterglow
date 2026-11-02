@@ -353,3 +353,43 @@ FROZEN_Q3_RC11                 = UNCHANGED
 > 指 `事件时序协议_v0.1_20261031.md`，**不是冻结 prereg**。
 > 冻结 prereg 无 §3.1（其 §8.2 才是 "Audit log != registered storage"）。
 > 该协议为非冻结设计文档，故其章节号**不可用于规范锚点**。
+
+---
+
+## 协议版本谱系 — v0.1 → v0.2（2026-11-02 登记）
+
+```text
+⇒ 依凌翼 v0.2 五项架构裁定 §六 规则②：
+  「在非冻结版本索引中登记 v0.1 与 v0.2 的继承关系」。
+⇒ 本段即该登记。按本索引规矩：只追加，不覆盖历史段落。
+```
+
+| 版本 | 文档 | 状态 | 说明 |
+|---|---|---|---|
+| v0.1 | `事件时序协议_v0.1_20261031.md` | `RETAINED`（历史） | 原始字节保留，不追溯改写 |
+| v0.2 初稿 | `事件时序协议_v0.2_字段承接草案_20261102.md` | `SUPERSEDED`（已废草案） | 地基错误：误把 v0.1 §3.1 当现行结构；保留以记录错因 |
+| v0.2 现行草案 | `事件时序协议_v0.2_设计草案_20261102.md` | `DRAFT`（现行） | 继承 D1/D2 已接受设计，落实 T-1..T-5 |
+
+```text
+NORMATIVE_BASE          = D1_ACCEPTED + D2_DESIGN_CLOSED
+LEGACY_PROTOCOL         = v0.1
+NEW_PROTOCOL            = v0.2 (DRAFT)
+SUPERSESSION_EFFECTIVE  = NO（须等 v0.2 真正定版，T-5 规则③）
+D1_FIELD_DEBT           = OPEN_UNTIL_SUCCESSOR_PROTOCOL_ACCEPTED
+```
+
+```text
+⇒ v0.1 正式标记 SUPERSEDED_FOR_NEW_DESIGN 的时点：
+   v0.2 定版【之后】，不是现在。
+⇒ 在此之前 v0.1 仍为 LEGACY，其未被 D1/D2 推翻的部分继续有效。
+⇒ 新设计【不得】沿用 v0.1 中已被推翻的结构：
+     · commit_state 留在 EventRecord 内（D1-1 已移出）
+     · WRITE_COMMIT 含糊语义（D1-2 已建议弃用）
+```
+
+> **不在此处写 SHA 与行数**（本索引已有两次教训：填下去就会过时）。
+> 现行身份以 git 为准：
+> ```text
+> git log -1 --format='%H %s' -- reports/review_history/事件时序协议_v0.2_设计草案_20261102.md
+> ```
+
