@@ -404,3 +404,58 @@ D1_FIELD_DEBT           = OPEN_UNTIL_SUCCESSOR_PROTOCOL_ACCEPTED
 > git log -1 --format='%H %s' -- reports/review_history/事件时序协议_v0.2_设计草案_20261102.md
 > ```
 
+---
+
+## v0.2 设计定版登记（2026-11-03）
+
+```text
+⇒ 依凌翼 P4 / v0.2 最终设计定版裁定（2026-11-03）第四节：
+  「批准 Coder 在非冻结版本索引中登记本裁定，
+    并按 T-5 将 v0.1 标注为 SUPERSEDED_FOR_NEW_DESIGN」。
+⇒ 本段即该登记。按本索引规矩：只追加，不覆盖上段。
+```
+
+```text
+⇒ 【本段回答的是哪一天 —— 2026-11-03 定版当日的事实】
+⇒ 承上段的「v0.2 定版之后才标注 v0.1 取代」——
+   那个「之后」【就是今天】。
+```
+
+| 版本 | 文档 | 状态 | 生效依据 |
+|---|---|---|---|
+| v0.1 | `事件时序协议_v0.1_20261031.md` | `SUPERSEDED_FOR_NEW_DESIGN` | 本裁定第四节 |
+| v0.2 初稿 | `事件时序协议_v0.2_字段承接草案_20261102.md` | `SUPERSEDED`（已废草案） | 凌翼 2026-11-02 裁定 §七 |
+| v0.2 | `事件时序协议_v0.2_设计草案_20261102.md` | `DESIGN_BASELINE` | 本裁定第一节 |
+
+```text
+⇒ 【v0.1 的原始字节未改，只改其状态标记】
+⇒ 这是「取代」而非「删除」：历史记录继续可查，
+   但【新设计不得】再沿用 v0.1 中已被推翻的结构：
+     · commit_state 留在 EventRecord 内（D1-1 已移出）
+     · WRITE_COMMIT 含糊语义（D1-2 已弃用）
+
+⇒ 【本裁定以固定字节为对象，不自动批准后续改动】
+   定版身份（由裁定书第二节独立复算）：
+     P4   445ddbadc3130ebf…  56474 B
+     v0.2 0884bbec7358084b…  49938 B
+   ⇒ 上述两个 hash 是【裁定当日】的值。
+   ⇒ 本索引仍不抄写其他 SHA —— 现行身份由 git 回答。
+   ⇒ 此处引用裁定书，不复制其结论之外的内容。
+```
+
+```text
+⇒ 【门禁未因定版而改变】
+   V0_2_DESIGN_FINALIZED     = YES
+   DESIGN_BASELINE_GATE      = SATISFIED
+   而：
+   P1_REFERENCE_INTEGRITY_ENCODING   = NOT NORMALIZED
+   P2_ATTESTATION_FORMAT             = NOT NORMALIZED
+   P5_EXCLUSIVITY_ENFORCEMENT        = NOT ESTABLISHED
+   D2_PROTOTYPE_IMPLEMENTATION       = NOT AUTHORIZED
+   CODE_CHANGE                       = NOT AUTHORIZED
+   SCIENTIFIC_EXECUTION              = MAY NOT START
+   D1_FIELD_DEBT                     = OPEN
+⇒ 设计定版 ≠ 可以签发（裁定 B-2）。
+```
+
+
