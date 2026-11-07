@@ -648,12 +648,20 @@ CHECK_ALIGNMENT_WITH_S0          = PASS
 CHECK_ALIGNMENT_VERSION          = v3
 CHECK_ALIGNMENT_INPUT_CELLS      = 55
 CHECK_ALIGNMENT_ITEMS            = 29
-CHECK_ALIGNMENT_KEY_SCAN         = 139 / 16（口径 D：十文件，含绑定表与本结果件；HEAD=c1c99be）
+CHECK_ALIGNMENT_KEY_SCAN         = 139 / 16（口径 D：十文件，含绑定表与本结果件；HEAD=ec0e641）
 CHECK_ALIGNMENT_CONFLICTS        = 0
 CHECK_ALIGNMENT_UNANSWERABLE     = 0
 CHECK_ALIGNMENT_GAPS_FOUND_CUM   = 4（A-2a / A-2b+C-10 / A-2c 错配 / F-1-2 不成行）
 CHECK_EXECUTED_AT                = 2026-11-06（首版执行）
 CHECK_RESULT_LAST_REVISED_AT     = 2026-11-07（本结果件最后修订）
+CHECKER_COUNTEREXAMPLE_TEST      = EXECUTED（5 / 5 PASS，2026-11-07）
+                                  ⇒ 见《B5补充_键扫描检查器反例证明》
+                                  ⇒ 【意义】：证明本检查器【能输出非 0】，
+                                    故上面的 CONFLICTS = 0 不是一个
+                                    恒零检查器的输出。
+                                  ⇒ 【但】：反例由检查器作者设计，
+                                    不能替代独立复核。
+CHECKER_FALSIFIABILITY_PROVEN    = YES_BY_AUTHOR（非独立）
 S0_BACKFILL                     = PENDING（待本文件复核后进行）
 
 ⇒ 下列状态【不因本检查而升级】：
