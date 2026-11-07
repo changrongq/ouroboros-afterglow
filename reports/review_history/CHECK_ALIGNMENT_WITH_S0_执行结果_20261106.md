@@ -212,26 +212,58 @@
 |---|---|---:|---:|
 | B（旧，@449806e） | §0–§7（八文件） | 112 | 10 |
 | C（@e5b6840） | §0–§7 + 本结果件（九文件） | 129 | 13 |
-| **D（当前，含绑定表）** | §0–§7 + 绑定表 + 本结果件（**十文件**） | **137** | **15** |
+| **D（当前，含绑定表）** | §0–§7 + 绑定表 + 本结果件（**十文件**） | **137** | **16** |
 
 ```text
 ⇒ 【2026-11-07 再同步：绑定表加入后，输入范围又变了】
    ⇒ 各口径实测（当前工作树）：
      八文件 §0–§7                = 118 / 10
      九文件 +CHK                = 131 / 13
-     十文件 +CHK +绑定表         = 137 / 15
+     十文件 +CHK +绑定表         = 137 / 16
    ⇒ 【本版采用口径 D（十文件）】：
      把【本结果件】与【绑定表】都纳入扫描，检查器与新增交付物
      都站到被检查的那一列里。
    ⇒ 【历史数字保留】（112/10 对应 @449806e，129/13 对应 @e5b6840），
      但【不得】用它们声称当前输入已完成扫描。
-   ⇒ 【本版的 137/15 须随下一版输入重新绑定】——
+   ⇒ 【本版的 137/16 须随下一版输入重新绑定】——
      契约同前：数字必须绑定到具体输入，不得裸奔。
+
+   ⇒ 【2026-11-07 二次修正：15 → 16（知微实测，我原报 15 为错）】
+      知微按同一正则实测得 137 / **16**；我复核后确认其正确。
+      漏项为 `SIX_CELL_BINDING_VERIFIED`：同时出现在
+        §7  L754   （状态块内键值行）
+        绑定表 L262（解释文字块中的独立键值行）
+      ⇒ 按「所有键名扫描」的现行口径，后者【应计入】——
+        它是独立成行的键值，不是散文里顺手提到的词。
+      ⇒ 【我漏它的原因】：当时只按「状态块内」扫，把口径
+        窄化成了实现细节，而我无权单方面窄化口径。
+      ⇒ 【两处值都是 NO，未构成值冲突】；错的只是【计数】。
+        不得把「计数错」和「值冲突」混成一件事来表述。
+
+   ⇒ 【口径 D 的 16 个跨文件键完整清单（按字母序）】：
+      BOUNDED_PROTOTYPE_TEST_GATE      6 处：绑定表,CHK,§0,§6,§7
+      CHECK_ALIGNMENT_WITH_S0          3 处：CHK,§0,§7
+      CODE_CHANGE                      9 处：绑定表,CHK,§0–§7
+      EPOCH_ALLOCATION_ATOMICITY       3 处：CHK,§4,§5
+      FROZEN_Q3_RC11                   5 处：CHK,§0,§1,§6,§7
+      GENERAL_SAFETY_PROVEN            4 处：CHK,§0,§6,§7
+      P1_REFERENCE_INTEGRITY_ENCODING  2 处：CHK,§2
+      P2_ATTESTATION_FORMAT            2 处：CHK,§3
+      P5_EXCLUSIVITY_ENFORCEMENT       2 处：CHK,§4
+      PROTOTYPE_IMPLEMENTATION         9 处：绑定表,CHK,§0–§7
+      S0_BACKFILL                      2 处：绑定表,CHK
+      SCIENTIFIC_EXECUTION             3 处：CHK,§0,§1
+      SIX_CELL_ASSERTION_BINDING       2 处：绑定表,§7
+      SIX_CELL_BINDING_VERIFIED        2 处：绑定表,§7   ← 【本次补入】
+      TEST_RUN                         4 处：绑定表,CHK,§6,§7
+      WRITER_ATTRIBUTION_CHAIN         2 处：§0,§3
+      ⇒ 16 个，与 137 / 16 一致。此清单即为该计数的可复算依据。
 ```
 
 ⇒ 【口径 C 的意义】：检查器自己站到被检查的那一列里。
 ⇒ 【本版实测（2026-11-07）】口径 C 下：
    · 唯一键 129，跨文件 ≥2 份者 13。
+   （口径 D 十文件下为 137 / 16，见上表。）
    · 其中新增的跨文件键包括 §7 与本节共用的执行状态键，
      以及两份文件都引用的 `BOUNDED_PROTOTYPE_TEST_GATE`
      与 `GENERAL_SAFETY_PROVEN`。
@@ -440,10 +472,21 @@ NO_CONFLICT             = 29
 CONFLICT                = 0
 UNANSWERABLE            = 0
 
-跨文件状态键             = 112（口径 B，仅 §0–§7；跨文件 ≥2 份者 10）
+跨文件状态键             = 见第九节 CHECK_ALIGNMENT_KEY_SCAN（口径 D）
+                          ⇒ 【不在本块写数字】（2026-11-07 修，睫 格一）
+                            本块曾写 112（口径 B / @449806e 的历史值），
+                            而当前口径 D 为 137 / 16，八文件为 118 / 10。
+                            ⇒ 三处数字不等，且本节 L226 自己写过
+                              「不得用历史数字声称当前输入已扫描」。
+                            ⇒ 【契约写对了、汇总块没执行它】。
+                            ⇒ 故本块改为【指向第九节】，不再抄数字。
 值冲突                  = 0（附口径与排除规则，见五之二 A）
 结构可达性               = 55/55 格独立成行（见五之二 A2）
 数值型声明冲突           = 0（41 / 42 / 9 均为历史记录）
+CELL_BINDING_COVERAGE   = 6 / 55（其余 49 格未绑定，见绑定表第七节）
+                          ⇒ 【本版 PASS 不含该表】——
+                            六格已落表但【未经独立复核】，
+                            故 PASS 的适用范围不覆盖逐分支绑定。
 
 ⇒ 【判据】全部 NO_CONFLICT 且 (ii) 均已答 ⇒ 该项通过。
 ⇒ CHECK_ALIGNMENT_WITH_S0 = PASS
@@ -525,7 +568,7 @@ CHECK_ALIGNMENT_WITH_S0          = PASS
 CHECK_ALIGNMENT_VERSION          = v3
 CHECK_ALIGNMENT_INPUT_CELLS      = 55
 CHECK_ALIGNMENT_ITEMS            = 29
-CHECK_ALIGNMENT_KEY_SCAN         = 137 / 15（口径 D：十文件，含绑定表与本结果件）
+CHECK_ALIGNMENT_KEY_SCAN         = 137 / 16（口径 D：十文件，含绑定表与本结果件）
 CHECK_ALIGNMENT_CONFLICTS        = 0
 CHECK_ALIGNMENT_UNANSWERABLE     = 0
 CHECK_ALIGNMENT_GAPS_FOUND_CUM   = 4（A-2a / A-2b+C-10 / A-2c 错配 / F-1-2 不成行）
