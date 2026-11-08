@@ -653,15 +653,30 @@ CHECK_ALIGNMENT_CONFLICTS        = 0
 CHECK_ALIGNMENT_UNANSWERABLE     = 0
 CHECK_ALIGNMENT_GAPS_FOUND_CUM   = 4（A-2a / A-2b+C-10 / A-2c 错配 / F-1-2 不成行）
 CHECK_EXECUTED_AT                = 2026-11-06（首版执行）
-CHECK_RESULT_LAST_REVISED_AT     = 2026-11-07（本结果件最后修订）
-CHECKER_COUNTEREXAMPLE_TEST      = EXECUTED（5 / 5 PASS，2026-11-07）
+CHECK_RESULT_LAST_REVISED_AT     = 2026-11-08（本结果件最后修订）
+
+⇒ 【2026-11-08 修正（凌翼七节）：撤回两个过宽的作者报告键】
+   ⇒ 【撤回】：`CHECKER_COUNTEREXAMPLE_TEST = EXECUTED` 与
+     `CHECKER_FALSIFIABILITY_PROVEN = YES_BY_AUTHOR`
+   ⇒ 【理由（凌翼原文）】：
+     「不接受 CHECKER_FALSIFIABILITY_PROVEN = YES_BY_AUTHOR
+       作为广义正确性证明。
+       建议使用更窄的作者报告状态：
+        CHECKER_NEGATIVE_TESTS = 5/5_AUTHOR_REPORTED」
+   ⇒ 【我原来那个键名的问题】：
+     "FALSIFIABILITY_PROVEN" 里的 PROVEN 是【证明】级措辞，
+     而我能提供的只是【作者跑过 5 个自己设计的反例】。
+     ⇒ 键名比证据强，这正是我被退回的原因。
+
+CHECKER_NEGATIVE_TESTS           = 5/5_AUTHOR_REPORTED
                                   ⇒ 见《B5补充_键扫描检查器反例证明》
-                                  ⇒ 【意义】：证明本检查器【能输出非 0】，
-                                    故上面的 CONFLICTS = 0 不是一个
-                                    恒零检查器的输出。
-                                  ⇒ 【但】：反例由检查器作者设计，
-                                    不能替代独立复核。
-CHECKER_FALSIFIABILITY_PROVEN    = YES_BY_AUTHOR（非独立）
+                                  ⇒ 【它只说明】：作者跑了 5 个自己设计的反例，
+                                    5 个都按预期触发了行为。
+                                  ⇒ 【它不说明】：检查器正确、无反例遗漏、
+                                    或 CONFLICTS=0 在真实文档上可信。
+                                  ⇒ 【独立复核者须重跑，并增加至少一项
+                                    作者未预设的故障输入】（凌翼七节）。
+
 S0_BACKFILL                     = PENDING（待本文件复核后进行）
 
 ⇒ 下列状态【不因本检查而升级】：
