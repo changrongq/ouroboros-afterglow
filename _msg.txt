@@ -1,0 +1,21 @@
+阶段B_11..B_13：规范向量实算 / CONTRADICTED 合同 / STP-02-03 缺口登记
+
+B_11 编码常量与手写向量
+- 认领知微指出的错误：手写字节 + 通用工具就能算
+- TV-01 MAX_SCOPE_SET(0x88) 空集合：62 字节，SHA-256 e43875d3
+- TV-02 TRUSTED_HWM(0x89) 首条：168 字节，SHA-256 4ab02b52
+- hashlib 与 certutil 一致，另做逐字节重解析
+- 承认两工具共享同一 OS 加密库，非真正独立
+
+B_12 CONTRADICTED 收口
+- 否定事件独立为 0x8A，不再作为 N5 字段取值
+- 新增 EHWM 防止否定事件尾部被漏
+- fail-closed 顺序修正：关闭是默认状态，不靠写成功驱动
+
+B_13 P5-STP-02/03 真缺口
+- 实测 零六 全表无对应格，不借错格
+- 七项已映射 / 两项已登记缺口
+
+未改八节正文与六格绑定表。无代码变更。
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
