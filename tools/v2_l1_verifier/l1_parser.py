@@ -119,8 +119,16 @@ def parse(raw, entry="dispatcher"):
     # ① 版本自检（专用入口只收自己的版本）
     fv = int.from_bytes(raw[8:10], "big")
     if fv != expected:
-        # v1 入口看到 v2 / v2 入口看到 v1 → 版本不匹配
-        raise Reject(R_VER_MISMATCH, f"entry={entry} got=0x{fv:04X}")
+        # 【ZFP-04 后半】两个方向行为相同（都拒绝），但规则号归属不同：
+        #   v2 -> v1 : R-V2-02b 已有规范依据（B_23 §3.2）
+        #   v1 -> v2 : 规则号待定 REVERSE_VERSION_ENTRY_RULE_ID = PENDING_RULING
+        # 用 detail 标注 direction，便于验收器区分，不擅自扩号。
+        direction = "v2_to_v1" if (entry == "v1" and fv == FORMAT_V2) else \
+                    "v1_to_v2" if (entry == "v2" and fv == FORMAT_V1) else \
+                    "other"
+        raise Reject(R_VER_MISMATCH,
+                     f"entry={entry} got=0x{fv:04X} direction={direction}",
+                     cause=direction)
 
     otype = raw[10]
     reserved = raw[11]
