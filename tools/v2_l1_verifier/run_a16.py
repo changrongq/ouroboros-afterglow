@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """A16 L1 实际执行验证 runner
 
-从 B_24 提取真实字节 → 用 parser.py 解析 → 与 expected.py 比对 → 输出结果。
+从 B_24 提取真实字节 → 用 l1_parser.py 解析 → 与 expected.py 比对 → 输出结果。
 
 用法：
   python run_a16.py            # 跑全部
@@ -16,7 +16,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import parser as P
+import l1_parser as P
 import expected as E
 
 REPO = r"d:\qcr\ouroboros-afterglow"

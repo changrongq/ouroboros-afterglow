@@ -4,14 +4,14 @@
 凌翼与钳星反复强调：
   "会失败的检查，最怕的不是失败，是没响。"
 
-做法：对 parser.py 源码做字符串替换生成变异副本，
+做法：对 l1_parser.py 源码做字符串替换生成变异副本，
       用同一套预期跑一遍。
       若变异后仍全通过 => 测试恒真、无效。
 """
 import sys, os, shutil, tempfile, subprocess
 sys.stdout.reconfigure(encoding="utf-8")
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = open(os.path.join(HERE, "parser.py"), "rb").read().decode("utf-8")
+SRC = open(os.path.join(HERE, "l1_parser.py"), "rb").read().decode("utf-8")
 
 MUTATIONS = [
     # 2026-11-10：原「放宽 V1_TYPES」变异无效——v1 分支硬编码 otype>=0x80，
@@ -42,7 +42,7 @@ def run_with(parser_path):
     tmp = tempfile.mkdtemp(prefix="mut_")
     for f in ["expected.py", "vec6.py", "run_a16.py"]:
         shutil.copy(os.path.join(HERE, f), tmp)
-    shutil.copy(parser_path, os.path.join(tmp, "parser.py"))
+    shutil.copy(parser_path, os.path.join(tmp, "l1_parser.py"))
     r = subprocess.run([sys.executable, "run_a16.py"],
                        capture_output=True, text=True, encoding="utf-8",
                        cwd=tmp, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
@@ -58,12 +58,12 @@ def run_with(parser_path):
 
 
 print("=== 基线（未变异）===")
-bp, bf = run_with(os.path.join(HERE, "parser.py"))
+bp, bf = run_with(os.path.join(HERE, "l1_parser.py"))
 print(f"  通过 {bp}  失败 {bf}")
 
 print("\n=== 变异 ===")
 caught_all = True
-mut_file = os.path.join(tempfile.gettempdir(), "_mut_parser.py")
+mut_file = os.path.join(tempfile.gettempdir(), "_mut_l1_parser.py")
 for desc, old, new in MUTATIONS:
     if old not in SRC:
         print(f"  ⚠ 锚点未找到: {desc}")
