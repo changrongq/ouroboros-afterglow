@@ -25,3 +25,6 @@ Thumbs.db
 afterglow_harness_artifacts/
 
 afterglow_harness/q3_full_valid_result.json
+
+tools/v2_l1_verifier/evidence/
+tools/v2_l1_verifier/*.png

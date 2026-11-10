@@ -72,9 +72,9 @@ CONSTRUCTED = [
     ("C-TRAILING", "TOTAL_LEN 小于实际（有尾随）", "dispatcher",
      ("REJECT", "R-V2-08"), "§2 N9"),
     ("C-EMPTY-FIELDS", "FIELD_COUNT=0 的空帧", "dispatcher",
-     ("REJECT", "R-V2-10b"), "§2 步骤9 空帧反例：声明数=读取数=0，但规定数 7"),
+     ("REJECT", "R-V2-09"), "§2 步骤9 空帧反例：声明数=读取数=0，但规定数 7"),
     ("C-DUP-RULE", "同时违反 FIELD_COUNT 与保留 TAG", "dispatcher",
-     ("REJECT", "R-V2-10b"), "实读数 12 ≠ 规定 11，先于 TAG 检查（步骤9 顺序）"),
+     ("REJECT", "R-V2-09"), "实读数 12 ≠ 规定 11，先于 TAG 检查（步骤9 顺序）"),
     # ---- 2026-11-10 补：由变异测试发现的盲区 ----
     ("C-FCNT-MISMATCH", "声明 FIELD_COUNT=5，实际 7 个字段",
      "dispatcher", ("REJECT", "R-V2-09"),

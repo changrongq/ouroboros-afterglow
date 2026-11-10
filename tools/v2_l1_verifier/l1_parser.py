@@ -52,8 +52,15 @@ TAGS = {
 }
 
 # ---- 拒绝原因代号（B_23 §3.2 / 3.3）----
+# 【2026-11-10 修正，知微 ZFP-04】：不新增未登记的 rule_id。
+#   §2 步骤 9 的"三个值、两个约束"用【同一个 R-V2-09】表达，
+#   并用 detail.cause 区分子情形：
+#     cause = "declared_vs_read"  声明数 != 实读数
+#     cause = "read_vs_spec"      实读数 != 规定字段数
+#   理由：知微 明确建议"保留 R-V2-09，另加 cause/detail 表示"，
+#         若正式新增 rule_id，须先批准并固定新规范。
 R_MAGIC       = "R-V2-02a"   # MAGIC 不符
-R_VER_MISMATCH= "R-V2-02b"   # 版本为 v2 的字节进入 v1 专用入口（或反之）
+R_VER_MISMATCH= "R-V2-02b"   # 版本不匹配（专用入口只收自己的版本）
 R_V1_N3       = "R-V2-02c"   # 高位类型在 v1 规则下出现（§2 N3）
 R_V2_NOTYPE   = "R-V2-02d"   # 版本为 v2 但类型是未登记的 0x01-0x03
 R_UNKNOWN_VER = "R-V2-03"    # 未知版本
@@ -62,18 +69,16 @@ R_NOT_LISTED  = "R-V2-05"    # 白名单外
 R_RESERVED_B  = "R-V2-06"    # RESERVED != 0x00
 R_TRUNC       = "R-V2-07"    # 长度/字段头不完整
 R_TOTAL_LEN   = "R-V2-08"    # TOTAL_LEN 不符
-R_FIELD_COUNT = "R-V2-09"    # FIELD_COUNT 与实读数不符
-R_FIELD_SPEC  = "R-V2-10"    # TAG/顺序/长度/取值不符
-R_FIELD_SPECN = "R-V2-10b"   # 实读数与该类型【规定字段数】不符
-                             # （§2 步骤9：声明数 = 读取数 = 规定数，
-                             #  这是三个约束，不是两个）
+R_FIELD_COUNT = "R-V2-09"    # 字段数不符（配 cause 区分子情形）
+R_FIELD_SPEC  = "R-V2-10"    # TAG / 顺序 / 长度 / 取值不符
 
 
 class Reject(Exception):
-    def __init__(self, code, detail=""):
+    def __init__(self, code, detail="", cause=None):
         self.code = code
         self.detail = detail
-        super().__init__(f"{code}: {detail}")
+        self.cause = cause
+        super().__init__(f"{code}: {detail}" + (f" [{cause}]" if cause else ""))
 
 
 def parse(raw, entry="dispatcher"):
@@ -159,17 +164,21 @@ def parse(raw, entry="dispatcher"):
         raise Reject(R_TOTAL_LEN, f"TOTAL_LEN={total_len} L={L}")
 
     if fcnt != len(fields):
-        raise Reject(R_FIELD_COUNT, f"declared={fcnt} read={len(fields)}")
+        raise Reject(R_FIELD_COUNT, f"declared={fcnt} read={len(fields)}",
+                     cause="declared_vs_read")
 
     spec = FIELD_COUNT.get(otype)
     if spec is None:
         raise Reject(R_NOT_LISTED, f"0x{otype:02X} no field spec")
     if len(fields) != spec:
-        raise Reject(R_FIELD_SPECN, f"0x{otype:02X} needs {spec} got {len(fields)}")
+        raise Reject(R_FIELD_COUNT, f"0x{otype:02X} needs {spec} got {len(fields)}",
+                     cause="read_vs_spec")
 
     got_tags = [t for t, _ in fields]
     if got_tags != TAGS[otype]:
         raise Reject(R_FIELD_SPEC, f"tags {[hex(x) for x in got_tags]} != spec")
+
+    _check_values(otype, fields, entry)
 
     return {
         "FORMAT_VER": fv,
@@ -194,3 +203,101 @@ def protocol_digest(raw):
     fcnt  = raw[12:14]
     fields= raw[14:-4]
     return hashlib.sha256(otype + fmt + otype + res + fcnt + fields).hexdigest()
+
+
+# ---- 字段值约束表（ZFP-03 修正）----
+# 依据 B_22 §3.0a–3.11 与 §2 2.3（整数定宽、字符串/bytes 带 LEN）
+# 形式：{otype: {tag: ("int", 字节数) | ("bytes", 定长或None)
+#                     | ("enum", {允许值}) | ("str", None) | ("nested", 类型)}}
+VALUE_SPEC = {
+    # 0x06/0x07 是【内容类】字段，依 §2 3.1 允许 LEN=0
+    0x01: {0x01: ("str", None), 0x02: ("str", None), 0x03: ("nested", 0x03),
+           0x04: ("str", None), 0x05: ("enum", {0x01}),
+           0x06: ("str_opt", None), 0x07: ("str_opt", None)},
+    0x02: {0x11: ("str", None), 0x12: ("str", None), 0x13: ("nested", 0x03),
+           0x14: ("enum", {0x01}), 0x15: ("int", 8), 0x16: ("str", None)},
+    0x03: {0x21: ("str", None), 0x22: ("int", 8), 0x23: ("int", 8)},
+    0x81: {0x31: ("bytes", 16), 0x32: ("str", None), 0x33: ("int", 4),
+           0x34: ("bytes", 32), 0x35: ("bytes", 32), 0x36: ("bytes", 32),
+           0x37: ("bytes", 32)},
+    0x82: {0x41: ("bytes", 16), 0x42: ("str", None), 0x43: ("int", 4),
+           0x44: ("int", 8), 0x45: ("int", 8), 0x46: ("bytes", 32),
+           0x47: ("bytes", 32)},
+    0x83: {0x51: ("bytes", 16), 0x52: ("str", None), 0x53: ("int", 4),
+           0x54: ("int", 8), 0x55: ("enum", {0x01}), 0x56: ("bytes", 32)},
+    0x84: {0x61: ("bytes", 16), 0x62: ("str", None), 0x63: ("int", 4),
+           0x64: ("enum", {0x01, 0x02, 0x03}), 0x65: ("bytes", 32),
+           0x66: ("bytes", 16), 0x67: ("bytes", 32)},
+    0x85: {0x71: ("bytes", 16), 0x72: ("str", None), 0x73: ("int", 4),
+           0x74: ("bytes", 32), 0x75: ("enum", {0x01, 0x02, 0x03}),
+           0x76: ("bytes", 32), 0x77: ("bytes", 32)},
+    0x86: {0x81: ("str", None), 0x82: ("int", 4), 0x83: ("int", 8),
+           0x84: ("int", 8), 0x85: ("bytes", 32), 0x86: ("int", 8),
+           0x87: ("bytes", 32), 0x88: ("int", 8), 0x89: ("int", 8),
+           0x8A: ("bytes", 32), 0x8C: ("bytes", 32)},
+    0x87: {0x91: ("bytes", 16), 0x92: ("str", None), 0x93: ("int", 4),
+           0x94: ("int", 8), 0x95: ("bytes", 32), 0x96: ("bytes", 32)},
+    0x88: {0xA1: ("str", None), 0xA2: ("int", 4), 0xA3: ("int", 8),
+           0xA4: ("int", 8), 0xA5: ("int", 4), 0xA6: ("bytes", None)},
+    0x89: {0xB1: ("str", None), 0xB2: ("int", 4), 0xB3: ("int", 8),
+           0xB4: ("bytes", 32), 0xB5: ("int", 8), 0xB6: ("bytes", 32),
+           0xB7: ("int", 8), 0xB8: ("bytes", 32)},
+    0x8A: {0xC1: ("str", None), 0xC2: ("int", 4), 0xC3: ("int", 8),
+           0xC4: ("bytes", 32), 0xC5: ("int", 8), 0xC6: ("bytes", 32),
+           0xC7: ("enum", {0x01, 0x02, 0x03, 0x04}), 0xC8: ("bytes", 32),
+           0xC9: ("bytes", 32), 0xCA: ("bytes", 32), 0xCB: ("bytes", 32)},
+    0x8B: {0xD1: ("str", None), 0xD2: ("int", 4), 0xD3: ("int", 8),
+           0xD4: ("bytes", 32), 0xD5: ("int", 8), 0xD6: ("bytes", 32),
+           0xD7: ("bytes", 32)},
+}
+
+
+def _check_values(otype, fields, entry):
+    """校验字段 VALUE 的类型/宽度/取值域；nested 类型递归解析内层对象。"""
+    spec = VALUE_SPEC.get(otype, {})
+    for tag, val in fields:
+        r = spec.get(tag)
+        if r is None:
+            continue
+        kind = r[0]
+        if kind == "int":
+            if len(val) != r[1]:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X int width %d != %d" % (otype, tag, len(val), r[1]))
+        elif kind == "bytes":
+            if r[1] is not None and len(val) != r[1]:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X bytes len %d != %d" % (otype, tag, len(val), r[1]))
+        elif kind == "enum":
+            if len(val) != 1:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X enum width %d != 1" % (otype, tag, len(val)))
+            if val[0] not in r[1]:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X enum %d not allowed" % (otype, tag, val[0]))
+        elif kind == "str":
+            # 标识类：必须非空（§2 2.3）
+            if len(val) == 0 or b"\x00" in val:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X str empty or has NUL" % (otype, tag))
+            try:
+                val.decode("utf-8")
+            except UnicodeDecodeError:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X str not UTF-8" % (otype, tag))
+        elif kind == "str_opt":
+            # 内容类：允许 LEN=0，仅禁 NUL 与非 UTF-8（§2 3.1）
+            if b"\x00" in val:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X str_opt has NUL" % (otype, tag))
+            try:
+                val.decode("utf-8")
+            except UnicodeDecodeError:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X str_opt not UTF-8" % (otype, tag))
+        elif kind == "nested":
+            try:
+                parse(val, entry="v1")
+            except Reject as e:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X nested invalid: %s" % (otype, tag, e.code))

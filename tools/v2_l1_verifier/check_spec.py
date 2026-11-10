@@ -61,18 +61,62 @@ def parse_sec2(t):
 
 
 def main():
-    spec = {}
+    """分来源解析 → 每源独立断言 → 重叠源一致性 → 与实现比对。
+
+    2026-11-10 修正（知微/睫 指出）：
+      原实现 `spec.update(got)` 会静默覆盖，且不校验每份来源是否
+      真的解析到预期数量。若 §2 文件无表格，它解析出 0 类，
+      整体仍 PASS —— 那一步没有贡献任何校验。
+      现改为：
+        · 每个来源单独断言"必须解析出 N 类"（N 由来源登记）
+        · 重叠类型必须【逐位相同】，不同即报冲突
+        · 最后才与实现比对
+    """
+    # 各来源的期望覆盖数（登记在此，不符即失败）
+    EXPECT = {
+        "B_22": 14,   # §3.0a-3.11：11 类新类型 + 3 类引用类型
+        "SEC2": 3,    # §2 §3.1-3.3：0x01 0x02 0x03
+    }
+
+    per_source = {}
     for fname, label in SPEC_FILES:
-        p = os.path.join(RH, fname)
-        if not os.path.exists(p):
+        fp = os.path.join(RH, fname)
+        if not os.path.exists(fp):
             print(f"❌ 找不到规范文件: {fname}")
             return 1
-        t = open(p, "rb").read().decode("utf-8")
-        got = parse_b22(t) if "B_22" in fname else parse_sec2(t)
-        print(f"  {label}: 解析到 {len(got)} 个类型")
-        spec.update(got)
+        txt = open(fp, "rb").read().decode("utf-8")
+        key = "B_22" if "B_22" in fname else "SEC2"
+        got = parse_b22(txt) if key == "B_22" else parse_sec2(txt)
+        print(f"  {label}: 解析到 {len(got)} 个类型"
+              f"（登记期望 {EXPECT[key]}）")
+        if len(got) != EXPECT[key]:
+            print(f"  ❌ {label} 覆盖数不符：实得 {len(got)}，期望 {EXPECT[key]}")
+            return 1
+        per_source[key] = got
 
-    print(f"\n{'类型':<8}{'规范 TAG 数':>12}{'实现 TAG 数':>12}{'TAG 一致':>10}{'字段数一致':>12}")
+    # 重叠来源一致性
+    print("\n=== 重叠来源一致性 ===")
+    b22, sec2 = per_source.get("B_22", {}), per_source.get("SEC2", {})
+    overlap = sorted(set(b22) & set(sec2))
+    conflict = []
+    for ot in overlap:
+        if b22[ot] != sec2[ot]:
+            conflict.append(ot)
+            print(f"  0x{ot:02X}: B_22={[hex(x) for x in b22[ot]]} "
+                  f"≠ §2={[hex(x) for x in sec2[ot]]}")
+    print(f"  重叠类型 {len(overlap)} 个：{['0x%02X' % x for x in overlap]}")
+    print(f"  冲突 {len(conflict)} 个：{'无' if not conflict else [hex(x) for x in conflict]}")
+    if conflict:
+        print("❌ 重叠来源不一致")
+        return 1
+
+    # 合并（此时重叠已确认一致）
+    spec = {}
+    for k, v in per_source.items():
+        spec.update(v)
+
+    print(f"\n{'类型':<8}{'规范 TAG 数':>12}{'实现 TAG 数':>12}"
+          f"{'TAG 一致':>10}{'字段数一致':>12}")
     print("-" * 60)
     bad = []
     for ot in sorted(spec):
@@ -86,19 +130,18 @@ def main():
         if not (ok_t and ok_c):
             bad.append((ot, st, it, len(st), ic))
 
-    # 反向：实现里有但规范解析不到
     extra = sorted(set(P.TAGS) - set(spec))
     print(f"\n实现多出的类型: {[hex(x) for x in extra] or '无'}")
     print(f"规范解析出: {len(spec)} 个类型；实现: {len(P.TAGS)} 个")
 
-    # 保留 TAG 专项
     n5 = P.TAGS.get(0x86, [])
     print(f"\n保留 TAG 专项：N5(0x86) 白名单含 0x8B = {0x8B in n5}（须为 False）")
 
     if bad or extra or (0x8B in n5):
         print(f"\n❌ 存在 {len(bad)} 项不一致")
         for b in bad:
-            print(f"   0x{b[0]:02X}: 规范 {[hex(x) for x in b[1]]} / 实现 {[hex(x) for x in (b[2] or [])]}")
+            print(f"   0x{b[0]:02X}: 规范 {[hex(x) for x in b[1]]} "
+                  f"/ 实现 {[hex(x) for x in (b[2] or [])]}")
         return 1
     print("\n✅ 全部一致：实现硬编码未偏离规范表格")
     return 0
