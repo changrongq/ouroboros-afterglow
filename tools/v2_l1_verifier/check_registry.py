@@ -59,10 +59,22 @@ def head_blob(relpath: str):
 
 
 def worktree_blob(relpath: str):
+    """工作树文件的 blob，口径必须与 HEAD 一侧一致。
+
+    ⇒ 【不能用原始字节算】：本仓库有 .gitattributes，git 会把工作树的 CRLF
+      规范化为 LF 再入库。原始字节哈希与 HEAD blob 差的不是内容，是换行。
+      实测：check_registry.py 原始字节 = 694b2c64…，而
+            `git hash-object` = f8c729f3… = HEAD blob。
+    ⇒ 所以这里直接调用 `git hash-object <path>`，让 git 自己按
+      .gitattributes 规范化，避免「检查器与 git 口径不同」造成的假不一致。
+    """
     p = os.path.join(ROOT, relpath)
     if not os.path.exists(p):
         return None
-    return git_blob_of_bytes(open(p, "rb").read())
+    r = subprocess.run(["git", "hash-object", relpath],
+                       cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return r.stdout.strip() if r.returncode == 0 else None
 
 
 def resolve(fname: str):
