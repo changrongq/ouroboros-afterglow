@@ -210,15 +210,23 @@ def main():
     candidates = set()
 
     # ① 固定 HEAD 树（用 ls-tree 枚举，不依赖磁盘）
-    r = subprocess.run(["git", "ls-tree", "-r", "--name-only", "HEAD",
+    #   【必须用 -z】：默认输出会把非 ASCII 路径转成 "\351\230\266…" 八进制转义，
+    #   于是中文文件名与任何匹配规则都对不上，这一源会静默变空 ——
+    #   那样「删文件+删表行」仍然不响（实测过，正是知微 ZBR-01 第二层）。
+    #   -z 用 NUL 分隔且不转义，得到的是真实字节。
+    r = subprocess.run(["git", "ls-tree", "-r", "-z", "--name-only", "HEAD",
                         "tools/v2_l1_verifier", "reports/review_history"],
                        cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
-    if r.returncode == 0:
-        for line in r.stdout.splitlines():
-            rel = line.strip().replace(os.sep, "/")
+    head_ok = (r.returncode == 0)
+    if head_ok:
+        for raw in r.stdout.split("\x00"):
+            rel = raw.strip().replace(os.sep, "/")
             if rel:
                 candidates.add(rel)
+    else:
+        print("[WARN] git ls-tree 失败，HEAD 源不可用（覆盖性将不完整）")
+        print("       %s" % (r.stderr or "").strip()[:160])
 
     # ② 工作树当前路径
     for root in SEARCH_ROOTS:
