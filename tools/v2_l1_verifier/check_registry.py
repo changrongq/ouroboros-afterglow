@@ -18,8 +18,10 @@
   2 = 无法读取登记表（基础设施问题，不得视为通过）
 
 边界：
-  本脚本【不检查自己所在文件】，也【不检查登记表自己的 blob】
-  ——登记表自己的 blob 按设计只在 Coder 的消息里，不在文件内。
+  本脚本【不检查登记表自己的 blob】（登记表按设计不在表内，走 Coder 消息）。
+  但【会检查表里 check_registry.py 自己那一行】——它已登记在表内，
+  所以输出里会看到 `✅ check_registry.py …`。这两件事不要混。
+  （睫 第三轮：原 docstring 写「不检查自己所在文件」，与实跑输出不符，已改。）
 """
 import sys, os, re, subprocess, hashlib
 
@@ -63,10 +65,13 @@ def worktree_blob(relpath: str):
 
     ⇒ 【不能用原始字节算】：本仓库有 .gitattributes，git 会把工作树的 CRLF
       规范化为 LF 再入库。原始字节哈希与 HEAD blob 差的不是内容，是换行。
-      实测：check_registry.py 原始字节 = 694b2c64…，而
-            `git hash-object` = f8c729f3… = HEAD blob。
     ⇒ 所以这里直接调用 `git hash-object <path>`，让 git 自己按
       .gitattributes 规范化，避免「检查器与 git 口径不同」造成的假不一致。
+    ⇒ 因此「与工作树一致」的准确含义是
+      【经仓库属性处理后的 Git 对象一致】，不等于原始磁盘字节逐字节相等。
+      （知微 第三轮 5.3 末段指出此点，已在此写明。）
+    ⇒ 本函数【不再写死任何具体 blob 值】——写死的历史值会随文件改动过期，
+      而且检查器抓不到自己 docstring 里那个过期值（睫 第三轮 格三）。
     """
     p = os.path.join(ROOT, relpath)
     if not os.path.exists(p):
@@ -74,7 +79,8 @@ def worktree_blob(relpath: str):
     r = subprocess.run(["git", "hash-object", relpath],
                        cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
-    return r.stdout.strip() if r.returncode == 0 else None
+    out = r.stdout.strip()
+    return out if (r.returncode == 0 and len(out) == 40) else None
 
 
 def resolve(fname: str):
@@ -139,7 +145,21 @@ def main():
             bad.append((fname, "表≠HEAD", declared[:12], h[:12]))
             print("  ❌ %-56s 表=%s HEAD=%s" % (fname[:56], declared[:12], h[:12]))
             continue
-        if w is not None and w != declared:
+
+        # ---- 工作树缺失分支（知微 ZBR-01 第一层）----
+        # 原代码写 `if w is not None and w != declared:` ——
+        #   文件被删时 worktree_blob 返回 None，反而【绕过】了检查，
+        #   随后照常打印 ✅，并宣称「与工作树完全一致」。
+        # ⇒ 缺失必须判失败，且要与「哈希算不出」区分开。
+        if w is None:
+            if os.path.exists(os.path.join(ROOT, rel)):
+                why = "工作树 blob 算不出（HASH_UNAVAILABLE）"
+            else:
+                why = "工作树文件缺失（FILE_MISSING）"
+            bad.append((fname, why, declared[:12], "-"))
+            print("  ❌ %-56s %s" % (fname[:56], why))
+            continue
+        if w != declared:
             bad.append((fname, "表≠工作树（改了未提交）", declared[:12], w[:12]))
             print("  ⚠️  %-56s 表=%s 工作树=%s（未提交改动）"
                   % (fname[:56], declared[:12], w[:12]))
@@ -160,6 +180,15 @@ def main():
     #   删掉一行，其余行仍各自正确 ⇒ 不报错 ⇒ 漏登记的文件永远不会被核对。
     #   这正是「会失败的检查，最怕的不是失败，是没响」。
     #
+    # 【知微 ZBR-01 第二层】：
+    #   原实现只用 os.listdir 枚举【当前磁盘】上的文件。
+    #   于是「删文件 + 删表行」同时发生时，该文件已不在「应检查」集合里，
+    #   漏登记检查也不响 ⇒ 声称「15 行一致、覆盖无遗漏」。
+    # ⇒ 现改为【三个来源的并集】：
+    #   ① 固定 HEAD 树里的在役路径（文件丢了也还在 HEAD 里，能抓住）
+    #   ② 工作树当前路径（能抓住新增未登记）
+    #   ③ 表内已登记的路径（能抓住文件与行同时消失但 HEAD 仍有）
+    #
     # 范围限定（不是全仓）：只要求【本阶段在役】的文件被登记 ——
     #   · tools/v2_l1_verifier/*.py  全部
     #   · review_history/阶段B_2[2-9]_*.md 与 阶段B_3*_*.md（B_22 起的规范链与记录）
@@ -168,29 +197,58 @@ def main():
     missing = []
     import re as _re
     PHASE_RE = _re.compile(r"^阶段B_(2[2-9]|3\d|[4-9]\d+)_.*\.md$")
+
+    def in_scope(rel):
+        fn = os.path.basename(rel)
+        if rel.startswith("tools/"):
+            return fn.endswith(".py")
+        return bool(PHASE_RE.match(fn))
+
+    def is_registry_itself(rel):
+        return os.path.abspath(os.path.join(ROOT, rel)) == os.path.abspath(REGISTRY)
+
+    candidates = set()
+
+    # ① 固定 HEAD 树（用 ls-tree 枚举，不依赖磁盘）
+    r = subprocess.run(["git", "ls-tree", "-r", "--name-only", "HEAD",
+                        "tools/v2_l1_verifier", "reports/review_history"],
+                       cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode == 0:
+        for line in r.stdout.splitlines():
+            rel = line.strip().replace(os.sep, "/")
+            if rel:
+                candidates.add(rel)
+
+    # ② 工作树当前路径
     for root in SEARCH_ROOTS:
-        for fn in sorted(os.listdir(os.path.join(ROOT, root))):
+        d = os.path.join(ROOT, root)
+        if not os.path.isdir(d):
+            continue
+        for fn in sorted(os.listdir(d)):
             rel = os.path.join(root, fn).replace(os.sep, "/")
-            if not os.path.isfile(os.path.join(ROOT, rel)):
-                continue
-            if fn.startswith("__") or rel.endswith(".bak"):
-                continue
-            if rel.startswith("tools/"):
-                if not fn.endswith(".py"):
-                    continue
-            elif not PHASE_RE.match(fn):
-                continue
-            # 登记表自身不在表内（自指环，按设计走消息）
-            if os.path.abspath(os.path.join(ROOT, rel)) == os.path.abspath(REGISTRY):
-                continue
-            if rel not in registered:
-                missing.append(rel)
+            if os.path.isfile(os.path.join(ROOT, rel)):
+                candidates.add(rel)
+
+    # ③ 表内已登记路径
+    candidates |= registered
+
+    for rel in sorted(candidates):
+        if not in_scope(rel):
+            continue
+        if rel.endswith(".bak") or os.path.basename(rel).startswith("__"):
+            continue
+        if is_registry_itself(rel):
+            continue
+        if rel not in registered:
+            missing.append(rel)
 
     if missing:
         print()
-        print("漏登记 %d 个文件（存在但表里没有）：" % len(missing))
+        print("漏登记 %d 个文件（在役但表里没有）：" % len(missing))
         for m in missing:
-            print("   - %s" % m)
+            exists = os.path.exists(os.path.join(ROOT, m))
+            print("   - %s%s" % (m, "" if exists else "   ← 工作树已缺失，但 HEAD 里仍在役"))
         print()
         print("[FAIL] 登记表覆盖不全")
         return 1

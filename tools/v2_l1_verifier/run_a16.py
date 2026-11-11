@@ -327,8 +327,14 @@ def main():
     pend = sum(1 for r in res if r["verdict"] == "OBSERVED_PENDING_RULING")
 
     if a.json:
-        print(json.dumps({"meta": meta, "results": res,
-                          "summary": {"total": n, "pass": p, "fail": f, "skip": s}},
+        # 【知微 ZBR-02 配套修正 2026-11-11】
+        #   原 summary 只有 total/pass/fail/skip，
+        #   ⇒ total(44) != pass(43)+fail(0)+skip(0)，第四类 pending 在机器结果里消失。
+        #   ⇒ 只消费 summary 的上层看不到 OBSERVED_PENDING_RULING。
+        #   现补 pending 与守恒校验字段。
+        summary = {"total": n, "pass": p, "fail": f, "skip": s, "pending": pend}
+        summary["conserved"] = (p + f + s + pend == n)
+        print(json.dumps({"meta": meta, "results": res, "summary": summary},
                          ensure_ascii=False, indent=2))
     else:
         print(f"证据: {meta['evidence_path']}")

@@ -61,8 +61,37 @@ def _copy_fixture(dst, parser_src_path):
 # 允许的子进程退出码（与 run_a16.py 的四档一致）
 EXIT_OK, EXIT_FAIL, EXIT_SKIP, EXIT_EVIDENCE = 0, 1, 2, 3
 
-# 预定用例数下限（用例集完整性；低于此值视为覆盖不全）
-EXPECTED_CASE_FLOOR = 30
+# 【知微 ZBR-02 修正 2026-11-11】
+#   原实现只检查 `total >= 30` 与 `len(results) == total`。
+#   ⇒ 过滤掉本轮新补的 6 个必需用例后 total=38，仍 >= 30，
+#     于是 mutate 照报「基线健康」「12 KILLED」，exit 0。
+#   ⇒ 实测确认：这是真的（见下方 REQUIRED_CASE_IDS 的来历）。
+#
+#   现在改为：与一组【独立登记的必需用例 ID】逐一比对。
+#   ⇒ 不采用「把 30 改成 44」的做法：重复一项顶替缺失一项时，
+#     数量仍相等，照样漏。
+#   ⇒ 必需集合单独列在这里，不从 run_a16 的用例表反推——
+#     否则「用例表被删」和「必需集合被删」会一起消失，检查又白做。
+REQUIRED_CASE_IDS = (
+    # --- 向量类（来自 B_24 固定证据）---
+    "TV2-01", "TV2-02", "TV2-05", "TV2-06", "TV2-07", "TV2-N5", "TV2-OTHER",
+    "NEG-01", "NEG-02", "NEG-03", "NEG-04", "NEG-05", "NEG-06",
+    "NEG-07", "NEG-08", "NEG-09", "NEG-10",
+    "NEG-11", "X2", "X2b",
+    # --- 构造类（结构/长度/字段数）---
+    "C-TRUNC-SHORT", "C-TRUNC-FIELD", "C-TRAILING", "C-EMPTY-FIELDS",
+    "C-DUP-RULE", "C-FCNT-MISMATCH", "C-MAGIC-ONLY", "C-V2-TYPE01",
+    "C-WIDTH-EPOCH", "C-DOMAIN-GRANTKIND", "C-NESTED-TLEN",
+    # --- 第三轮 6 项值/长度/最小值反例（知微 上一轮原始反例，必须常驻）---
+    "C-NESTED-TYPE", "C-LEN-EVENTID", "C-LEN-OBSERVED",
+    "C-MIN-EPOCH", "C-MIN-SEQ", "C-MIN-RECEIPTSEQ",
+    # --- 合法正例（防误伤）---
+    "TV2-81", "TV2-82", "TV2-83", "TV2-84", "TV2-85", "TV2-87",
+    "V1-ATTEMPT-REF-OK",
+)
+
+# 允许的判定取值（第四类 OBSERVED_PENDING_RULING 必须显式保留）
+ALLOWED_VERDICTS = ("PASS", "FAIL", "SKIP", "OBSERVED_PENDING_RULING")
 
 
 def run_fixture(parser_path):
@@ -122,13 +151,62 @@ def run_fixture(parser_path):
         return {**base, **common, "status": "INFRA_ERROR",
                 "reason": f"存在 SKIP {s_} 项（必需输入缺失）"}
 
-    # 5) 用例覆盖完整性
-    if not isinstance(t_, int) or t_ < EXPECTED_CASE_FLOOR or len(results) != t_:
+    # 5) 用例覆盖完整性 —— 按【已登记的必需 ID 集合】校验，不按数量
+    if not isinstance(t_, int) or len(results) != t_:
         return {**base, **common, "status": "INFRA_ERROR",
-                "reason": f"用例覆盖不全 total={t_} len(results)={len(results)} "
-                          f"floor={EXPECTED_CASE_FLOOR}"}
+                "reason": f"summary.total={t_} 与 len(results)={len(results)} 不符"}
 
-    # 6) 退出码与计数自洽
+    got_ids = []
+    bad_verdicts = []
+    for r_ in results:
+        cid = r_.get("id")
+        v = r_.get("verdict")
+        if cid is None:
+            return {**base, **common, "status": "INFRA_ERROR",
+                    "reason": "存在缺少 id 的结果项"}
+        got_ids.append(cid)
+        if v not in ALLOWED_VERDICTS:
+            bad_verdicts.append("%s=%s" % (cid, v))
+
+    if bad_verdicts:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "出现未登记判定值: " + ", ".join(bad_verdicts[:6])}
+
+    dup = sorted({i for i in got_ids if got_ids.count(i) > 1})
+    if dup:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "用例 ID 重复: " + ", ".join(dup[:6])}
+
+    got_set = set(got_ids)
+    need_set = set(REQUIRED_CASE_IDS)
+    missing_ids = sorted(need_set - got_set)
+    extra_ids = sorted(got_set - need_set)
+    if missing_ids:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "缺少已登记必需用例: " + ", ".join(missing_ids[:8])}
+    if extra_ids:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "出现未登记用例: " + ", ".join(extra_ids[:8])}
+
+    # 6) 计数守恒：total 必须等于四类之和（含 pending）
+    pend_ = s_.get("pending") if isinstance(s_, dict) else None
+    if pend_ is None:
+        # 兼容旧 runner 不带 pending 字段：用 results 现算，
+        #   但【仍要求】它和 pass+fail+skip 凑得上，否则说明 summary 不完整。
+        pend_ = sum(1 for r_ in results
+                    if r_.get("verdict") == "OBSERVED_PENDING_RULING")
+        common["pending"] = pend_
+        common["pending_from"] = "recount"
+    else:
+        common["pending"] = pend_
+        common["pending_from"] = "summary"
+
+    if (p_ or 0) + (f_ or 0) + (s_ or 0) + (pend_ or 0) != t_:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "计数不守恒 pass=%s+fail=%s+skip=%s+pending=%s != total=%s"
+                          % (p_, f_, s_, pend_, t_)}
+
+    # 7) 退出码与计数自洽
     if rc == EXIT_FAIL and (f_ or 0) == 0:
         return {**base, **common, "status": "INFRA_ERROR",
                 "reason": "exit=1 但 fail=0，不自洽"}
