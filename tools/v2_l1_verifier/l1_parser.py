@@ -71,6 +71,9 @@ R_TRUNC       = "R-V2-07"    # 长度/字段头不完整
 R_TOTAL_LEN   = "R-V2-08"    # TOTAL_LEN 不符
 R_FIELD_COUNT = "R-V2-09"    # 字段数不符（配 cause 区分子情形）
 R_FIELD_SPEC  = "R-V2-10"    # TAG / 顺序 / 长度 / 取值不符
+# 【ZRV-03】反向版本入口：拒绝行为确定，但规范规则号尚未裁定。
+# 用独立占位码，使其【不会】被当作 R-V2-02b 的规则符合。
+R_VER_MISMATCH_PENDING = "PENDING_RULING_VERSION_ENTRY"
 
 
 class Reject(Exception):
@@ -119,16 +122,23 @@ def parse(raw, entry="dispatcher"):
     # ① 版本自检（专用入口只收自己的版本）
     fv = int.from_bytes(raw[8:10], "big")
     if fv != expected:
-        # 【ZFP-04 后半】两个方向行为相同（都拒绝），但规则号归属不同：
-        #   v2 -> v1 : R-V2-02b 已有规范依据（B_23 §3.2）
-        #   v1 -> v2 : 规则号待定 REVERSE_VERSION_ENTRY_RULE_ID = PENDING_RULING
-        # 用 detail 标注 direction，便于验收器区分，不擅自扩号。
-        direction = "v2_to_v1" if (entry == "v1" and fv == FORMAT_V2) else \
-                    "v1_to_v2" if (entry == "v2" and fv == FORMAT_V1) else \
-                    "other"
+        # 【ZFP-04 后半 + ZRV-03 修正 2026-11-11】
+        #   v2 -> v1 : R-V2-02b【有规范依据】（B_23 §3.2 仅限此方向）
+        #   v1 -> v2 : 拒绝行为确定，但【规则号待定】
+        #              ⇒ 用独立占位码 R_VER_MISMATCH_PENDING，
+        #                不再复用 R-V2-02b，避免"未定项被算作规则符合"
+        if entry == "v1" and fv == FORMAT_V2:
+            raise Reject(R_VER_MISMATCH,
+                         f"entry=v1 got=0x{fv:04X} direction=v2_to_v1",
+                         cause="v2_to_v1")
+        if entry == "v2" and fv == FORMAT_V1:
+            raise Reject(R_VER_MISMATCH_PENDING,
+                         f"entry=v2 got=0x{fv:04X} direction=v1_to_v2 "
+                         f"(rule_id PENDING_RULING)",
+                         cause="v1_to_v2")
         raise Reject(R_VER_MISMATCH,
-                     f"entry={entry} got=0x{fv:04X} direction={direction}",
-                     cause=direction)
+                     f"entry={entry} got=0x{fv:04X} direction=other",
+                     cause="other")
 
     otype = raw[10]
     reserved = raw[11]
@@ -215,53 +225,68 @@ def protocol_digest(raw):
 
 # ---- 字段值约束表（ZFP-03 修正）----
 # 依据 B_22 §3.0a–3.11 与 §2 2.3（整数定宽、字符串/bytes 带 LEN）
-# 形式：{otype: {tag: ("int", 字节数) | ("bytes", 定长或None)
-#                     | ("enum", {允许值}) | ("str", None) | ("nested", 类型)}}
+# 形式：{otype: {tag: (kind, 参数)}}
+#   ("int",   字节数)            定宽整数
+#   ("int",   字节数, minval)    定宽整数 + 最小值（ZRV-02 新增）
+#   ("bytes", 定长或 None)       bytes
+#   ("bytes", 定长, 变长上限)    定长 None 时可用第三项作上限（ZRV-02 新增）
+#   ("enum",  {允许值})          枚举
+#   ("str",    最大字节数)        标识类：非空、无 NUL、UTF-8、<=max（ZRV-02 新增上限）
+#   ("str_opt",最大字节数)        内容类：可为空、无 NUL、UTF-8、<=max
+#   ("nested", 类型)            嵌套对象，须核对内层 OBJECT_TYPE
 VALUE_SPEC = {
-    # 0x06/0x07 是【内容类】字段，依 §2 3.1 允许 LEN=0
-    0x01: {0x01: ("str", None), 0x02: ("str", None), 0x03: ("nested", 0x03),
-           0x04: ("str", None), 0x05: ("enum", {0x01}),
-           0x06: ("str_opt", None), 0x07: ("str_opt", None)},
-    0x02: {0x11: ("str", None), 0x12: ("str", None), 0x13: ("nested", 0x03),
-           0x14: ("enum", {0x01}), 0x15: ("int", 8), 0x16: ("str", None)},
-    0x03: {0x21: ("str", None), 0x22: ("int", 8), 0x23: ("int", 8)},
-    0x81: {0x31: ("bytes", 16), 0x32: ("str", None), 0x33: ("int", 4),
+    # 0x01 ATTEMPT_REF（§2 3.1）：字符串 1..255；内容类字段 0..1024
+    0x01: {0x01: ("str", 255), 0x02: ("str", 255), 0x03: ("nested", 0x03),
+           0x04: ("str", 255), 0x05: ("enum", {0x01}),
+           0x06: ("str_opt", 1024), 0x07: ("str_opt", 1024)},
+    # 0x02 RECEIPT_REF（§2 3.2）：字符串 1..255；receipt_seq >= 1
+    0x02: {0x11: ("str", 255), 0x12: ("str", 255), 0x13: ("nested", 0x03),
+           0x14: ("enum", {0x01}), 0x15: ("int", 8, 1), 0x16: ("str", 255)},
+    # 0x03 KEY_TRIPLE（§2 3.3）：epoch >= 1，seq >= 1
+    0x03: {0x21: ("str", 255), 0x22: ("int", 8, 1), 0x23: ("int", 8, 1)},
+    0x81: {0x31: ("bytes", 16), 0x32: ("str", 255), 0x33: ("int", 4),
            0x34: ("bytes", 32), 0x35: ("bytes", 32), 0x36: ("bytes", 32),
            0x37: ("bytes", 32)},
-    0x82: {0x41: ("bytes", 16), 0x42: ("str", None), 0x43: ("int", 4),
+    0x82: {0x41: ("bytes", 16), 0x42: ("str", 255), 0x43: ("int", 4),
            0x44: ("int", 8), 0x45: ("int", 8), 0x46: ("bytes", 32),
            0x47: ("bytes", 32)},
-    0x83: {0x51: ("bytes", 16), 0x52: ("str", None), 0x53: ("int", 4),
+    0x83: {0x51: ("bytes", 16), 0x52: ("str", 255), 0x53: ("int", 4),
            0x54: ("int", 8), 0x55: ("enum", {0x01}), 0x56: ("bytes", 32)},
-    0x84: {0x61: ("bytes", 16), 0x62: ("str", None), 0x63: ("int", 4),
+    0x84: {0x61: ("bytes", 16), 0x62: ("str", 255), 0x63: ("int", 4),
            0x64: ("enum", {0x01, 0x02, 0x03}), 0x65: ("bytes", 32),
            0x66: ("bytes", 16), 0x67: ("bytes", 32)},
-    0x85: {0x71: ("bytes", 16), 0x72: ("str", None), 0x73: ("int", 4),
+    0x85: {0x71: ("bytes", 16), 0x72: ("str", 255), 0x73: ("int", 4),
            0x74: ("bytes", 32), 0x75: ("enum", {0x01, 0x02, 0x03}),
            0x76: ("bytes", 32), 0x77: ("bytes", 32)},
-    0x86: {0x81: ("str", None), 0x82: ("int", 4), 0x83: ("int", 8),
+    0x86: {0x81: ("str", 255), 0x82: ("int", 4), 0x83: ("int", 8),
            0x84: ("int", 8), 0x85: ("bytes", 32), 0x86: ("int", 8),
            0x87: ("bytes", 32), 0x88: ("int", 8), 0x89: ("int", 8),
            0x8A: ("bytes", 32), 0x8C: ("bytes", 32)},
-    0x87: {0x91: ("bytes", 16), 0x92: ("str", None), 0x93: ("int", 4),
+    0x87: {0x91: ("bytes", 16), 0x92: ("str", 255), 0x93: ("int", 4),
            0x94: ("int", 8), 0x95: ("bytes", 32), 0x96: ("bytes", 32)},
-    0x88: {0xA1: ("str", None), 0xA2: ("int", 4), 0xA3: ("int", 8),
+    0x88: {0xA1: ("str", 255), 0xA2: ("int", 4), 0xA3: ("int", 8),
            0xA4: ("int", 8), 0xA5: ("int", 4), 0xA6: ("bytes", None)},
-    0x89: {0xB1: ("str", None), 0xB2: ("int", 4), 0xB3: ("int", 8),
+    0x89: {0xB1: ("str", 255), 0xB2: ("int", 4), 0xB3: ("int", 8),
            0xB4: ("bytes", 32), 0xB5: ("int", 8), 0xB6: ("bytes", 32),
            0xB7: ("int", 8), 0xB8: ("bytes", 32)},
-    0x8A: {0xC1: ("str", None), 0xC2: ("int", 4), 0xC3: ("int", 8),
+    0x8A: {0xC1: ("str", 255), 0xC2: ("int", 4), 0xC3: ("int", 8),
            0xC4: ("bytes", 32), 0xC5: ("int", 8), 0xC6: ("bytes", 32),
            0xC7: ("enum", {0x01, 0x02, 0x03, 0x04}), 0xC8: ("bytes", 32),
            0xC9: ("bytes", 32), 0xCA: ("bytes", 32), 0xCB: ("bytes", 32)},
-    0x8B: {0xD1: ("str", None), 0xD2: ("int", 4), 0xD3: ("int", 8),
+    0x8B: {0xD1: ("str", 255), 0xD2: ("int", 4), 0xD3: ("int", 8),
            0xD4: ("bytes", 32), 0xD5: ("int", 8), 0xD6: ("bytes", 32),
            0xD7: ("bytes", 32)},
 }
 
 
 def _check_values(otype, fields, entry):
-    """校验字段 VALUE 的类型/宽度/取值域；nested 类型递归解析内层对象。"""
+    """校验字段 VALUE 的类型/宽度/长度上限/取值域；nested 递归并核对类型。
+
+    【ZRV-02 修正 2026-11-11】：原实现缺三类约束，现全部补上
+      · 整数最小值（KEY_TRIPLE.epoch/seq >= 1、receipt_seq >= 1）
+      · 字符串长度上限（标识类 1..255、内容类 0..1024）
+      · 嵌套对象的 OBJECT_TYPE 必须等于该位置要求的类型
+    """
     spec = VALUE_SPEC.get(otype, {})
     for tag, val in fields:
         r = spec.get(tag)
@@ -271,41 +296,56 @@ def _check_values(otype, fields, entry):
         if kind == "int":
             if len(val) != r[1]:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X int width %d != %d" % (otype, tag, len(val), r[1]))
+                             "0x%02X.0x%02X int width %d != %d"
+                             % (otype, tag, len(val), r[1]))
+            if len(r) >= 3:
+                v = int.from_bytes(val, "big")
+                if v < r[2]:
+                    raise Reject(R_FIELD_SPEC,
+                                 "0x%02X.0x%02X value %d < min %d"
+                                 % (otype, tag, v, r[2]))
         elif kind == "bytes":
             if r[1] is not None and len(val) != r[1]:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X bytes len %d != %d" % (otype, tag, len(val), r[1]))
+                             "0x%02X.0x%02X bytes len %d != %d"
+                             % (otype, tag, len(val), r[1]))
         elif kind == "enum":
             if len(val) != 1:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X enum width %d != 1" % (otype, tag, len(val)))
+                             "0x%02X.0x%02X enum width %d != 1"
+                             % (otype, tag, len(val)))
             if val[0] not in r[1]:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X enum %d not allowed" % (otype, tag, val[0]))
-        elif kind == "str":
-            # 标识类：必须非空（§2 2.3）
-            if len(val) == 0 or b"\x00" in val:
+                             "0x%02X.0x%02X enum %d not allowed"
+                             % (otype, tag, val[0]))
+        elif kind in ("str", "str_opt"):
+            limit = r[1] if len(r) >= 2 else None
+            if kind == "str" and len(val) == 0:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X str empty or has NUL" % (otype, tag))
-            try:
-                val.decode("utf-8")
-            except UnicodeDecodeError:
+                             "0x%02X.0x%02X str empty" % (otype, tag))
+            if limit is not None and len(val) > limit:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X str not UTF-8" % (otype, tag))
-        elif kind == "str_opt":
-            # 内容类：允许 LEN=0，仅禁 NUL 与非 UTF-8（§2 3.1）
+                             "0x%02X.0x%02X len %d > max %d"
+                             % (otype, tag, len(val), limit))
             if b"\x00" in val:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X str_opt has NUL" % (otype, tag))
+                             "0x%02X.0x%02X has NUL" % (otype, tag))
             try:
                 val.decode("utf-8")
             except UnicodeDecodeError:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X str_opt not UTF-8" % (otype, tag))
+                             "0x%02X.0x%02X not UTF-8" % (otype, tag))
         elif kind == "nested":
+            want_type = r[1]
             try:
-                parse(val, entry="v1")
+                inner = parse(val, entry="v1")
             except Reject as e:
                 raise Reject(R_FIELD_SPEC,
-                             "0x%02X.0x%02X nested invalid: %s" % (otype, tag, e.code))
+                             "0x%02X.0x%02X nested invalid: %s"
+                             % (otype, tag, e.code))
+            if inner["OBJECT_TYPE"] != want_type:
+                raise Reject(R_FIELD_SPEC,
+                             "0x%02X.0x%02X nested type 0x%02X != required 0x%02X"
+                             % (otype, tag, inner["OBJECT_TYPE"], want_type))
+
+

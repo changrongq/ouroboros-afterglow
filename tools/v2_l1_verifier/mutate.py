@@ -58,42 +58,103 @@ def _copy_fixture(dst, parser_src_path):
             shutil.copy(cand, os.path.join(dst, "evidence", name))
 
 
+# 允许的子进程退出码（与 run_a16.py 的四档一致）
+EXIT_OK, EXIT_FAIL, EXIT_SKIP, EXIT_EVIDENCE = 0, 1, 2, 3
+
+# 预定用例数下限（用例集完整性；低于此值视为覆盖不全）
+EXPECTED_CASE_FLOOR = 30
+
+
 def run_fixture(parser_path):
-    """在隔离目录跑 run_a16.py，返回 (status, pass_n, fail_n, skip_n, raw)。"""
+    """在隔离目录跑 run_a16.py，返回 dict。
+
+    【ZRV-01 修正 2026-11-11】
+      原实现只把"不在 0/1/2/3 内"的退出码当 INFRA_ERROR，
+      且只要 JSON 能读就返回 OK —— 【不采纳 exit 3，也不读 evidence_ok】。
+      于是"证据身份失败"在变异工具这一层被吞掉，仍报"基线健康"。
+
+      现改为：退出码 + meta.evidence_ok + summary + 用例覆盖【四项都须成立】。
+    """
+    import json
+    base = {"status": None, "reason": "", "exit": None,
+            "pass": None, "fail": None, "skip": None,
+            "evidence_ok": None, "total": None, "raw": ""}
+
     tmp = tempfile.mkdtemp(prefix="mut_")
     try:
         _copy_fixture(tmp, parser_path)
         r = subprocess.run([sys.executable, "run_a16.py", "--json"],
                            capture_output=True, text=True, encoding="utf-8",
                            cwd=tmp, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-        if r.returncode not in (0, 1, 2, 3):
-            return "INFRA_ERROR", None, None, None, (r.stdout + r.stderr)[-400:]
-        # 解析 JSON
-        import json
-        try:
-            data = json.loads(r.stdout)
-        except Exception:
-            return "INFRA_ERROR", None, None, None, r.stdout[-400:]
-        s = data["summary"]
-        return "OK", s["pass"], s["fail"], s["skip"], ""
+        rc, out, err = r.returncode, r.stdout, r.stderr
     except Exception as e:
-        return "INFRA_ERROR", None, None, None, f"{type(e).__name__}: {e}"
+        return {**base, "status": "INFRA_ERROR",
+                "reason": f"{type(e).__name__}: {e}"}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+    # 1) 退出码必须在已知四档内
+    if rc not in (EXIT_OK, EXIT_FAIL, EXIT_SKIP, EXIT_EVIDENCE):
+        return {**base, "status": "INFRA_ERROR", "exit": rc,
+                "reason": f"未知退出码 {rc}", "raw": (out + err)[-400:]}
+
+    # 2) JSON 必须可解析且结构完整
+    try:
+        data = json.loads(out)
+        s, meta, results = data["summary"], data["meta"], data["results"]
+        p_, f_, s_, t_ = s["pass"], s["fail"], s["skip"], s["total"]
+        ev_ok = meta["evidence_ok"]
+    except Exception as e:
+        return {**base, "status": "INFRA_ERROR", "exit": rc,
+                "reason": f"JSON 结构不完整: {type(e).__name__}: {e}",
+                "raw": out[-400:]}
+
+    common = {"exit": rc, "pass": p_, "fail": f_, "skip": s_,
+              "evidence_ok": ev_ok, "total": t_}
+
+    # 3) 证据身份失败必须先判 INFRA_ERROR，不能被 fail>0 掩盖成"变异被检出"
+    if rc == EXIT_EVIDENCE or ev_ok is not True:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": f"证据身份失败 exit={rc} evidence_ok={ev_ok}"}
+
+    # 4) SKIP 不得算 OK
+    if rc == EXIT_SKIP or (s_ or 0) > 0:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": f"存在 SKIP {s_} 项（必需输入缺失）"}
+
+    # 5) 用例覆盖完整性
+    if not isinstance(t_, int) or t_ < EXPECTED_CASE_FLOOR or len(results) != t_:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": f"用例覆盖不全 total={t_} len(results)={len(results)} "
+                          f"floor={EXPECTED_CASE_FLOOR}"}
+
+    # 6) 退出码与计数自洽
+    if rc == EXIT_FAIL and (f_ or 0) == 0:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "exit=1 但 fail=0，不自洽"}
+    if rc == EXIT_OK and ((f_ or 0) != 0 or (s_ or 0) != 0):
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": f"exit=0 但 fail={f_} skip={s_}，不自洽"}
+
+    return {**base, **common, "status": "OK"}
 
 
 def main():
     print("=== 基线门禁（未变异的解析器必须完整通过）===")
-    st, p, f, s, raw = run_fixture(os.path.join(HERE, "l1_parser.py"))
-    if st != "OK" or f != 0 or s != 0:
-        print(f"  ❌ 基线未通过: status={st} pass={p} fail={f} skip={s}")
-        if raw:
-            print(f"  原始输出: {raw}")
+    b = run_fixture(os.path.join(HERE, "l1_parser.py"))
+    print(f"  status={b['status']} exit={b['exit']} "
+          f"pass={b['pass']} fail={b['fail']} skip={b['skip']} "
+          f"evidence_ok={b['evidence_ok']} total={b['total']}")
+    # 【ZRV-01】基线必须：OK + pass>0 + fail=0 + skip=0 + 证据身份成立
+    if (b["status"] != "OK" or not b["pass"] or b["fail"] != 0
+            or b["skip"] != 0 or b["evidence_ok"] is not True):
+        print(f"  ❌ 基线未通过: {b['reason'] or '条件不满足'}")
+        if b.get("raw"):
+            print(f"  原始输出: {b['raw']}")
         print("\n[结论] INFRA_ERROR：基线不健康，变异结果不可解释。")
         print("  ⇒ 不进入变异阶段，退出码 3")
         return 3
-    print(f"  ✅ 基线 pass={p} fail={f} skip={s}")
-    base_pass = p
+    print(f"  ✅ 基线健康 pass={b['pass']}")
 
     print("\n=== 变异 ===")
     killed = survived = infra = 0
@@ -105,15 +166,17 @@ def main():
             infra += 1
             continue
         open(mut_file, "wb").write(SRC.replace(old, new).encode("utf-8"))
-        st, p2, f2, s2, raw2 = run_fixture(mut_file)
-        if st != "OK":
-            rows.append((desc, "INFRA_ERROR", raw2[:80]))
+        m = run_fixture(mut_file)
+        # 【ZRV-01】先判基础设施问题，再看 fail>0
+        if m["status"] != "OK":
+            rows.append((desc, "INFRA_ERROR", m["reason"][:90]))
             infra += 1
-        elif f2 > 0:
-            rows.append((desc, "MUTANT_KILLED", f"fail={f2}"))
+        elif (m["fail"] or 0) > 0:
+            rows.append((desc, "MUTANT_KILLED", f"fail={m['fail']}"))
             killed += 1
         else:
-            rows.append((desc, "MUTANT_SURVIVED", f"pass={p2} fail=0"))
+            rows.append((desc, "MUTANT_SURVIVED",
+                         f"pass={m['pass']} fail=0"))
             survived += 1
 
     for desc, verdict, info in rows:
@@ -123,7 +186,7 @@ def main():
 
     total = len(MUTATIONS)
     print(f"\n=== 汇总 ===")
-    print(f"  基线通过 {base_pass}")
+    print(f"  基线通过 {b['pass']}")
     print(f"  变异 {total}：KILLED {killed}  SURVIVED {survived}  INFRA_ERROR {infra}")
     ok = (killed == total and survived == 0 and infra == 0)
     print(f"  全部 KILLED: {ok}")
