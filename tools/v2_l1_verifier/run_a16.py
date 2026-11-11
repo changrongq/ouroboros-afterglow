@@ -37,10 +37,23 @@ def git_blob_sha1(data: bytes) -> str:
     return hashlib.sha1(b"blob %d\x00" % len(data) + data).hexdigest()
 
 
-def find_evidence(cli_dir=None):
+def find_evidence(cli_dir=None, strict=False):
+    """查找证据文件。
+
+    strict=True（--evidence-strict）：只查 cli_dir，【不回退】到 SEARCH_DIRS。
+      理由（知微 第三轮 5.1）：--evidence 原本是【优先搜索】而非【排他路径】，
+      指定目录缺文件时仍会回退到其他目录并成功，
+      所以「改名一个目录」这类实验【不能证明缺失控制已触发】。
+      要验证缺失控制，必须用 strict。
+    """
     cands = []
     if cli_dir:
         cands.append(os.path.join(cli_dir, B24_FILENAME))
+        if strict:
+            c = cands[0]
+            if os.path.exists(c):
+                return os.path.abspath(c), open(c, "rb").read()
+            return None, None
     for d in SEARCH_DIRS:
         cands.append(os.path.abspath(os.path.join(d, B24_FILENAME)))
     for c in cands:
@@ -232,8 +245,8 @@ EXTRA_CASES = [
 ]
 
 
-def run(evidence_dir=None):
-    path, raw = find_evidence(evidence_dir)
+def run(evidence_dir=None, strict=False):
+    path, raw = find_evidence(evidence_dir, strict)
     if raw is None:
         return [], {"evidence_path": None, "evidence_ok": False,
                     "evidence_detail": "未找到证据文件", "unknown_vectors": []}
@@ -301,10 +314,12 @@ def _judge(vid, desc, entry, exp, raw, basis):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--evidence", default=None)
+    ap.add_argument("--evidence-strict", action="store_true",
+                    help="--evidence 指定目录必须含证据文件，不回退到其他搜索路径")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    res, meta = run(a.evidence)
+    res, meta = run(a.evidence, a.evidence_strict)
     n = len(res)
     p = sum(1 for r in res if r["verdict"] == "PASS")
     f = sum(1 for r in res if r["verdict"] == "FAIL")
