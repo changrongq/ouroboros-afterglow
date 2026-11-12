@@ -34,9 +34,12 @@ REGISTRY = os.path.join(
     "阶段B_30_文件版本登记表_Coder_20261111.md")
 
 # 表内只登记这些目录下的文件；用于把「文件名」还原成「仓库相对路径」
+# 注：表里可以写【带子目录的路径】（如 `.github/workflows/x.yml`），
+#     resolve() 会先按原样试，再退到各根目录拼接。
 SEARCH_ROOTS = [
     os.path.join("reports", "review_history"),
     os.path.join("tools", "v2_l1_verifier"),
+    os.path.join(".github", "workflows"),
 ]
 
 ROW_RE = re.compile(r"^\|\s*`([^`]+)`\s*\|(.*\|\s*)`([0-9a-f]{40}|PENDING_FIRST_COMMIT)`\s*\|\s*$")
@@ -84,11 +87,23 @@ def worktree_blob(relpath: str):
 
 
 def resolve(fname: str):
-    """把表里的文件名还原成仓库相对路径。"""
+    """把表里的文件名还原成仓库相对路径。
+
+    ⇒ 先按【原样】当作仓库相对路径试一次：
+      表里允许写 `.github/workflows/x.yml` 这种带子目录的路径。
+    ⇒ 再退到各 SEARCH_ROOTS 拼接（兼容只写文件名的老行）。
+    ⇒ 都不存在时，若原样路径看起来带目录，就原样返回，
+      让调用方报「HEAD/工作树缺失」而不是拼出一个错误路径。
+    """
+    direct = fname.replace(os.sep, "/")
+    if os.path.exists(os.path.join(ROOT, direct)):
+        return direct
     for root in SEARCH_ROOTS:
         cand = os.path.join(root, fname)
         if os.path.exists(os.path.join(ROOT, cand)):
             return cand.replace(os.sep, "/")
+    if ("/" in direct) or ("\\" in fname):
+        return direct
     # 已删除文件：按 reports 路径猜，供存在性检查报出来
     return os.path.join(SEARCH_ROOTS[0], fname).replace(os.sep, "/")
 
@@ -202,6 +217,8 @@ def main():
         fn = os.path.basename(rel)
         if rel.startswith("tools/"):
             return fn.endswith(".py")
+        if rel.startswith(".github/"):
+            return fn.endswith((".yml", ".yaml"))
         return bool(PHASE_RE.match(fn))
 
     def is_registry_itself(rel):
@@ -215,7 +232,8 @@ def main():
     #   那样「删文件+删表行」仍然不响（实测过，正是知微 ZBR-01 第二层）。
     #   -z 用 NUL 分隔且不转义，得到的是真实字节。
     r = subprocess.run(["git", "ls-tree", "-r", "-z", "--name-only", "HEAD",
-                        "tools/v2_l1_verifier", "reports/review_history"],
+                        "tools/v2_l1_verifier", "reports/review_history",
+                        ".github/workflows"],
                        cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     head_ok = (r.returncode == 0)
