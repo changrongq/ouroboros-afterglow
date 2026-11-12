@@ -22,23 +22,43 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 必需用例 ID 与允许判定值从 mutate.py 单点引入。
+# 必需用例 ID 与允许判定值从 a16_cases.py 单点引入。
 #   ⇒ 不在这里再抄一份：抄两份就会有一天只改一边。
-#   ⇒ 若 mutate.py 不可导入，则明确失败，而不是静默放宽。
+#   ⇒ 【知微 ZB32-01】：原来从 mutate.py 导入，但 mutate 现在也要调用本模块，
+#     会形成循环导入。⇒ 纯数据抽到 a16_cases.py，两处共同从那里取。
+#   ⇒ 若 a16_cases 不可导入，则明确失败，而不是静默放宽。
 try:
-    from mutate import REQUIRED_CASE_IDS, ALLOWED_VERDICTS
+    from a16_cases import (REQUIRED_CASE_IDS, ALLOWED_VERDICTS,
+                           PENDING_VERDICT)
 except Exception as e:  # pragma: no cover
     REQUIRED_CASE_IDS = None
     ALLOWED_VERDICTS = None
+    PENDING_VERDICT = "OBSERVED_PENDING_RULING"
     _IMPORT_ERR = e
 else:
     _IMPORT_ERR = None
 
 
-def validate(doc):
-    """校验 run_a16.py --json 的输出。
+def validate_structure(doc):
+    """【第 1 层】只校验结果结构完整性，不要求全部 PASS。
 
-    返回 (ok: bool, problems: list[str], info: dict)
+    【知微 ZB32-01 修正 2026-11-12】
+      原 validate() 把「结构完整」与「每条必须 PASS」混在一起，
+      于是：
+        · 独立验收器可以用它（要求全 PASS）✅
+        · mutate 不能用它 —— 变异的正常结果本来就有 FAIL，
+          若要求全 PASS，真 KILLED 也会被拒 ❌
+      结果是 mutate 自己又写了一套内联校验，
+      而这套内联校验【不把 summary 各分类计数与 results 重算绑定】，
+      于是「results 全 PASS 但 summary.fail=1」的矛盾证据
+      会被判成 MUTANT_KILLED（实测复现）。
+
+      ⇒ 现按知微建议把三层拆开：
+        第 1 层 validate_structure  —— 结构完整性（本函数），两个入口共用
+        第 2 层 validate()          —— 结构完整 + 全部 PASS（基线/正式验收）
+        第 3 层 变异判定            —— 结构完整 + 独立重算 FAIL>0 才算 KILLED
+
+    返回 (ok, problems, info)；info.recomputed 是由 results 重算的分类计数。
     """
     problems = []
 
@@ -96,14 +116,7 @@ def validate(doc):
         problems.append("出现未登记用例 (%d): %s"
                         % (len(extra), ", ".join(extra[:8])))
 
-    # ---- 4) 每条必须 PASS（裁定后不允许待定）----
-    nonpass = [r.get("id") for r in results
-               if isinstance(r, dict) and r.get("verdict") != "PASS"]
-    if nonpass:
-        problems.append("非 PASS 用例 (%d): %s"
-                        % (len(nonpass), ", ".join(str(x) for x in nonpass[:8])))
-
-    # ---- 5) 计数一律由 results 重算，不采信 summary 自报 ----
+    # ---- 4) 计数一律由 results 重算，不采信 summary 自报 ----
     counts = {"PASS": 0, "FAIL": 0, "SKIP": 0, "OBSERVED_PENDING_RULING": 0}
     for r in results:
         if isinstance(r, dict):
@@ -122,7 +135,7 @@ def validate(doc):
             problems.append("summary.%s=%r 与 results 重算值 %d 不符"
                             % (key, claimed, calc))
 
-    # ---- 6) summary.conserved 不得与自己矛盾 ----
+    # ---- 5) summary.conserved 不得与自己矛盾 ----
     if summary.get("conserved") is True:
         s_total = summary.get("total")
         s_sum = sum(summary.get(k) or 0
@@ -132,7 +145,7 @@ def validate(doc):
                             % (s_total, summary.get("pass"), summary.get("fail"),
                                summary.get("skip"), summary.get("pending")))
 
-    # ---- 7) 证据身份 ----
+    # ---- 6) 证据身份 ----
     if meta.get("evidence_ok") is not True:
         problems.append("evidence_ok != True (%r)" % (meta.get("evidence_ok"),))
 
@@ -142,4 +155,23 @@ def validate(doc):
         "recomputed_total": recomputed_total,
         "required_count": len(REQUIRED_CASE_IDS),
     }
+    return (len(problems) == 0), problems, info
+
+
+def validate(doc):
+    """【第 2 层】结构完整 + 每条必须 PASS（基线 / 正式验收用）。
+
+    ⇒ 在 validate_structure 之上再加一条：不允许任何非 PASS。
+      裁定 B-1 后也不允许 OBSERVED_PENDING_RULING。
+    """
+    ok, problems, info = validate_structure(doc)
+    if not ok:
+        return ok, problems, info
+
+    results = doc["results"]
+    nonpass = [r.get("id") for r in results
+               if isinstance(r, dict) and r.get("verdict") != "PASS"]
+    if nonpass:
+        problems.append("非 PASS 用例 (%d): %s"
+                        % (len(nonpass), ", ".join(str(x) for x in nonpass[:8])))
     return (len(problems) == 0), problems, info

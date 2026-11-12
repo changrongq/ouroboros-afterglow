@@ -62,47 +62,20 @@ def _copy_fixture(dst, parser_src_path):
 EXIT_OK, EXIT_FAIL, EXIT_SKIP, EXIT_EVIDENCE = 0, 1, 2, 3
 
 # 【知微 ZBR-02 修正 2026-11-11】
-#   原实现只检查 `total >= 30` 与 `len(results) == total`。
-#   ⇒ 过滤掉本轮新补的 6 个必需用例后 total=38，仍 >= 30，
-#     于是 mutate 照报「基线健康」「12 KILLED」，exit 0。
-#   ⇒ 实测确认：这是真的（见下方 REQUIRED_CASE_IDS 的来历）。
+#   原实现只检查 `total >= 30` 与 `len(results) == total`，
+#   于是过滤掉 6 个必需用例后 total=38 仍 >= 30，照报「基线健康」。
+#   ⇒ 改为与【独立登记的必需用例 ID】逐一比对。
 #
-#   现在改为：与一组【独立登记的必需用例 ID】逐一比对。
-#   ⇒ 不采用「把 30 改成 44」的做法：重复一项顶替缺失一项时，
-#     数量仍相等，照样漏。
-#   ⇒ 必需集合单独列在这里，不从 run_a16 的用例表反推——
-#     否则「用例表被删」和「必需集合被删」会一起消失，检查又白做。
-REQUIRED_CASE_IDS = (
-    # --- 向量类（来自 B_24 固定证据）---
-    "TV2-01", "TV2-02", "TV2-05", "TV2-06", "TV2-07", "TV2-N5", "TV2-OTHER",
-    "NEG-01", "NEG-02", "NEG-03", "NEG-04", "NEG-05", "NEG-06",
-    "NEG-07", "NEG-08", "NEG-09", "NEG-10",
-    "NEG-11", "X2", "X2b",
-    # --- 构造类（结构/长度/字段数）---
-    "C-TRUNC-SHORT", "C-TRUNC-FIELD", "C-TRAILING", "C-EMPTY-FIELDS",
-    "C-DUP-RULE", "C-FCNT-MISMATCH", "C-MAGIC-ONLY", "C-V2-TYPE01",
-    "C-WIDTH-EPOCH", "C-DOMAIN-GRANTKIND", "C-NESTED-TLEN",
-    # --- 第三轮 6 项值/长度/最小值反例（知微 上一轮原始反例，必须常驻）---
-    "C-NESTED-TYPE", "C-LEN-EVENTID", "C-LEN-OBSERVED",
-    "C-MIN-EPOCH", "C-MIN-SEQ", "C-MIN-RECEIPTSEQ",
-    # --- 凌翼 2026-11-12 裁定 B-1 要求的三个明确负向测试 ---
-    #   裁定原文：「增加或核实三个明确的负向测试：
-    #              v1→v2、v2→v1、v2 头部配未登记引用类型」
-    #   ⇒ 三者必须常驻，且分别断言 02e / 02b / 02d，确保不混用。
-    "B1-v1-into-v2", "B1-v2-into-v1", "B1-v2-badtype",
-    # --- 知微 ZB31-01：未知版本 × 三个入口（不得只测 dispatcher）---
-    "B31-unk-ver-disp", "B31-unk-ver-v1", "B31-unk-ver-v2",
-    # --- 合法正例（防误伤）---
-    "TV2-81", "TV2-82", "TV2-83", "TV2-84", "TV2-85", "TV2-87",
-    "V1-ATTEMPT-REF-OK",
-)
+# 【知微 ZB32-01 修正 2026-11-12】
+#   这些常量原定义在本文件，而 a16_result_check.py 又从本文件导入，
+#   当本文件也要调用 a16_result_check 时会循环导入。
+#   ⇒ 现抽到 a16_cases.py（纯数据、无副作用），两个文件都从那里导入。
+#   ⇒ 【单点定义仍然保持】：改集合只改 a16_cases.py 一处。
+from a16_cases import (REQUIRED_CASE_IDS, ALLOWED_VERDICTS,
+                       PENDING_VERDICT)
 
-# 允许的判定取值
-# 【凌翼 2026-11-12 裁定 B-1】：R-V2-02e 已正式登记，
-#   OBSERVED_PENDING_RULING 这一"规则号待定"判定【不再允许出现】。
-#   ⇒ 若仍出现，说明实现未落实，应判 INFRA_ERROR。
-ALLOWED_VERDICTS = ("PASS", "FAIL", "SKIP")
-PENDING_VERDICT = "OBSERVED_PENDING_RULING"   # 仅用于检出并报错，不列入允许值
+# 结果完整性共用校验（与独立验收器同一实现，见 a16_result_check 的三层说明）
+import a16_result_check as _ARC
 
 
 def run_fixture(parser_path):
@@ -162,78 +135,63 @@ def run_fixture(parser_path):
         return {**base, **common, "status": "INFRA_ERROR",
                 "reason": f"存在 SKIP {s_} 项（必需输入缺失）"}
 
-    # 5) 用例覆盖完整性 —— 按【已登记的必需 ID 集合】校验，不按数量
-    if not isinstance(t_, int) or len(results) != t_:
+    # 5) 【结构完整性】交给共用校验（知微 ZB32-01）
+    #   原来这里是 mutate 自己写的内联校验：它核对了 ID/重复/必需集合，
+    #   但【不把 summary 各分类计数与 results 逐项重算绑定】。
+    #   ⇒ 实测：results 50 条全 PASS、summary 报 pass=49/fail=1、exit=1 时，
+    #     旧逻辑返回 status=OK fail=1，mutate.main 以 fail>0 判 MUTANT_KILLED
+    #     —— 逐项明明没有 FAIL，却被当成"变异被检出"。
+    #   ⇒ 现改为调用 a16_result_check.validate_structure（第 1 层）：
+    #     它会把 summary 的 total/pass/fail/skip/pending 与 results 重算值逐一比对，
+    #     不一致即判矛盾证据 ⇒ INFRA_ERROR。
+    ok_st, problems, info = _ARC.validate_structure(data)
+    common["recomputed"] = info.get("recomputed") if info else None
+    if not ok_st:
         return {**base, **common, "status": "INFRA_ERROR",
-                "reason": f"summary.total={t_} 与 len(results)={len(results)} 不符"}
+                "reason": "结果结构不完整/自相矛盾: " + "; ".join(problems[:4])}
 
-    got_ids = []
-    bad_verdicts = []
-    for r_ in results:
-        cid = r_.get("id")
-        v = r_.get("verdict")
-        if cid is None:
-            return {**base, **common, "status": "INFRA_ERROR",
-                    "reason": "存在缺少 id 的结果项"}
-        got_ids.append(cid)
-        if v not in ALLOWED_VERDICTS:
-            bad_verdicts.append("%s=%s" % (cid, v))
+    # 6) 【变异判定】以 results 独立重算的 FAIL 数为准，不用 summary 自报
+    #   ⇒ KILLED 必须建立在【逐项真的有 FAIL】之上；
+    #     summary 若与逐项矛盾，已在第 5 关拦下。
+    recount_fail = (info or {}).get("recomputed", {}).get("FAIL", 0)
+    common["recount_fail"] = recount_fail
+    if recount_fail > 0:
+        return {**base, **common, "status": "MUTANT_KILLED",
+                "fail": recount_fail}
+    return {**base, **common, "status": "MUTANT_SURVIVED"}
 
-    if bad_verdicts:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "出现未登记判定值: " + ", ".join(bad_verdicts[:6])}
 
-    dup = sorted({i for i in got_ids if got_ids.count(i) > 1})
-    if dup:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "用例 ID 重复: " + ", ".join(dup[:6])}
+def _run_and_validate_baseline():
+    """跑一次未变异解析器，用【第 2 层】validate() 判定基线是否健康。
 
-    got_set = set(got_ids)
-    need_set = set(REQUIRED_CASE_IDS)
-    missing_ids = sorted(need_set - got_set)
-    extra_ids = sorted(got_set - need_set)
-    if missing_ids:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "缺少已登记必需用例: " + ", ".join(missing_ids[:8])}
-    if extra_ids:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "出现未登记用例: " + ", ".join(extra_ids[:8])}
-
-    # 6) 计数守恒：total 必须等于各类之和
-    pend_ = s_.get("pending") if isinstance(s_, dict) else None
-    if pend_ is None:
-        # 兼容旧 runner 不带 pending 字段：用 results 现算，
-        #   但【仍要求】它和 pass+fail+skip 凑得上，否则说明 summary 不完整。
-        pend_ = sum(1 for r_ in results
-                    if r_.get("verdict") == PENDING_VERDICT)
-        common["pending"] = pend_
-        common["pending_from"] = "recount"
-    else:
-        common["pending"] = pend_
-        common["pending_from"] = "summary"
-
-    if (p_ or 0) + (f_ or 0) + (s_ or 0) + (pend_ or 0) != t_:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "计数不守恒 pass=%s+fail=%s+skip=%s+pending=%s != total=%s"
-                          % (p_, f_, s_, pend_, t_)}
-
-    # 6b) 【凌翼 2026-11-12 裁定 B-1】：基线要求 PENDING = 0
-    #   R-V2-02e 正式登记后，"规则号待定"不再是被允许的合法状态。
-    #   ⇒ 旧版本这里允许 pending，那会让「裁定未落实」也报成功。
-    if (pend_ or 0) > 0:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "存在 PENDING=%s 项；裁定 B-1 后 R-V2-02e 已登记，"
-                          "不允许待定项" % pend_}
-
-    # 7) 退出码与计数自洽
-    if rc == EXIT_FAIL and (f_ or 0) == 0:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "exit=1 但 fail=0，不自洽"}
-    if rc == EXIT_OK and ((f_ or 0) != 0 or (s_ or 0) != 0):
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": f"exit=0 但 fail={f_} skip={s_}，不自洽"}
-
-    return {**base, **common, "status": "OK"}
+    为什么要单独跑一次：
+      run_fixture 返回的是【变异结论】（KILLED / SURVIVED / INFRA_ERROR），
+      对基线而言"无 FAIL"正是理应如此 —— 所以不能拿它的 status 当健康判据。
+      ⇒ 基线需要的是【结构完整 + 全部 PASS + 无 PENDING】，
+        这正是 a16_result_check.validate() 的第 2 层。
+      ⇒ 两个入口（独立验收器 / 本文件的基线门）用同一个判据，不各写一套。
+    """
+    import json
+    tmp = tempfile.mkdtemp(prefix="mut_base_")
+    try:
+        _copy_fixture(tmp, os.path.join(HERE, "l1_parser.py"))
+        r = subprocess.run([sys.executable, "run_a16.py", "--json"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           cwd=tmp,
+                           env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+        try:
+            doc = json.loads(r.stdout)
+        except Exception as e:
+            return False, ["基线 JSON 不可解析: %s: %s"
+                           % (type(e).__name__, e)], {}
+        ok, problems, info = _ARC.validate(doc)
+        if r.returncode != 0 and ok:
+            problems = list(problems) + [
+                "基线五项均成立但 runner 退出码非零 (exit=%d)" % r.returncode]
+            ok = False
+        return ok, problems, info
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def main():
@@ -242,16 +200,22 @@ def main():
     print(f"  status={b['status']} exit={b['exit']} "
           f"pass={b['pass']} fail={b['fail']} skip={b['skip']} "
           f"evidence_ok={b['evidence_ok']} total={b['total']}")
-    # 【ZRV-01】基线必须：OK + pass>0 + fail=0 + skip=0 + 证据身份成立
-    if (b["status"] != "OK" or not b["pass"] or b["fail"] != 0
-            or b["skip"] != 0 or b["evidence_ok"] is not True):
-        print(f"  ❌ 基线未通过: {b['reason'] or '条件不满足'}")
-        if b.get("raw"):
-            print(f"  原始输出: {b['raw']}")
+
+    # 【知微 ZB32-01】基线判定必须用【第 2 层】= 结构完整 + 全部 PASS。
+    #   ⇒ run_fixture 现在返回的是【变异结论】：
+    #       MUTANT_SURVIVED 表示"逐项无 FAIL"，这对**基线**恰是正确结果；
+    #       若直接要求 status == "OK" 会把健康基线判成失败。
+    #   ⇒ 所以基线不靠 run_fixture 的 status，而是重新读一次 JSON 用 validate()。
+    #     两个入口共用同一个第 2 层判据，避免"基线自己写一套"。
+    ok_base, base_problems, base_info = _run_and_validate_baseline()
+    if not ok_base:
+        print("  ❌ 基线未通过：")
+        for p in base_problems[:6]:
+            print("     -", p)
         print("\n[结论] INFRA_ERROR：基线不健康，变异结果不可解释。")
         print("  ⇒ 不进入变异阶段，退出码 3")
         return 3
-    print(f"  ✅ 基线健康 pass={b['pass']}")
+    print(f"  ✅ 基线健康 pass={base_info['recomputed']['PASS']}")
 
     print("\n=== 变异 ===")
     killed = survived = infra = 0
@@ -264,17 +228,23 @@ def main():
             continue
         open(mut_file, "wb").write(SRC.replace(old, new).encode("utf-8"))
         m = run_fixture(mut_file)
-        # 【ZRV-01】先判基础设施问题，再看 fail>0
-        if m["status"] != "OK":
-            rows.append((desc, "INFRA_ERROR", m["reason"][:90]))
-            infra += 1
-        elif (m["fail"] or 0) > 0:
-            rows.append((desc, "MUTANT_KILLED", f"fail={m['fail']}"))
+        # 【知微 ZB32-01】run_fixture 现在直接给出三类结论：
+        #   MUTANT_KILLED  —— 结构完整 且【逐项重算】FAIL>0
+        #   MUTANT_SURVIVED—— 结构完整 且 逐项重算 FAIL=0
+        #   INFRA_ERROR    —— 基础设施失败 或【结构矛盾】
+        #   ⇒ main 只做分派，不再自己用 m["fail"]>0 重新判一次
+        #     （那正是旧逻辑把矛盾证据当 KILLED 的地方）。
+        if m["status"] == "MUTANT_KILLED":
+            rows.append((desc, "MUTANT_KILLED",
+                         f"fail={m.get('recount_fail', m.get('fail'))}"))
             killed += 1
-        else:
+        elif m["status"] == "MUTANT_SURVIVED":
             rows.append((desc, "MUTANT_SURVIVED",
                          f"pass={m['pass']} fail=0"))
             survived += 1
+        else:
+            rows.append((desc, "INFRA_ERROR", (m["reason"] or "")[:90]))
+            infra += 1
 
     for desc, verdict, info in rows:
         icon = {"MUTANT_KILLED": "✅", "MUTANT_SURVIVED": "❌",
