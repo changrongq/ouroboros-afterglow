@@ -68,6 +68,14 @@ R_MAGIC       = "R-V2-02a"   # MAGIC 不符
 R_VER_MISMATCH= "R-V2-02b"   # 版本不匹配（专用入口只收自己的版本）
 R_V1_N3       = "R-V2-02c"   # 高位类型在 v1 规则下出现（§2 N3）
 R_V2_NOTYPE   = "R-V2-02d"   # 版本为 v2 但类型是未登记的 0x01-0x03
+# 【凌翼 2026-11-12 裁定 B-1：新增 R-V2-02e】
+#   R-V2-02e = VERSION_V1_ENTERED_V2_PARSER
+#   触发：头部 FORMAT_VER=0x0001、调用入口是 v2 专用解析器、
+#         在对象类型与字段校验【之前】做版本自检、结果必须拒绝。
+#   ⇒ 与 R-V2-02d 严格区分：02e 是【入口版本错】；
+#     02d 是【版本对、类型在该版本下未登记】。
+#   ⇒ 与 R-V2-02b 严格区分：02b 只覆盖 v2 记录 → v1 入口这一个方向。
+R_V1_INTO_V2  = "R-V2-02e"   # v1 记录进入 v2 专用入口（入口版本错）
 R_UNKNOWN_VER = "R-V2-03"    # 未知版本
 R_RESERVED_T  = "R-V2-04"    # 0x00 或 0x80
 R_NOT_LISTED  = "R-V2-05"    # 白名单外
@@ -76,9 +84,6 @@ R_TRUNC       = "R-V2-07"    # 长度/字段头不完整
 R_TOTAL_LEN   = "R-V2-08"    # TOTAL_LEN 不符
 R_FIELD_COUNT = "R-V2-09"    # 字段数不符（配 cause 区分子情形）
 R_FIELD_SPEC  = "R-V2-10"    # TAG / 顺序 / 长度 / 取值不符
-# 【ZRV-03】反向版本入口：拒绝行为确定，但规范规则号尚未裁定。
-# 用独立占位码，使其【不会】被当作 R-V2-02b 的规则符合。
-R_VER_MISMATCH_PENDING = "PENDING_RULING_VERSION_ENTRY"
 
 
 class Reject(Exception):
@@ -127,19 +132,18 @@ def parse(raw, entry="dispatcher"):
     # ① 版本自检（专用入口只收自己的版本）
     fv = int.from_bytes(raw[8:10], "big")
     if fv != expected:
-        # 【ZFP-04 后半 + ZRV-03 修正 2026-11-11】
-        #   v2 -> v1 : R-V2-02b【有规范依据】（B_23 §3.2 仅限此方向）
-        #   v1 -> v2 : 拒绝行为确定，但【规则号待定】
-        #              ⇒ 用独立占位码 R_VER_MISMATCH_PENDING，
-        #                不再复用 R-V2-02b，避免"未定项被算作规则符合"
+        # 【凌翼 2026-11-12 裁定 B-1，已正式登记 R-V2-02e】
+        #   v2 -> v1 : R-V2-02b（B_23 §3.2 仅限此方向）
+        #   v1 -> v2 : R-V2-02e（VERSION_V1_ENTERED_V2_PARSER）
+        #   ⇒ 原占位码 PENDING_RULING_VERSION_ENTRY 【已移除】：
+        #     裁定后不得再以"规则号待定"运行。
         if entry == "v1" and fv == FORMAT_V2:
             raise Reject(R_VER_MISMATCH,
                          f"entry=v1 got=0x{fv:04X} direction=v2_to_v1",
                          cause="v2_to_v1")
         if entry == "v2" and fv == FORMAT_V1:
-            raise Reject(R_VER_MISMATCH_PENDING,
-                         f"entry=v2 got=0x{fv:04X} direction=v1_to_v2 "
-                         f"(rule_id PENDING_RULING)",
+            raise Reject(R_V1_INTO_V2,
+                         f"entry=v2 got=0x{fv:04X} direction=v1_to_v2",
                          cause="v1_to_v2")
         raise Reject(R_VER_MISMATCH,
                      f"entry={entry} got=0x{fv:04X} direction=other",

@@ -204,16 +204,35 @@ def build_constructed():
 REUSE_CASES = [
     ("NEG-11", "v2 头，直调 v1 专用入口", "v1", ("REJECT", "R-V2-02b"),
      "版本不匹配（v2 字节进 v1 入口）"),
-    # 【ZRV-03】反向入口：拒绝行为已观察，但规范规则号待定。
-    # 预期写成占位码，使其【不计入】"规范规则号符合"的 PASS。
-    ("X2", "v1 头，直调 v2 专用入口（规则号待定）", "v2",
-     ("REJECT_PENDING_RULING", "PENDING_RULING_VERSION_ENTRY"),
-     "B_23：R-V2-02b 仅限 v2→v1；反向规则号 PENDING_RULING"),
+    # 【凌翼 2026-11-12 裁定 B-1：X2 转正式规则验收】
+    #   原为 REJECT_PENDING_RULING / OBSERVED_PENDING_RULING（不计入 PASS）。
+    #   裁定后 R-V2-02e 已正式登记 ⇒ 必须按正常 REJECT 规则号验收，
+    #   【不得】再以 pending 状态返回绿色。
+    ("X2", "v1 头，直调 v2 专用入口", "v2", ("REJECT", "R-V2-02e"),
+     "B_23 R-V2-02e：VERSION_V1_ENTERED_V2_PARSER（入口版本错，非类型错）"),
 ]
 
 EXTRA_CASES = [
     ("X2b", "v2 头 + 白名单类型，直调 v2 入口（应接受）", "v2", ("ACCEPT",),
      "版本对+类型对 => 接受；反证 X2 的拒绝来自版本而非类型"),
+    # ------------------------------------------------------------------
+    # 【凌翼 2026-11-12 裁定 B-1 · 第 4 条：三个明确的负向测试】
+    #   裁定要求「增加或核实三个明确的负向测试：
+    #             v1→v2、v2→v1、v2 头部配未登记引用类型」。
+    #   下面三条把它们【并列】列出，且各自断言不同的规则号，
+    #   从而证明 02b / 02e / 02d 三者【不混用】。
+    #   （原有 X2 / NEG-11 / C-V2-TYPE01 已覆盖行为，
+    #     这三条是把"互斥关系"本身变成可执行断言。）
+    # ------------------------------------------------------------------
+    ("B1-v1-into-v2", "【裁定B-1】v1 记录 → v2 专用入口 ⇒ 必须 R-V2-02e",
+     "v2", ("REJECT", "R-V2-02e"),
+     "R-V2-02e = VERSION_V1_ENTERED_V2_PARSER；入口版本错，不是类型错"),
+    ("B1-v2-into-v1", "【裁定B-1】v2 记录 → v1 专用入口 ⇒ 必须 R-V2-02b",
+     "v1", ("REJECT", "R-V2-02b"),
+     "R-V2-02b 仅覆盖此方向；若返回 02e 即为方向混淆"),
+    ("B1-v2-badtype", "【裁定B-1】v2 头 + 未登记引用类型 ⇒ 必须 R-V2-02d",
+     "dispatcher", ("REJECT", "R-V2-02d"),
+     "R-V2-02d = 版本对、类型未登记；若返回 02e 即为版本/类型混淆"),
     ("TV2-81", "0x81 IDENTITY_REGISTRATION", "dispatcher", ("ACCEPT",), "B_22 §3.6"),
     ("TV2-82", "0x82 EPOCH_ASSIGNMENT", "dispatcher", ("ACCEPT",), "B_22 §3.7"),
     ("TV2-83", "0x83 GRANT_RECORD", "dispatcher", ("ACCEPT",), "B_22 §3.8"),
@@ -264,6 +283,19 @@ def run(evidence_dir=None, strict=False):
     if "NEG-01" in vectors:
         c["X2"] = bytes.fromhex(vectors["NEG-01"])
 
+    # ---- 裁定 B-1 三个明确负向测试的字节绑定 ----
+    #   B1-v1-into-v2 : 与 X2 同一字节（v1 记录），换入口断言 02e
+    #   B1-v2-into-v1 : 与 NEG-11 同一字节（v2 记录），换入口断言 02b
+    #   B1-v2-badtype : 与 C-V2-TYPE01 同一字节（v2 头 + 0x01 类型），断言 02d
+    #   ⇒ 【不新造字节】：复用已验证的同一批输入，只改断言，
+    #     这样三条断言之间才是"同一输入、不同入口/不同类型"的严格对照。
+    if "X2" in c:
+        c["B1-v1-into-v2"] = c["X2"]
+    if "NEG-11" in c:
+        c["B1-v2-into-v1"] = c["NEG-11"]
+    if "C-V2-TYPE01" in c:
+        c["B1-v2-badtype"] = c["C-V2-TYPE01"]
+
     # ---- 接入 vec6.py 的 6 类正例（0x81-0x85、0x87）----
     try:
         import vec6
@@ -299,14 +331,17 @@ def _judge(vid, desc, entry, exp, raw, basis):
         act = ("REJECT", e.code)
         extra = {"detail": e.detail, "len": len(raw),
                  "input_sha256": hashlib.sha256(raw).hexdigest()[:16]}
-    # 【ZRV-03】预期为 PENDING_RULING 时，行为正确也只记 OBSERVED_PENDING_RULING，
-    # 不计入 PASS（规范规则号符合）。
+    # 【凌翼 2026-11-12 裁定 B-1】
+    #   原第四类 OBSERVED_PENDING_RULING（规则号待定，不计入 PASS）【已删除】。
+    #   理由：R-V2-02e 已正式登记，反向入口不再是"待定项"，
+    #         必须以正常 REJECT 规则号比对。
+    #   ⇒ 若仍保留该分支，CI 就可能以 pending>0 返回绿色，
+    #     而裁定明确要求 PENDING = 0。
     if exp[0] == "REJECT_PENDING_RULING":
-        behavior_ok = (act[0] == "REJECT" and act[1] == exp[1])
-        return dict(id=vid, desc=desc, entry=entry, expected=exp, actual=act,
-                    basis=basis,
-                    verdict=("OBSERVED_PENDING_RULING" if behavior_ok else "FAIL"),
-                    pending_rule_id=exp[1], **extra)
+        # 防御：不允许再有用例以旧形式声明"待定"。
+        raise AssertionError(
+            "用例 %s 仍使用已废止的 REJECT_PENDING_RULING；"
+            "凌翼裁定 B-1 后必须写正式规则号（如 R-V2-02e）" % vid)
     return dict(id=vid, desc=desc, entry=entry, expected=exp, actual=act,
                 basis=basis, verdict="PASS" if act == exp else "FAIL", **extra)
 
@@ -330,8 +365,9 @@ def main():
         # 【知微 ZBR-02 配套修正 2026-11-11】
         #   原 summary 只有 total/pass/fail/skip，
         #   ⇒ total(44) != pass(43)+fail(0)+skip(0)，第四类 pending 在机器结果里消失。
-        #   ⇒ 只消费 summary 的上层看不到 OBSERVED_PENDING_RULING。
         #   现补 pending 与守恒校验字段。
+        # 【凌翼 2026-11-12 裁定】pending 必须恒为 0：
+        #   R-V2-02e 登记后，不应再有“规则号待定”的用例。
         summary = {"total": n, "pass": p, "fail": f, "skip": s, "pending": pend}
         summary["conserved"] = (p + f + s + pend == n)
         print(json.dumps({"meta": meta, "results": res, "summary": summary},
@@ -349,7 +385,7 @@ def main():
             x = r["actual"][0] if r["actual"][0] == "ACCEPT" else f"REJECT {r['actual'][1]}"
             print(f"{r['id']:<20}{r['entry']:<11}{e:<22}{x:<22}{r['verdict']}")
         print("-" * 92)
-        print(f"合计 {n}  通过 {p}  失败 {f}  跳过 {s}")
+        print(f"合计 {n}  通过 {p}  失败 {f}  跳过 {s}  待定 {pend}")
 
     if not meta["evidence_ok"]:
         print("\n[exit 3] 证据身份校验失败", file=sys.stderr)
@@ -361,8 +397,11 @@ def main():
         print(f"\n[exit 2] {s} 项 SKIP（必需输入缺失），不得视为完成", file=sys.stderr)
         return 2
     if pend > 0:
-        print(f"\n[note] {pend} 项行为已观察，但规范规则号 PENDING_RULING；"
-              f"不计入 PASS（规范符合）", file=sys.stderr)
+        # 【凌翼 2026-11-12】：正式规范符合性检查【不得】以 pending>0 返回绿色。
+        #   裁定后 R-V2-02e 已登记，不应再出现待定项；出现即说明实现未落实。
+        print(f"\n[exit 1] {pend} 项仍为 PENDING_RULING；"
+              f"凌翼裁定 B-1 后 R-V2-02e 已登记，不允许待定项", file=sys.stderr)
+        return 1
     return 0
 
 

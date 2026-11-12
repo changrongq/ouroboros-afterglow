@@ -87,14 +87,17 @@ jobs:
           set -o pipefail
           python check_spec.py 2>&1 | tee /tmp/spec.log
 
-      # --- 3) A16 用例集 ---
-      # exit 0 = 诊断运行完成；【不是】"全部 PASS"。
-      # 43 PASS + 1 OBSERVED_PENDING_RULING 是当前预期形态。
-      - name: "run_a16 · A16 用例集"
+      # --- 3) A16 用例集 + 五项显式验收 ---
+      # 【凌翼 2026-11-12 裁定 B-1 后的验收要求】：
+      #   正式规范符合性检查【不得】以 pending > 0 返回绿色。
+      #   必须明确验证：FAIL=0 / SKIP=0 / PENDING=0
+      #                / ALL_REQUIRED_CASES=PASS / EVIDENCE_IDENTITY=VERIFIED
+      #   ⇒ 断言逻辑放在 check_a16_acceptance.py，本地与 CI 跑同一份，
+      #     避免内联 heredoc 的缩进/转义问题（那本身就是"写了没生效"的温床）。
+      - name: "run_a16 · A16 用例集 + 五项显式验收"
         working-directory: tools/v2_l1_verifier
         run: |
-          set -o pipefail
-          python run_a16.py 2>&1 | tee /tmp/a16.log
+          python check_a16_acceptance.py
 
       # --- 3b) 证据缺失控制：确认"找不到证据"时不会静默通过 ---
       # 理由：evidence/ 与 reports/review_history/ 各有一份 B_24，

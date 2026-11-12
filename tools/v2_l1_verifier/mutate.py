@@ -85,13 +85,22 @@ REQUIRED_CASE_IDS = (
     # --- 第三轮 6 项值/长度/最小值反例（知微 上一轮原始反例，必须常驻）---
     "C-NESTED-TYPE", "C-LEN-EVENTID", "C-LEN-OBSERVED",
     "C-MIN-EPOCH", "C-MIN-SEQ", "C-MIN-RECEIPTSEQ",
+    # --- 凌翼 2026-11-12 裁定 B-1 要求的三个明确负向测试 ---
+    #   裁定原文：「增加或核实三个明确的负向测试：
+    #              v1→v2、v2→v1、v2 头部配未登记引用类型」
+    #   ⇒ 三者必须常驻，且分别断言 02e / 02b / 02d，确保不混用。
+    "B1-v1-into-v2", "B1-v2-into-v1", "B1-v2-badtype",
     # --- 合法正例（防误伤）---
     "TV2-81", "TV2-82", "TV2-83", "TV2-84", "TV2-85", "TV2-87",
     "V1-ATTEMPT-REF-OK",
 )
 
-# 允许的判定取值（第四类 OBSERVED_PENDING_RULING 必须显式保留）
-ALLOWED_VERDICTS = ("PASS", "FAIL", "SKIP", "OBSERVED_PENDING_RULING")
+# 允许的判定取值
+# 【凌翼 2026-11-12 裁定 B-1】：R-V2-02e 已正式登记，
+#   OBSERVED_PENDING_RULING 这一"规则号待定"判定【不再允许出现】。
+#   ⇒ 若仍出现，说明实现未落实，应判 INFRA_ERROR。
+ALLOWED_VERDICTS = ("PASS", "FAIL", "SKIP")
+PENDING_VERDICT = "OBSERVED_PENDING_RULING"   # 仅用于检出并报错，不列入允许值
 
 
 def run_fixture(parser_path):
@@ -188,13 +197,13 @@ def run_fixture(parser_path):
         return {**base, **common, "status": "INFRA_ERROR",
                 "reason": "出现未登记用例: " + ", ".join(extra_ids[:8])}
 
-    # 6) 计数守恒：total 必须等于四类之和（含 pending）
+    # 6) 计数守恒：total 必须等于各类之和
     pend_ = s_.get("pending") if isinstance(s_, dict) else None
     if pend_ is None:
         # 兼容旧 runner 不带 pending 字段：用 results 现算，
         #   但【仍要求】它和 pass+fail+skip 凑得上，否则说明 summary 不完整。
         pend_ = sum(1 for r_ in results
-                    if r_.get("verdict") == "OBSERVED_PENDING_RULING")
+                    if r_.get("verdict") == PENDING_VERDICT)
         common["pending"] = pend_
         common["pending_from"] = "recount"
     else:
@@ -205,6 +214,14 @@ def run_fixture(parser_path):
         return {**base, **common, "status": "INFRA_ERROR",
                 "reason": "计数不守恒 pass=%s+fail=%s+skip=%s+pending=%s != total=%s"
                           % (p_, f_, s_, pend_, t_)}
+
+    # 6b) 【凌翼 2026-11-12 裁定 B-1】：基线要求 PENDING = 0
+    #   R-V2-02e 正式登记后，"规则号待定"不再是被允许的合法状态。
+    #   ⇒ 旧版本这里允许 pending，那会让「裁定未落实」也报成功。
+    if (pend_ or 0) > 0:
+        return {**base, **common, "status": "INFRA_ERROR",
+                "reason": "存在 PENDING=%s 项；裁定 B-1 后 R-V2-02e 已登记，"
+                          "不允许待定项" % pend_}
 
     # 7) 退出码与计数自洽
     if rc == EXIT_FAIL and (f_ or 0) == 0:
