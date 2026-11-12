@@ -56,28 +56,55 @@ def main():
         return 1
 
     s, m, res = d["summary"], d["meta"], d["results"]
+
+    # 【知微 ZB31-02 修正 2026-11-12】
+    #   原判定 ALL_REQUIRED_CASES 只写 `npass == len(res) and len(res) > 0`，
+    #   即「返回的每一条都 PASS」，但没有核对：
+    #     · 独立登记的必需 ID 是否都在（改名即漏）
+    #     · ID 是否唯一（重复 X2 顶替 B1 仍是 47 条全 PASS）
+    #     · summary 自报计数是否与 results 重算一致（报 48 而实为 47）
+    #   实测三个反例当时全部被误判为通过。
+    #   ⇒ 现改为调用共用校验 a16_result_check.validate()，
+    #     与 mutate.py 使用同一套判据，避免「一处修好、另一处仍宽」。
+    import a16_result_check as V
+    ok_detail, problems, info = V.validate(d)
+
     npass = sum(1 for x in res if x.get("verdict") == "PASS")
+    recount = info.get("recomputed", {}) if info else {}
 
     checks = [
-        ("FAIL = 0", s.get("fail") == 0, s.get("fail")),
-        ("SKIP = 0", s.get("skip") == 0, s.get("skip")),
-        ("PENDING = 0", s.get("pending") == 0, s.get("pending")),
+        ("FAIL = 0", recount.get("FAIL") == 0, recount.get("FAIL")),
+        ("SKIP = 0", recount.get("SKIP") == 0, recount.get("SKIP")),
+        ("PENDING = 0",
+         recount.get("OBSERVED_PENDING_RULING") == 0,
+         recount.get("OBSERVED_PENDING_RULING")),
         ("ALL_REQUIRED_CASES = PASS",
-         npass == len(res) and len(res) > 0, "%d/%d" % (npass, len(res))),
+         ok_detail and npass == len(res),
+         "%d/%d（必需 %s 项，ID 完整/唯一/计数一致=%s）"
+         % (npass, len(res), info.get("required_count", "?"), ok_detail)),
         ("EVIDENCE_IDENTITY = VERIFIED",
          m.get("evidence_ok") is True, m.get("evidence_detail")),
-        ("计数器守恒", s.get("conserved") is True, s.get("conserved")),
+        ("计数器守恒（由 results 重算）",
+         (not info) or (sum(recount.values()) == info.get("recomputed_total")),
+         recount),
     ]
 
     bad = 0
     for name, ok, val in checks:
-        print("  %s %-32s %s" % ("✅" if ok else "❌", name, val))
+        print("  %s %-34s %s" % ("✅" if ok else "❌", name, val))
         if not ok:
             bad += 1
 
+    if problems:
+        print()
+        print("  共用校验发现的问题：")
+        for p in problems:
+            print("    -", p)
+
     print()
-    if bad:
-        print("[FAIL] %d 项验收断言不成立" % bad)
+    if bad or problems:
+        print("[FAIL] 验收不成立（%d 项断言失败，%d 条问题）"
+              % (bad, len(problems)))
         return 1
     if rc != 0:
         print("[FAIL] 五项断言全部成立，但 runner 退出码非零 (exit=%d)" % rc)

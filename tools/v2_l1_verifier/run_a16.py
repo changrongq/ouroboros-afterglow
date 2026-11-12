@@ -233,6 +233,22 @@ EXTRA_CASES = [
     ("B1-v2-badtype", "【裁定B-1】v2 头 + 未登记引用类型 ⇒ 必须 R-V2-02d",
      "dispatcher", ("REJECT", "R-V2-02d"),
      "R-V2-02d = 版本对、类型未登记；若返回 02e 即为版本/类型混淆"),
+    # ------------------------------------------------------------------
+    # 【知微 ZB31-01 修正 · 未知版本 × 三个入口】
+    #   原实现把"不是对方版本"一律报 R-V2-02b，
+    #   于是 0x0000/0x0003/0xFFFF 直调专用入口被错归为"版本不匹配"。
+    #   ⇒ B_23 §2.3 五情形表 / §3.2 规则表：未知版本一律 R-V2-03。
+    #   ⇒ 增加三个入口条，避免只测 dispatcher 就宣称覆盖。
+    # ------------------------------------------------------------------
+    ("B31-unk-ver-disp", "【ZB31-01】未知版本 0x0003 走 dispatcher ⇒ R-V2-03",
+     "dispatcher", ("REJECT", "R-V2-03"),
+     "B_23 §2.3：未知版本独立归 R-V2-03"),
+    ("B31-unk-ver-v1", "【ZB31-01】未知版本 0x0003 走 v1 专用入口 ⇒ R-V2-03",
+     "v1", ("REJECT", "R-V2-03"),
+     "未知版本不属于 02b（02b 仅 v2→v1）；须先判未知版本"),
+    ("B31-unk-ver-v2", "【ZB31-01】未知版本 0x0003 走 v2 专用入口 ⇒ R-V2-03",
+     "v2", ("REJECT", "R-V2-03"),
+     "未知版本不属于 02e（02e 仅 v1→v2）；须先判未知版本"),
     ("TV2-81", "0x81 IDENTITY_REGISTRATION", "dispatcher", ("ACCEPT",), "B_22 §3.6"),
     ("TV2-82", "0x82 EPOCH_ASSIGNMENT", "dispatcher", ("ACCEPT",), "B_22 §3.7"),
     ("TV2-83", "0x83 GRANT_RECORD", "dispatcher", ("ACCEPT",), "B_22 §3.8"),
@@ -295,6 +311,14 @@ def run(evidence_dir=None, strict=False):
         c["B1-v2-into-v1"] = c["NEG-11"]
     if "C-V2-TYPE01" in c:
         c["B1-v2-badtype"] = c["C-V2-TYPE01"]
+
+    # ---- 知微 ZB31-01：未知版本 × 三个入口 ----
+    #   同一 18 字节前缀，FORMAT_VER=0x0003（既非 0x0001 也非 0x0002）。
+    #   ⇒ 三个入口必须【都】报 R-V2-03，而不是 dispatcher 对、专用入口错。
+    _unk = bytes.fromhex("4146474c5245460000030100000000000012")
+    c["B31-unk-ver-disp"] = _unk
+    c["B31-unk-ver-v1"] = _unk
+    c["B31-unk-ver-v2"] = _unk
 
     # ---- 接入 vec6.py 的 6 类正例（0x81-0x85、0x87）----
     try:

@@ -13,9 +13,11 @@
   ③ 表登记的路径都存在
 
 退出码：
-  0 = 三方一致
-  1 = 存在不一致
-  2 = 无法读取登记表（基础设施问题，不得视为通过）
+  0 = 三方一致且覆盖完整
+  1 = 存在不一致（含漏登记、工作树缺失、值过期）
+  2 = 无法判定（基础设施问题：读不到登记表，或 HEAD 源枚举失败）
+      ⇒ 【不得视为通过】。覆盖性依赖 HEAD 树，
+         HEAD 源取不到时不能声称「无遗漏」（知微 ZB31-03）。
 
 边界：
   本脚本【不检查登记表自己的 blob】（登记表按设计不在表内，走 Coder 消息）。
@@ -117,6 +119,22 @@ def parse_rows(text: str):
     return rows
 
 
+def diffpos(a: str, b: str) -> str:
+    """指出两个 40 位 blob 的首个差异位置（睫 反复提的那一格）。
+
+    为什么需要：
+      失败行原来只打印前 12 位，于是「只差最后一位」的情形读起来是
+        「表=ca6f2b34b2ef vs ca6f2b34b2ef」—— 两个数看起来一样却判不一致，
+        判定是对的，输出没跟上。
+      ⇒ 给出首个差异下标，并附前 32 位（足够看清差异，又不至于刷屏）。
+    """
+    if a == b:
+        return ""
+    n = min(len(a), len(b))
+    i = next((k for k in range(n) if a[k] != b[k]), n)
+    return "  first-diff@%d  %s… vs %s…" % (i + 1, a[:32], b[:32])
+
+
 def main():
     if not os.path.exists(REGISTRY):
         print("[INFRA] 找不到登记表: %s" % REGISTRY)
@@ -157,8 +175,9 @@ def main():
             print("  ❌ %-56s HEAD 中不存在" % fname[:56])
             continue
         if h != declared:
-            bad.append((fname, "表≠HEAD", declared[:12], h[:12]))
-            print("  ❌ %-56s 表=%s HEAD=%s" % (fname[:56], declared[:12], h[:12]))
+            bad.append((fname, "表≠HEAD", declared, h))
+            print("  ❌ %-52s 表=%s HEAD=%s%s"
+                  % (fname[:52], declared[:12], h[:12], diffpos(declared, h)))
             continue
 
         # ---- 工作树缺失分支（知微 ZBR-01 第一层）----
@@ -175,9 +194,9 @@ def main():
             print("  ❌ %-56s %s" % (fname[:56], why))
             continue
         if w != declared:
-            bad.append((fname, "表≠工作树（改了未提交）", declared[:12], w[:12]))
-            print("  ⚠️  %-56s 表=%s 工作树=%s（未提交改动）"
-                  % (fname[:56], declared[:12], w[:12]))
+            bad.append((fname, "表≠工作树（改了未提交）", declared, w))
+            print("  ⚠️  %-52s 表=%s 工作树=%s%s（未提交改动）"
+                  % (fname[:52], declared[:12], w[:12], diffpos(declared, w)))
             continue
         print("  ✅ %-56s %s" % (fname[:56], declared[:12]))
 
@@ -185,7 +204,10 @@ def main():
     if bad:
         print("不一致 %d 项：" % len(bad))
         for f, why, a, b in bad:
-            print("   - %s | %s | 表=%s vs %s" % (f, why, a, b))
+            extra = ""
+            if len(a) == 40 and len(b) == 40:
+                extra = diffpos(a, b)
+            print("   - %s | %s | 表=%s vs %s%s" % (f, why, a, b, extra))
         print()
         print("[FAIL] 登记表与现实不一致")
         return 1
@@ -243,8 +265,21 @@ def main():
             if rel:
                 candidates.add(rel)
     else:
-        print("[WARN] git ls-tree 失败，HEAD 源不可用（覆盖性将不完整）")
-        print("       %s" % (r.stderr or "").strip()[:160])
+        # 【知微 ZB31-03 修正 2026-11-12】
+        #   原实现只打印一条 WARN，随后【照常】走到末尾打印
+        #     [OK] 覆盖性：该登记的文件无遗漏
+        #   并 exit 0 —— 工具已经知道三源里的 HEAD 源缺失，
+        #   却仍签发"覆盖完整"的结论。
+        #   ⇒ 覆盖性判定的前提是【三源并集】；
+        #     HEAD 源不可用时，工作树 + 表内两源替代不了它
+        #     （"删文件+删表行"正是只有 HEAD 源能抓到的那种情形）。
+        #   ⇒ 因此这属于【检查基础设施失败】，必须非零退出且不再声称完整。
+        print("[FAIL] git ls-tree 失败，HEAD 源不可用")
+        print("       覆盖性判定依赖 HEAD 树；缺此源时不能声称「无遗漏」")
+        print("       %s" % (r.stderr or "").strip()[:200])
+        print()
+        print("[FAIL] 登记表覆盖性无法判定（基础设施失败）")
+        return 2
 
     # ② 工作树当前路径
     for root in SEARCH_ROOTS:

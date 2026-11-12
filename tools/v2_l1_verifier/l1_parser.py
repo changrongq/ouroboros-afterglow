@@ -132,6 +132,18 @@ def parse(raw, entry="dispatcher"):
     # ① 版本自检（专用入口只收自己的版本）
     fv = int.from_bytes(raw[8:10], "big")
     if fv != expected:
+        # 【知微 ZB31-03 修正 2026-11-12：未知版本不得落入 02b】
+        #   原实现把"不是对方版本"一律当 R-V2-02b（版本不匹配），
+        #   于是 FORMAT_VER=0x0000/0x0003/0xFFFF 直调专用入口时
+        #   被报成 02b —— 但 02b 的规范定义【仅覆盖 v2 记录进入 v1 入口】。
+        #   ⇒ B_23 §2.3 五情形表 / §3.2 规则表：未知版本一律 R-V2-03。
+        #   ⇒ 因此【先识别"两个已知版本之外的任何值"】，
+        #     再处理两个已知方向的交叉进入。
+        if fv not in (FORMAT_V1, FORMAT_V2):
+            raise Reject(R_UNKNOWN_VER,
+                         f"entry={entry} got=0x{fv:04X} (unknown version)",
+                         cause="unknown_version")
+
         # 【凌翼 2026-11-12 裁定 B-1，已正式登记 R-V2-02e】
         #   v2 -> v1 : R-V2-02b（B_23 §3.2 仅限此方向）
         #   v1 -> v2 : R-V2-02e（VERSION_V1_ENTERED_V2_PARSER）
@@ -145,6 +157,9 @@ def parse(raw, entry="dispatcher"):
             raise Reject(R_V1_INTO_V2,
                          f"entry=v2 got=0x{fv:04X} direction=v1_to_v2",
                          cause="v1_to_v2")
+        # 走到这里只剩"已知版本但入口不认识"之类的理论情形；
+        #   两个已知版本 × 两个专用入口已在上方穷尽，
+        #   只剩 dispatcher 之外的未知 entry 值。
         raise Reject(R_VER_MISMATCH,
                      f"entry={entry} got=0x{fv:04X} direction=other",
                      cause="other")

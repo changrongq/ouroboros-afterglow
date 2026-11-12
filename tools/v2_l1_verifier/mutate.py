@@ -90,6 +90,8 @@ REQUIRED_CASE_IDS = (
     #              v1→v2、v2→v1、v2 头部配未登记引用类型」
     #   ⇒ 三者必须常驻，且分别断言 02e / 02b / 02d，确保不混用。
     "B1-v1-into-v2", "B1-v2-into-v1", "B1-v2-badtype",
+    # --- 知微 ZB31-01：未知版本 × 三个入口（不得只测 dispatcher）---
+    "B31-unk-ver-disp", "B31-unk-ver-v1", "B31-unk-ver-v2",
     # --- 合法正例（防误伤）---
     "TV2-81", "TV2-82", "TV2-83", "TV2-84", "TV2-85", "TV2-87",
     "V1-ATTEMPT-REF-OK",

@@ -130,12 +130,32 @@ jobs:
       # --- 5) 汇总：显式把四类的边界写进日志，防止被读成"全部通过" ---
       - name: "汇总"
         if: always()
+        working-directory: tools/v2_l1_verifier
         run: |
           echo "=================================================="
           echo "四工具均以退出码表达结论；任一非零本 job 即失败。"
           echo ""
+          # 【知微 P3-1 修正 2026-11-12】
+          #   原来这里手写「当前预期为 43 PASS + 1 OBSERVED_PENDING_RULING」，
+          #   结果代码已到 50 PASS / 0 pending，摘要还停在旧数字 ——
+          #   手写"当前计数"必然过期，而且摘要与被测对象不是同一次执行。
+          #   ⇒ 改为【从同一次 JSON 运行现读】，摘要不再手写任何计数。
+          echo "实际计数（从本次 JSON 运行现读）："
+          python run_a16.py --json > /tmp/summary.json 2>/dev/null || true
+          python - <<'PY' || echo "  （无法读取 summary，见上方各步输出）"
+          import json
+          try:
+              d = json.load(open("/tmp/summary.json", encoding="utf-8"))
+              s = d["summary"]
+              print("  total=%s  PASS=%s  FAIL=%s  SKIP=%s  PENDING=%s  conserved=%s"
+                    % (s.get("total"), s.get("pass"), s.get("fail"),
+                       s.get("skip"), s.get("pending"), s.get("conserved")))
+              print("  evidence_ok=%s" % d["meta"].get("evidence_ok"))
+          except Exception as e:
+              print("  （解析失败：%s）" % e)
+          PY
+          echo ""
           echo "注意（避免误读）："
-          echo "  · run_a16 exit 0 = 诊断运行完成，不等于全部 PASS；"
-          echo "    当前预期为 43 PASS + 1 OBSERVED_PENDING_RULING。"
-          echo "  · 本 job 通过只说明工具自洽，不说明设计闭合。"
+          echo "  · run_a16 exit 0 = 诊断运行完成；裁定 B-1 后要求 PENDING=0 且全部 PASS。"
+          echo "  · 本 job 通过只说明工具自洽，不说明设计闭合，也不说明全部 L1 语义已覆盖。"
           echo "=================================================="
