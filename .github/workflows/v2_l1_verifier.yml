@@ -1,0 +1,127 @@
+---
+# 阶段B · L1 验证工具链自动门禁
+#
+# 目的（睫 第三轮 格二 / 钳星 追问的收口）：
+#   check_registry.py 已经会响（7 种漂移全部非零退出），
+#   但它【靠人记得跑】。没人跑那天，表就和现实静静脱节。
+#   ⇒ 本工作流让它在每次推送/PR 时【自动响】。
+#
+# 边界（必须写明，别让它读起来像"科学资格"）：
+#   · 本工作流只证明【工具自洽】：登记表与树一致、解析器符合规范表、
+#     变异测试能检出、A16 用例集完整。
+#   · 【不证明】L2/L3、不证明与研究结论相关、不授权科学执行。
+#   · 失败 ≠ 研究错误；通过 ≠ 设计闭合。
+#
+# 兼容性：工具需在 Python 3.9 与 3.11 都通过（知微 用 3.9.8）。
+
+name: v2-l1-verifier
+
+on:
+  push:
+    branches:
+      - "exp/v2-l1-verifier"
+      - "main"
+  pull_request:
+    branches:
+      - "main"
+      - "exp/v2-l1-verifier"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: "L1 tools · py${{ matrix.python }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 登记表比对依赖 HEAD 树对象；浅克隆会让 git ls-tree/ls-remote 行为异常。
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: "说明：本流水线只验证工具自洽，不构成科学资格"
+        run: |
+          echo "PHASE_B_TOOL_SELF_CONSISTENCY = establishing"
+          echo "COMPLETE_L1_CONFORMANCE      = NOT_ESTABLISHED"
+          echo "B2_DESIGN_CLOSURE            = NOT ACHIEVED"
+          echo "SCIENTIFIC_EXECUTION         = MAY_NOT_START"
+          echo "FROZEN_Q3_RC11               = UNCHANGED"
+
+      # --- 1) 登记表 ↔ HEAD ↔ 工作树 + 覆盖性 ---
+      # 必须先跑：它抓的是"文件丢了/漏登记/值过期"，
+      # 后面三个工具若被删或漏登记，check_registry 会先响。
+      - name: "check_registry · 登记表一致性"
+        working-directory: tools/v2_l1_verifier
+        run: |
+          set -o pipefail
+          python check_registry.py 2>&1 | tee /tmp/registry.log
+          echo "exit=$?" >> /tmp/registry.log
+
+      # --- 2) 规范/实现一致性（TAG + 字段数）---
+      - name: "check_spec · 规范表一致性"
+        working-directory: tools/v2_l1_verifier
+        run: |
+          set -o pipefail
+          python check_spec.py 2>&1 | tee /tmp/spec.log
+
+      # --- 3) A16 用例集 ---
+      # exit 0 = 诊断运行完成；【不是】"全部 PASS"。
+      # 43 PASS + 1 OBSERVED_PENDING_RULING 是当前预期形态。
+      - name: "run_a16 · A16 用例集"
+        working-directory: tools/v2_l1_verifier
+        run: |
+          set -o pipefail
+          python run_a16.py 2>&1 | tee /tmp/a16.log
+
+      # --- 3b) 证据缺失控制：确认"找不到证据"时不会静默通过 ---
+      # 理由：evidence/ 与 reports/review_history/ 各有一份 B_24，
+      #   runner 找不到第一份会回退到第二份。所以"删一份"不能证明缺失控制有效，
+      #   必须用 --evidence-strict 指向空目录，要求它【失败关闭】。
+      #   （知微 第三轮 5.1 正是要求区分"优先搜索"与"排他路径"。）
+      - name: "run_a16 · 证据缺失必须失败关闭（--evidence-strict）"
+        working-directory: tools/v2_l1_verifier
+        run: |
+          set +e
+          EMPTY="$(mktemp -d)"
+          python run_a16.py --evidence "$EMPTY" --evidence-strict > /tmp/strict.log 2>&1
+          rc=$?
+          cat /tmp/strict.log
+          rmdir "$EMPTY" 2>/dev/null || true
+          echo "strict exit = $rc"
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::证据缺失时 --evidence-strict 竟返回 0；缺失控制失效"
+            exit 1
+          fi
+          echo "✅ 证据缺失时失败关闭（exit=$rc）"
+
+      # --- 4) 变异测试：证明用例集【会失败】---
+      - name: "mutate · 变异测试（用例集会不会响）"
+        working-directory: tools/v2_l1_verifier
+        run: |
+          set -o pipefail
+          python mutate.py 2>&1 | tee /tmp/mutate.log
+
+      # --- 5) 汇总：显式把四类的边界写进日志，防止被读成"全部通过" ---
+      - name: "汇总"
+        if: always()
+        run: |
+          echo "=================================================="
+          echo "四工具均以退出码表达结论；任一非零本 job 即失败。"
+          echo ""
+          echo "注意（避免误读）："
+          echo "  · run_a16 exit 0 = 诊断运行完成，不等于全部 PASS；"
+          echo "    当前预期为 43 PASS + 1 OBSERVED_PENDING_RULING。"
+          echo "  · 本 job 通过只说明工具自洽，不说明设计闭合。"
+          echo "=================================================="
