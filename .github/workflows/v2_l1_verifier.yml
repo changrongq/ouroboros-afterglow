@@ -32,12 +32,23 @@ permissions:
 
 jobs:
   verify:
-    name: "L1 tools · py${{ matrix.python }}"
-    runs-on: ubuntu-latest
+    name: "L1 tools · py${{ matrix.python }} @ ${{ matrix.os }}"
+    # 【为什么不用 ubuntu-latest】
+    #   2026-11-12 首次运行（run #1）实测：
+    #     · py3.11 @ ubuntu-latest        → 全部步骤通过
+    #     · py3.9  @ ubuntu-latest        → 卡在「Set up Python 3.9」，工具步骤全被 skip
+    #   ubuntu-latest 已推至较新的发行版，旧 Python 构建依赖的库不在其中。
+    #   ⇒ 3.9 固定到 ubuntu-22.04（该组合可用）；3.11 留在 latest。
+    #   ⇒ 若日后 22.04 也退役，这里会再次变红——那是【应该】变红的信号。
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.11"]
+        include:
+          - python: "3.9"
+            os: ubuntu-22.04
+          - python: "3.11"
+            os: ubuntu-latest
 
     steps:
       - name: Checkout
