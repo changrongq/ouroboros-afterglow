@@ -24,6 +24,39 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(HERE, "run_a16.py")
 
 
+def render_readable(doc, rc):
+    """从 JSON 渲染与 run_a16.py 文本模式等价的表格。
+
+    ⇒ 目的只是"让日志可读"，【判定不依赖本函数】。
+    ⇒ 但它读的必须是【判定所用的同一份 JSON】，
+      否则日志与判定就成了两次执行（知微 指出的原始问题）。
+    """
+    meta, res, summ = doc.get("meta", {}), doc.get("results", []), doc.get("summary", {})
+    print("证据: %s" % meta.get("evidence_path"))
+    print("      %s" % meta.get("evidence_detail"))
+    unk = meta.get("unknown_vectors") or []
+    if unk:
+        print("      未识别向量 %d 条: %s" % (len(unk), unk))
+    print()
+    print("%-20s%-11s%-22s%-22s%s" % ("编号", "入口", "期望", "实际", "判定"))
+    print("-" * 92)
+    for r in res:
+        e = r.get("expected") or []
+        a = r.get("actual") or []
+        et = e[0] if e else "?"
+        at = a[0] if a else "?"
+        e_s = et if et == "ACCEPT" else "REJECT %s" % (e[1] if len(e) > 1 else "?")
+        a_s = at if at == "ACCEPT" else "REJECT %s" % (a[1] if len(a) > 1 else "?")
+        print("%-20s%-11s%-22s%-22s%s"
+              % (r.get("id", "?"), r.get("entry", "?"), e_s, a_s, r.get("verdict", "?")))
+    print("-" * 92)
+    print("合计 %s  通过 %s  失败 %s  跳过 %s  待定 %s"
+          % (summ.get("total"), summ.get("pass"), summ.get("fail"),
+             summ.get("skip"), summ.get("pending")))
+    print("runner exit = %d（本次执行）" % rc)
+    print()
+
+
 def main():
     r = subprocess.run([sys.executable, RUN, "--json"],
                        capture_output=True, text=True, encoding="utf-8",
@@ -31,16 +64,13 @@ def main():
                        env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     rc, out, err = r.returncode, r.stdout, r.stderr
 
-    # 先打印人类可读输出，便于日志阅读
-    r2 = subprocess.run([sys.executable, RUN],
-                        capture_output=True, text=True, encoding="utf-8",
-                        errors="replace", cwd=HERE,
-                        env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-    print(r2.stdout)
-    if r2.stderr.strip():
-        print(r2.stderr)
-    print("runner exit = %d" % rc)
-    print()
+    # 【知微 ZB32-01 剩余项修正 2026-11-12】
+    #   原实现跑【两次】runner：
+    #     第一次 --json 拿来判定，第二次拿 stdout 打印给人看。
+    #   ⇒ 判定与展示【不是同一次执行】：
+    #     若两次之间结果有差异，日志上看到的与判定的不是同一件事。
+    #   ⇒ 现改为【只跑一次】，可读表格从同一份 JSON 渲染。
+    #     ⇒ 判定所用证据 = 日志所显证据 = 同一次执行。
 
     # 【必须先解析 JSON 再判退出码】：
     #   runner 非零退出时，summary 里到底哪一条不成立仍然有价值。
@@ -56,6 +86,10 @@ def main():
         return 1
 
     s, m, res = d["summary"], d["meta"], d["results"]
+
+    # 从【同一份 JSON】渲染可读输出
+    #   ⇒ 判定与展示同源，不再"读第一次、打印第二次"。
+    render_readable(d, rc)
 
     # 【知微 ZB31-02 修正 2026-11-12】
     #   原判定 ALL_REQUIRED_CASES 只写 `npass == len(res) and len(res) > 0`，
