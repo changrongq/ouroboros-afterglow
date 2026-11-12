@@ -27,6 +27,9 @@ REQUIRED_CASE_IDS = (
     # --- 第三轮 6 项值/长度/最小值反例 ---
     "C-NESTED-TYPE", "C-LEN-EVENTID", "C-LEN-OBSERVED",
     "C-MIN-EPOCH", "C-MIN-SEQ", "C-MIN-RECEIPTSEQ",
+    # --- B_32 §1.2 第 11/16/17 项：L1 可判定但原先无用例 ---
+    #   凌翼 L1-SCOPE 要求把「实现会拒绝但没测」补上。
+    "C-DUP-TAG", "C-UTF8-INVALID", "C-NUL-IN-STR",
     # --- 凌翼 2026-11-12 裁定 B-1 要求的三个明确负向测试 ---
     "B1-v1-into-v2", "B1-v2-into-v1", "B1-v2-badtype",
     # --- 知微 ZB31-01：未知版本 × 三个入口 ---
