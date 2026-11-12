@@ -12,6 +12,76 @@ role set — each with a recorded hash. Everything else moves.
 
 ---
 
+## ⚠️ Phase B (B_22 onward) lives on an EXPERIMENT branch — NOT here
+
+> **Added 2026-11-12 under 凌翼 ruling A-3 (A-3.1). This section is the authoritative
+> pointer for where Phase B work actually is. Do not read `main` as the Phase B source.**
+
+**`main` does not contain the current Phase B experimental work.**
+
+The B2 spec chain from `B_22` onward, together with the L1 verification tooling and the
+file registry, lives on branch **`exp/v2-l1-verifier`**.
+
+| What | Where |
+|---|---|
+| B_22 spec + `B_23` v2 rules + `B_24` vectors | `exp/v2-l1-verifier` |
+| L1 verifier tools (`l1_parser.py`, `run_a16.py`, `mutate.py`, `check_spec.py`, `expected.py`, `check_registry.py`, `check_a16_acceptance.py`) | `exp/v2-l1-verifier` |
+| **`B_30` file version registry** | `exp/v2-l1-verifier` — **not** in `main` |
+| CI workflow (`.github/workflows/v2_l1_verifier.yml`) | `exp/v2-l1-verifier` — **not** in `main` |
+
+### Authority is scoped to `repository + branch + commit + path`
+
+Per ruling **A-3.2**, any review citation must name at least:
+
+```text
+repository + branch/ref + commit + path
+```
+
+Add the **Git blob** when byte-level reproduction is required.
+
+**Writing only "authority lives in `reports/`" without naming the branch is not
+acceptable** — that is exactly how a reader ends up looking in `main` and finding
+nothing. (This actually happened on 2026-11-12: a request document was reported
+"missing" simply because `main` was the default branch.)
+
+### Current Phase B review baseline
+
+```text
+B2_REVIEW_BASELINE = bd7bbe4   (2026-11-12, 凌翼 ruling on items A and B)
+B2_EXPERIMENT_BRANCH = exp/v2-l1-verifier
+```
+
+Later revisions require a **new traceable commit**; `bd7bbe4` remains the reference for
+that ruling only.
+
+### Experiment-branch authority does NOT promote to `main`
+
+`reports/` content on `exp/v2-l1-verifier` is authoritative **for the specified version
+on that branch only**. It does **not** automatically become an accepted specification in
+`main`.
+
+### What `main` still authoritatively holds
+
+`main` remains authoritative for the **Phase A / RC11** closed candidate and its frozen
+objects (`prereg/`, `spec/`, `artifacts/RC*/`, the MANIFEST, the Q3 role set).
+Phase B experiment work does **not** alter those.
+
+```text
+MAIN_MERGE = DEFERRED
+B2_EXPERIMENT_AUTHORITY = BRANCH_AND_COMMIT_SCOPED
+COMPLETE_L1_CONFORMANCE = NOT_ESTABLISHED
+B2_DESIGN_CLOSURE = NOT ACHIEVED
+PRODUCTION_INTEGRATION = NOT_AUTHORIZED
+SCIENTIFIC_EXECUTION = MAY_NOT_START
+FROZEN_Q3_RC11 = UNCHANGED
+```
+
+> Per **A-3.3**, the Phase B tools and CI are deliberately **not** merged into `main`.
+> Per **A-3.4**, a merge request will be raised separately once the L1 test scope, spec
+> version, fixed point, and independent three-party review conclusions are all settled.
+
+---
+
 ## Layout
 
 ```
