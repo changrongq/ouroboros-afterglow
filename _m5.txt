@@ -1,0 +1,40 @@
+design(L2): 将 B_32 §2.2-§2.5 从框架推进为具体设计
+
+凌翼执行令要求「继续设计」四项。本轮把四节从"列举候选/提出问题"
+推进为"可被第三方按条核对的设计"，未申请任何新授权。
+
+§2.2 可信预期摘要的来源
+  - 立三条硬约束: EXPECTED_DIGEST_WRITER != RECORD_WRITER;
+    单条粒度; (record_id, snapshot_id, protocol_digest) 三元组绑定
+  - 定义 ExpectedDigestEntry 字段(含 prev_entry_id 供链式来源用)
+  - 来源分级 S0-S3, 并规定每一级允许/不允许声称什么(禁越级声称)
+  - 两种存储形态; 明确不采纳"写进记录本身"
+
+§2.3 独立写权证明
+  - 改为框架: 证据项 WE-1..WE-6, 每项写成可检查命题
+  - 判定规则: 全部通过才 ESTABLISHED; 任一项明确不通过则 NOT_ESTABLISHED;
+    无法检查则 UNDETERMINABLE(默认不信)
+  - 给出 source_level 与最高可达判定的对应表, 禁止越级
+  - 明确指出只有 WE-6 能纯代码判定, 其余依赖代码之外的事实
+
+§2.4 三态失败语义
+  - 7 步判定算法, 顺序不可调换; 关键: snapshot_id 不等时不比较 digest,
+    判 UNDETERMINABLE 而非 UNBOUND(避免把"取错预期值"误判为"记录被篡改")
+  - 8 行决策表, 可逐格写成用例
+  - 8 个用例 L2C-*, 含反向检查要求(改 BOUND 返回后 UNBOUND/UNDET 必须变红)
+  - 映射: UNBOUND 触发 R-V2-11; UNDETERMINABLE 不触发(需独立状态)
+
+§2.5 §5 C2 信任根保护
+  - TR-1..TR-4 形式化"没有变弱"的可反驳条件
+  - 显式枚举信任根 T1-T5(TR-4 的落实), 不隐藏
+  - 指出 T5(存储载体)超出实现者权限, 列两个必须裁定的点:
+    裁定点 A 存储载体的信任归属 / 裁定点 B UNDETERMINABLE 在统计中的地位
+
+同步: §2.1 状态说明、§2.7 缺口更新(设计已补, 事实与裁定仍缺)、
+      §三 套件数 54->58 与②④状态、§五 表述对齐四件
+
+未变: L2_TRUST_ROOT = NOT_ESTABLISHED; L2_RUNTIME_IMPLEMENTATION = NOT_AUTHORIZED;
+      L1 套件仍 58 项(本轮未扩展②-c); l1_parser.py blob 仍 f2c6beaf7bed;
+      main 仍 d3a91f8; FROZEN_Q3_RC11 未动。
+
+本文不含可直接执行的实现, 也不主张设计完成等于信任建立。
