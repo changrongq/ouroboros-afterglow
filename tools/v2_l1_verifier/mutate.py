@@ -125,40 +125,18 @@ def run_fixture(parser_path):
     common = {"exit": rc, "pass": p_, "fail": f_, "skip": s_,
               "evidence_ok": ev_ok, "total": t_}
 
-    # 3) 证据身份失败必须先判 INFRA_ERROR，不能被 fail>0 掩盖成"变异被检出"
-    if rc == EXIT_EVIDENCE or ev_ok is not True:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": f"证据身份失败 exit={rc} evidence_ok={ev_ok}"}
-
-    # 4) SKIP 不得算 OK
-    if rc == EXIT_SKIP or (s_ or 0) > 0:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": f"存在 SKIP {s_} 项（必需输入缺失）"}
-
-    # 5) 【结构完整性】交给共用校验（知微 ZB32-01）
-    #   原来这里是 mutate 自己写的内联校验：它核对了 ID/重复/必需集合，
-    #   但【不把 summary 各分类计数与 results 逐项重算绑定】。
-    #   ⇒ 实测：results 50 条全 PASS、summary 报 pass=49/fail=1、exit=1 时，
-    #     旧逻辑返回 status=OK fail=1，mutate.main 以 fail>0 判 MUTANT_KILLED
-    #     —— 逐项明明没有 FAIL，却被当成"变异被检出"。
-    #   ⇒ 现改为调用 a16_result_check.validate_structure（第 1 层）：
-    #     它会把 summary 的 total/pass/fail/skip/pending 与 results 重算值逐一比对，
-    #     不一致即判矛盾证据 ⇒ INFRA_ERROR。
-    ok_st, problems, info = _ARC.validate_structure(data)
-    common["recomputed"] = info.get("recomputed") if info else None
-    if not ok_st:
-        return {**base, **common, "status": "INFRA_ERROR",
-                "reason": "结果结构不完整/自相矛盾: " + "; ".join(problems[:4])}
-
-    # 6) 【变异判定】以 results 独立重算的 FAIL 数为准，不用 summary 自报
-    #   ⇒ KILLED 必须建立在【逐项真的有 FAIL】之上；
-    #     summary 若与逐项矛盾，已在第 5 关拦下。
-    recount_fail = (info or {}).get("recomputed", {}).get("FAIL", 0)
-    common["recount_fail"] = recount_fail
-    if recount_fail > 0:
-        return {**base, **common, "status": "MUTANT_KILLED",
-                "fail": recount_fail}
-    return {**base, **common, "status": "MUTANT_SURVIVED"}
+    # 3~6) 分类判定【全部】交给 _classify_from_doc 单一实现
+    #   【知微 ZB33-01 修正后重构 2026-11-13】
+    #     原来这段在本函数里、自检里各写一份 ⇒ 删掉一边另一边察觉不到。
+    #     现在只有 _classify_from_doc 一处；本函数只负责取字节/起进程/解析。
+    status, reason = _classify_from_doc(data, rc)
+    if status == "INFRA_ERROR":
+        return {**base, **common, "status": status, "reason": reason}
+    if status == "MUTANT_KILLED":
+        return {**base, **common, "status": status,
+                "fail": int(reason.split("=")[-1]),
+                "recount_fail": int(reason.split("=")[-1])}
+    return {**base, **common, "status": status}
 
 
 def _run_and_validate_baseline():
@@ -194,8 +172,102 @@ def _run_and_validate_baseline():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _classify_from_doc(doc, rc):
+    """【单一实现】从 (JSON 文档, 退出码) 得出变异分类。
+
+    【为什么必须抽出来（2026-11-13 修正）】
+      我第一版把这段逻辑在 run_fixture 里写了一份，
+      又在自检里【复刻了一份】。
+      实测：把 run_fixture 里的 5b 约束删掉，自检依然报"四条全部符合" ——
+      因为自检跑的是自己那一份。这正是「抄两份、改一边」。
+      ⇒ 现在只有这一处实现；run_fixture 调它，自检也调它。
+      ⇒ 改动它，两条路径同时改变，自检才可能真的察觉回退。
+
+    返回 (status, reason)。
+    """
+    s = doc.get("summary") or {}
+    if rc not in (EXIT_OK, EXIT_FAIL, EXIT_SKIP, EXIT_EVIDENCE):
+        return "INFRA_ERROR", "未知退出码 %s" % rc
+    meta = doc.get("meta") or {}
+    if rc == EXIT_EVIDENCE or meta.get("evidence_ok") is not True:
+        return "INFRA_ERROR", "证据身份失败 exit=%s evidence_ok=%s" % (
+            rc, meta.get("evidence_ok"))
+    if rc == EXIT_SKIP or (s.get("skip") or 0) > 0:
+        return "INFRA_ERROR", "存在 SKIP %s 项（必需输入缺失）" % s.get("skip")
+
+    ok_st, problems, info = _ARC.validate_structure(doc)
+    if not ok_st:
+        return "INFRA_ERROR", "结果结构不完整/自相矛盾: " + "; ".join(problems[:4])
+
+    f = (info or {}).get("recomputed", {}).get("FAIL", 0)
+    sk = (info or {}).get("recomputed", {}).get("SKIP", 0)
+
+    # 【知微 ZB33-01】退出码与逐项结果一致性
+    #   ⇒ 按【逐项重算值】比对，不按 summary 自报值
+    #   ⇒ 不能把非零退出一概当基础设施失败：exit=1 且有真实 FAIL 仍应 KILLED
+    if rc == EXIT_FAIL and f == 0:
+        return "INFRA_ERROR", "exit=1 但逐项重算 FAIL=0，退出码与结果矛盾"
+    if rc == EXIT_OK and (f != 0 or sk != 0):
+        return "INFRA_ERROR", (
+            "exit=0 但逐项重算 FAIL=%d SKIP=%d，退出码与结果矛盾" % (f, sk))
+
+    if f > 0:
+        return "MUTANT_KILLED", "fail=%d" % f
+    return "MUTANT_SURVIVED", "recount FAIL=0"
+
+
+def _selfcheck_classification():
+    """【ZB33-01 常驻对照】调用【同一个】_classify_from_doc 验四条对照。
+
+    ⇒ 不再复刻逻辑：直接测生产路径。
+      这样若 _classify_from_doc 被改动（例如删掉退出码一致性约束），
+      自检就会跟着失败 —— 而不是各自漂移。
+    """
+    notes = []
+    ok = True
+
+    def mk_real(n_fail):
+        ids = list(REQUIRED_CASE_IDS)
+        res = [{"id": cid, "verdict": ("FAIL" if i < n_fail else "PASS")}
+               for i, cid in enumerate(ids)]
+        return {
+            "meta": {"evidence_ok": True, "evidence_detail": "self-check",
+                     "evidence_path": "self-check", "unknown_vectors": []},
+            "results": res,
+            "summary": {"total": len(ids), "pass": len(ids) - n_fail,
+                        "fail": n_fail, "skip": 0, "pending": 0,
+                        "conserved": True},
+        }
+
+    cases = [
+        ("exit=1 但逐项 FAIL=0", mk_real(0), EXIT_FAIL, "INFRA_ERROR"),
+        ("exit=0 但逐项 FAIL>0", mk_real(1), EXIT_OK, "INFRA_ERROR"),
+        ("exit=1 且 FAIL>0（正常 KILLED）", mk_real(1), EXIT_FAIL, "MUTANT_KILLED"),
+        ("exit=0 且 FAIL=0（正常 SURVIVED）", mk_real(0), EXIT_OK, "MUTANT_SURVIVED"),
+    ]
+    for name, doc, rc, want in cases:
+        got, _why = _classify_from_doc(doc, rc)
+        good = got == want
+        if not good:
+            ok = False
+            notes.append("%s：得到 %s，期望 %s" % (name, got, want))
+        else:
+            notes.append("%s → %s" % (name, got))
+    return ok, notes
+
+
 def main():
-    print("=== 基线门禁（未变异的解析器必须完整通过）===")
+    print("=== 分类判据自检（ZB33-01 常驻对照）===")
+    sc_ok, sc_notes = _selfcheck_classification()
+    for n in sc_notes:
+        print("  " + ("✅ " if sc_ok else "   ") + n)
+    if not sc_ok:
+        print("\n[结论] INFRA_ERROR：变异分类判据自检失败，结果不可解释。")
+        print("  ⇒ 退出码 3")
+        return 3
+    print("  ✅ 四条对照全部符合")
+
+    print("\n=== 基线门禁（未变异的解析器必须完整通过）===")
     b = run_fixture(os.path.join(HERE, "l1_parser.py"))
     print(f"  status={b['status']} exit={b['exit']} "
           f"pass={b['pass']} fail={b['fail']} skip={b['skip']} "
