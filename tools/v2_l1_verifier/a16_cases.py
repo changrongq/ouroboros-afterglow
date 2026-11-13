@@ -32,6 +32,10 @@ REQUIRED_CASE_IDS = (
     "C-DUP-TAG", "C-UTF8-INVALID", "C-NUL-IN-STR",
     # --- B_32 §1.2 第 10 项：TAG 顺序置换（2026-11-13 补）---
     "C-TAG-ORDER",
+    # --- 凌翼 2026-11-13 裁定 ②-c：v1 嵌套三类长度错误分别归类 ---
+    #   裁定要求「不得声称所有嵌套长度错误一律属于 R-V2-10」。
+    "C-NEST-INNER-TLEN", "C-NEST-OUTER-LEN",
+    "C-NEST-OUTER-TLEN", "C-NEST-OUTER-TRUNC",
     # --- 凌翼 2026-11-12 裁定 B-1 要求的三个明确负向测试 ---
     "B1-v1-into-v2", "B1-v2-into-v1", "B1-v2-badtype",
     # --- 知微 ZB31-01：未知版本 × 三个入口 ---

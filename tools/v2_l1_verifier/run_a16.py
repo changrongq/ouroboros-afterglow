@@ -245,6 +245,63 @@ def build_constructed():
         (0x21, b"R1"), (0x23, (1).to_bytes(8, "big")),
         (0x22, (1).to_bytes(8, "big"))])
 
+    # ------------------------------------------------------------------
+    # 【凌翼 2026-11-13 裁定 ②-c 要求：v1 嵌套的三类长度错误分别归类】
+    #   裁定原文：「外层字段截断、外层总长度错误等情形，
+    #   仍须按照各自的结构规则分类，不得声称所有嵌套长度错误一律属于 R-V2-10。」
+    #
+    #   ⇒ 下面四条把【实测到】的归属固定下来（不是按推测写）：
+    #      · 内层 TOTAL_LEN 不符  → 外层抛 R-V2-10，
+    #        但 detail 里保留内层真实规则号（嵌套递归把内层 Reject 包装了）
+    #      · 外层字段 LEN 不符    → R-V2-07
+    #      · 外层 TOTAL_LEN 不符  → R-V2-08
+    #      · 外层对象被截断       → R-V2-07
+    #   ⇒ 【注意】：这四条期望的是【外层观察到的规则号】，
+    #     不是内层的。内层规则号只能从 detail 文本看出。
+    # ------------------------------------------------------------------
+    _inner_ok = mk(0x03, 0x0001, [
+        (0x21, b"R1"), (0x22, (1).to_bytes(8, "big")),
+        (0x23, (1).to_bytes(8, "big"))])
+
+    def _outer(inner_bytes, total=None):
+        return mk(0x01, 0x0001, [
+            (0x01, b"E1"), (0x02, b"A1"), (0x03, inner_bytes),
+            (0x04, b"C1"), (0x05, b"\x01"), (0x06, b""), (0x07, b"")],
+            total=total)
+
+    # 内层 TOTAL_LEN 声明比实际大 5
+    _inner_bad_tl = _inner_ok[:-4] + (len(_inner_ok) + 5).to_bytes(4, "big")
+    out["C-NEST-INNER-TLEN"] = _outer(_inner_bad_tl)
+
+    # 外层 0x03 字段 LEN 声明 +3（并把外层 TOTAL_LEN 同步 +3）
+    #   【头部长度必须算准】：MAGIC = "AFGLREF\x00" 是 8 字节（不是 9），
+    #     所以头 = MAGIC(8) + FV(2) + OT(1) + RSV(1) + FC(2) = 14。
+    #   ⇒ 我第一次写成 15，导致从第 15 字节开始遍历，第一个“字段”就是错的，
+    #     于是构造失败。这里按实际 len(MAGIC) 计算，不写死数字。
+    _o = bytearray(_outer(_inner_ok))
+    _HEAD = len(MAGIC) + 2 + 1 + 1 + 2
+    _i = _HEAD
+    _f3 = None
+    while _i < len(_o) - 4:
+        _tag = _o[_i]
+        _ln = int.from_bytes(_o[_i + 1:_i + 3], "big")
+        if _tag == 0x03:
+            _f3 = (_i + 1, _ln)
+            break
+        _i += 3 + _ln
+    assert _f3 is not None, "构造失败：找不到 0x03 字段（HEAD=%d）" % _HEAD
+    _o[_f3[0]:_f3[0] + 2] = (_f3[1] + 3).to_bytes(2, "big")
+    _o[-4:] = (int.from_bytes(_o[-4:], "big") + 3).to_bytes(4, "big")
+    out["C-NEST-OUTER-LEN"] = bytes(_o)
+
+    # 外层对象 TOTAL_LEN 比实际大 5
+    _o2 = _outer(_inner_ok)
+    out["C-NEST-OUTER-TLEN"] = _o2[:-4] + (len(_o2) + 5).to_bytes(4, "big")
+
+    # 外层对象被截断 8 字节（保留原 TOTAL_LEN）
+    _o3 = _outer(_inner_ok)
+    out["C-NEST-OUTER-TRUNC"] = _o3[:-8] + _o3[-4:]
+
     return out
 
 
@@ -339,6 +396,20 @@ EXTRA_CASES = [
     ("C-TAG-ORDER", "0x03 TAG 序列 [0x21,0x23,0x22]（0x22/0x23 顺序互换）",
      "v1", ("REJECT", "R-V2-10"),
      "§2 N7：TAG 顺序须与规定一致（按位置类型全合法，仅顺序错）"),
+    # ---- 凌翼 2026-11-13 裁定 ②-c：v1 嵌套三类长度错误分别归类 ----
+    #   期望值是【实测】出来的外层规则号，不是按推测填的。
+    ("C-NEST-INNER-TLEN", "嵌套 KEY_TRIPLE 的内层 TOTAL_LEN 声明过大（+5）",
+     "v1", ("REJECT", "R-V2-10"),
+     "内层递归失败被包装为 R-V2-10；detail 保留内层真实规则号 R-V2-08"),
+    ("C-NEST-OUTER-LEN", "外层 0x03 字段 LEN 声明比实际多 3 字节",
+     "v1", ("REJECT", "R-V2-07"),
+     "外层字段长度与实际不符 ⇒ R-V2-07（不归 R-V2-10）"),
+    ("C-NEST-OUTER-TLEN", "外层对象 TOTAL_LEN 声明比实际多 5 字节",
+     "v1", ("REJECT", "R-V2-08"),
+     "外层对象总长度不符 ⇒ R-V2-08（不归 R-V2-10）"),
+    ("C-NEST-OUTER-TRUNC", "外层对象被截断 8 字节（TOTAL_LEN 保持原值）",
+     "v1", ("REJECT", "R-V2-07"),
+     "外层字段头不完整 ⇒ R-V2-07（不归 R-V2-10）"),
 ]
 
 
