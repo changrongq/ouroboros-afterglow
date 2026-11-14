@@ -266,4 +266,4 @@ and it is never promoted to `PERSISTENT_BUSINESS_CLEAN`.
 |---|---|---|
 | `reports/`, `artifacts/RC*/`, `prereg/`, `spec/` | yes | **authoritative** |
 | `README.md` (this file) | yes | front page; reviewable, traceable |
-| GitHub repository *About* panel | **no** | facade only; never authoritative |
+| GitHub repository *About* panel | **no** | facade only; never authoritative |.
