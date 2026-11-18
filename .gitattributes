@@ -16,7 +16,11 @@ artifacts/**/*.json  -text
 # 他人原文 — 不得改动一个字节（含行尾）
 # 理由：discussions/ 存的是别人的话，落盘纪律 R2 要求「正文一字未改」。
 # 若让 git 把 CRLF 规整成 LF，正文字节就变了，"逐字节保真" 就成了空话。
+#
+# ⚠ 两行都要：`discussions/*.md` 只覆盖第一级，
+#   第二轮放在 discussions/r2/ 下，需要 `discussions/**/*.md` 才能盖住。
 discussions/*.md     -text
+discussions/**/*.md  -text
 
 # source code: LF
 *.py   text eol=lf
