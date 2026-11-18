@@ -13,5 +13,10 @@ manifest/*.txt       -text
 reports/review_history/*.md   -text
 artifacts/**/*.json  -text
 
+# 他人原文 — 不得改动一个字节（含行尾）
+# 理由：discussions/ 存的是别人的话，落盘纪律 R2 要求「正文一字未改」。
+# 若让 git 把 CRLF 规整成 LF，正文字节就变了，"逐字节保真" 就成了空话。
+discussions/*.md     -text
+
 # source code: LF
 *.py   text eol=lf
