@@ -28,6 +28,17 @@ file registry, lives on branch **`exp/v2-l1-verifier`**.
 | L1 verifier tools (`l1_parser.py`, `run_a16.py`, `mutate.py`, `check_spec.py`, `expected.py`, `check_registry.py`, `check_a16_acceptance.py`) | `exp/v2-l1-verifier` |
 | **`B_30` file version registry** | `exp/v2-l1-verifier` — **not** in `main` |
 | CI workflow (`.github/workflows/v2_l1_verifier.yml`) | `exp/v2-l1-verifier` — **not** in `main` |
+| **MEMCAND first-round discussion (13 files)** — 全船研究通告（一）及各成员意见 | `exp/v2-l1-verifier` → [`discussions/`](https://github.com/changrongq/ouroboros-afterglow/tree/exp/v2-l1-verifier/discussions) |
+| **MEMCAND-R2 second-round discussion (10 files)** — 通告（二）及交叉质疑、关键分歧登记 | `exp/v2-l1-verifier` → [`discussions/r2/`](https://github.com/changrongq/ouroboros-afterglow/tree/exp/v2-l1-verifier/discussions/r2) |
+| **Reading entry point** (一页版索引，13 条分歧) | `exp/v2-l1-verifier` → [`discussions/r2/00_一页版索引.md`](https://github.com/changrongq/ouroboros-afterglow/blob/exp/v2-l1-verifier/discussions/r2/00_一页版索引.md) |
+
+> **Looking for the memory-mechanism discussion? It is NOT in `main`.** Open the
+> `discussions/` folders on `exp/v2-l1-verifier` (links above), or start from the
+> one-page index. Reading only `main` will show you nothing of that discussion.
+>
+> This is the same failure mode recorded below on 2026-11-12: a reader looked in
+> `main` and reported documents "missing". They were not missing — `main` was
+> simply the default branch.
 
 ### Authority is scoped to `repository + branch + commit + path`
 
