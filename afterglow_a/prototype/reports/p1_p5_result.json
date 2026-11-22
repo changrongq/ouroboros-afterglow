@@ -1,0 +1,86 @@
+[
+  {
+    "id": "P1",
+    "case": "来源五值闭集 + 缺省 unknown",
+    "pass": true,
+    "detail": "非法值被拒；unknown 作为一等值存在（1 条）"
+  },
+  {
+    "id": "P2",
+    "case": "修改留上一版摘要 + 链可校验",
+    "pass": true,
+    "detail": "2 版，旧版摘要不变，链校验通过"
+  },
+  {
+    "id": "P2",
+    "case": "篡改历史可被摘要链检出",
+    "pass": true,
+    "detail": "篡改被检出：第1版摘要不符：记录 8912148f367f ≠ 重算 9467662a467c"
+  },
+  {
+    "id": "P2",
+    "case": "prev_digest 被清空可被检出",
+    "pass": true,
+    "detail": "已检出：第2版 prev_digest 为空（§1.3 要求非空）"
+  },
+  {
+    "id": "P3",
+    "case": "纠正后旧版仍在且可指认",
+    "pass": true,
+    "detail": "2 版共存，旧版原样保留，correction_of 边已建立"
+  },
+  {
+    "id": "P3",
+    "case": "纠正不等于删除",
+    "pass": true,
+    "detail": "历史长度 1 → 2（+1，非覆盖）"
+  },
+  {
+    "id": "P4",
+    "case": "能报告不知道而不自动填值",
+    "pass": true,
+    "detail": "unknown 保留；旧缺省 'user' 与新缺省 'unknown' 行为不同"
+  },
+  {
+    "id": "P4",
+    "case": "非法值报错而非静默落缺省",
+    "pass": true,
+    "detail": "SchemaError 被抛出：source_kind='user' 不在闭集内（P1/P4 违规）"
+  },
+  {
+    "id": "P4",
+    "case": "承诺态与承诺字段的一致性被强制",
+    "pass": true,
+    "detail": "缺失承诺对象被拒（2 条问题）"
+  },
+  {
+    "id": "P5",
+    "case": "五种 match_kind 可区分",
+    "pass": true,
+    "detail": "5 类 + partial_overlap 均正确：exact/superset/subset/disjoint/partial_overlap"
+  },
+  {
+    "id": "P5",
+    "case": "not_run 不得被读成通过",
+    "pass": true,
+    "detail": "ran=False 与 expected=None 均落 not_run"
+  },
+  {
+    "id": "P5",
+    "case": "实际恢复验证：检索 syn-0001 与期望集对比",
+    "pass": true,
+    "detail": "superset，含 4 条，已标 engineering_only"
+  },
+  {
+    "id": "NC",
+    "case": "工程结论不得冒充科学结果",
+    "pass": true,
+    "detail": "exact 但 is_scientific_result=False（边界正确）"
+  },
+  {
+    "id": "NC",
+    "case": "原型的写入日志完整可查",
+    "pass": true,
+    "detail": "写入日志 1 条，含 from/to 摘要"
+  }
+]

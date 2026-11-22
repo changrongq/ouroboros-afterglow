@@ -11,6 +11,11 @@ env/
 afterglow_fx_*
 *.pyc
 
+# ---- Coder 本地临时脚本（不入库）----
+.local_scratch/
+_*.py
+_*.txt
+
 # ---- OS / editor ----
 .DS_Store
 Thumbs.db
