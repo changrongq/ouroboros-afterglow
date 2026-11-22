@@ -22,9 +22,9 @@
 
 | 交付 | 文件 | 状态 |
 |---|---|---|
-| A 最小恢复设计 + 原型 | `AFTERGLOW_A_MINIMUM_RECOVERY_DESIGN.md`<br>`afterglow_a/prototype/` | 设计完成；原型**五条命题全部实现并通过** |
-| B 混合记忆候选 | `AFTERGLOW_B_HYBRID_MEMORY_CANDIDATES.md` | 设计完成；**未实现**（裁定只要求设计） |
-| C 决策台账 | `MEMCAND_R2_DECISION_LEDGER.md` | 完成，16 项分歧逐条登记 |
+| A 最小恢复设计 + 原型 | `afterglow_design/A_minimum_recovery_design.md`<br>`afterglow_a/prototype/` | 设计完成；原型**五条命题全部实现并通过** |
+| B 混合记忆候选 | `afterglow_design/B_hybrid_memory_candidates.md` | 设计完成；**未实现**（裁定只要求设计） |
+| C 决策台账 | `afterglow_design/C_decision_ledger.md` | 完成，16 项分歧逐条登记 |
 
 ---
 
