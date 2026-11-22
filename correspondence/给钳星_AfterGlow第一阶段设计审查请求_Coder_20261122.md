@@ -14,9 +14,9 @@
 
 | 文件 | 内容 |
 |---|---|
-| `AFTERGLOW_A_MINIMUM_RECOVERY_DESIGN.md` | 可信历史恢复的最小设计 |
-| `AFTERGLOW_B_HYBRID_MEMORY_CANDIDATES.md` | 混合记忆的两个可比较候选 |
-| `MEMCAND_R2_DECISION_LEDGER.md` | 第二轮 16 项分歧台账 |
+| `afterglow_design/A_minimum_recovery_design.md` | 可信历史恢复的最小设计 |
+| `afterglow_design/B_hybrid_memory_candidates.md` | 混合记忆的两个可比较候选 |
+| `afterglow_design/C_decision_ledger.md` | 第二轮 16 项分歧台账 |
 | `afterglow_a/prototype/` | A 的可运行最小原型（合成资料） |
 
 ```text

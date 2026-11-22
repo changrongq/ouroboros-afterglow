@@ -2,7 +2,7 @@
 """
 AfterGlow-A 最小原型 · 可信历史恢复的最小实现
 
-对应命题 P1–P5（见 AFTERGLOW_A_MINIMUM_RECOVERY_DESIGN.md §3.2）：
+对应命题 P1–P5（见 afterglow_design/A_minimum_recovery_design.md §3.2）：
   P1  来源五值闭集，缺省 unknown
   P2  修改留上一版摘要，链可校验
   P3  纠正后旧版仍在，且可指认

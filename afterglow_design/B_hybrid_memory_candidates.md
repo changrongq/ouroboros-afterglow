@@ -93,7 +93,7 @@ L-hist 里放的是【别人的话】。它记录"某人说过什么"，不记�
   ⇒ 反思合成的产物被记成了"用户原话"。
   ⇒ 本设计要求 T3 写入时 source_kind 必须为 system_generated，
     且【不得】参与"用户说过什么"这类断言。
-  ⇒ 详见 AFTERGLOW_A_MINIMUM_RECOVERY_DESIGN.md §零。
+  ⇒ 详见 afterglow_design/A_minimum_recovery_design.md §零。
 ```
 
 ### 3.2 写入必须携带什么
