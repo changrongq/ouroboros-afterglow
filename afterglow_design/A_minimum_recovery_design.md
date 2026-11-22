@@ -347,6 +347,15 @@ python afterglow_a/prototype/test_mutations_v4.py
 ```
 
 ```text
+⚠ 【输出编码：2026-11-22 修正】
+  初版此处只写「Python 3.9+」，未说明终端编码要求。
+  钳星在 cp936（Windows GBK）控制台下实跑，报 UnicodeEncodeError 并 exit 1。
+  ⇒ 现三个脚本均已加 _harden_stdio()，并已把 print() 中的数学箭头改为 ASCII。
+  ⇒ 已在 UTF-8 与 GBK 两种编码下各跑一遍，判定数字一致（6/6）。
+  ⇒ 若你仍遇到编码相关崩溃，请报出你的 PYTHONIOENCODING 与终端码页。
+```
+
+```text
 ⇒ 【变异测试为什么必须跑】
   第 2 条全绿不能说明检查有效。
   我第一次跑变异测试时，14/14 全绿，但 9 个变异里有 3 个没被捕获。

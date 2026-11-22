@@ -30,6 +30,31 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+
+# ---------------------------------------------------------------- 输出加固
+# 目的：在 Windows GBK(cp936) 控制台下也能完整跑完并给出判定，不因打印符号崩溃。
+# 背景：钳星 2026-11-22 审查实测 —— 本脚本在 cp936 控制台打印 U+21D2 时
+#       抛 UnicodeEncodeError，以 exit 1 退出。
+#       判定数字其实已经算出来了，但观感是"失败"。
+#       ⇒ 这不是逻辑错，是我把"跨平台可复算"写成了承诺，
+#         却只在 UTF-8 终端里验证过。
+# 处理：优先切 UTF-8；切不动则降级 errors="backslashreplace"，绝不因输出崩溃。
+def _harden_stdio():
+    for stream_name in ("stdout", "stderr"):
+        st = getattr(sys, stream_name, None)
+        if st is None:
+            continue
+        try:
+            st.reconfigure(encoding="utf-8")
+        except Exception:
+            try:
+                st.reconfigure(errors="backslashreplace")
+            except Exception:
+                pass
+
+
+_harden_stdio()
+
 # 每条：(名称, 文件, 锚点, 替换, 说明, redundant_with 或 None)
 # redundant_with = 另一道检查的【实测探针】描述；若给了，程序会验证它确实拦得住
 MUTATIONS = [
@@ -203,11 +228,11 @@ def main():
                 if pr["ok"]:
                     status = "REDUNDANT"
                     print("%-46s REDUNDANT（纵深防御实测拦住）" % name[:46])
-                    print("      → " + pr["msg"][:80])
+                    print("      -> " + pr["msg"][:80])
                 else:
                     status = "MISSED"
                     print("%-46s MISSED（声称的退路也拦不住）" % name[:46])
-                    print("      → " + pr["msg"][:80])
+                    print("      -> " + pr["msg"][:80])
             else:
                 status = "MISSED"
                 print("%-46s MISSED（无注册退路）" % name[:46])
@@ -228,11 +253,11 @@ def main():
         print("\n!! 判定 FAIL")
         for r in results:
             if r["status"] in ("MISSED", "INVALID"):
-                print("   - %s → %s" % (r["mutation"], r["hint"]))
+                print("   - %s -> %s" % (r["mutation"], r["hint"]))
         verdict = "FAIL"
     else:
         print("\n所有变异要么被直接捕获，要么有【实测通过】的退路")
-        print("⇒ 现有断言不是空转")
+        print("=> 现有断言不是空转")
         verdict = "PASS"
 
     print("VERDICT:", verdict)

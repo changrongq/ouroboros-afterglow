@@ -19,6 +19,27 @@ from afcore import (Record, RecoveryStore, SchemaError, SOURCE_KINDS,
 from afrecover import classify_match, verify_recovery, check_unknown_preserved
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+# ---------------------------------------------------------------- 输出加固
+# 目的：在 Windows GBK(cp936) 控制台下也能完整跑完，不因打印非 ASCII 崩溃。
+# 背景：钳星 2026-11-22 审查发现同类问题（同批脚本，我只在 UTF-8 终端验证过）。
+def _harden_stdio():
+    for stream_name in ("stdout", "stderr"):
+        st = getattr(sys, stream_name, None)
+        if st is None:
+            continue
+        try:
+            st.reconfigure(encoding="utf-8")
+        except Exception:
+            try:
+                st.reconfigure(errors="backslashreplace")
+            except Exception:
+                pass
+
+
+_harden_stdio()
+
 SEED = os.path.join(HERE, "synthetic", "records_seed.json")
 
 RESULTS = []

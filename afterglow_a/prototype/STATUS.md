@@ -99,6 +99,73 @@ M3/M3b 未被捕获 → 我第一反应是"产品有缺口"。
   以及：解释一个好结果之前，先确认它是不是真的跑过。
 ```
 
+### 3.4 第四次：钳星审出的跨平台 bug（2026-11-22，别人发现的）
+
+```text
+钳星在 cp936（Windows 默认 GBK）控制台下实跑，报：
+
+  UnicodeEncodeError: 'gbk' codec can't encode character '\u21d2'
+  File ".../test_mutations_v4.py", line 235
+  ⇒ 脚本以 exit 1 退出
+
+⇒ 判定数字其实已经算出来了（CAUGHT 7 / REDUNDANT 2 / MISSED 0），
+  但最后打印那行 `⇒ 现有断言不是空转` 崩了，观感是"失败"。
+```
+
+**我复现了，并且查到比钳星报的更准的一层：**
+
+```text
+three scripts 的表现不同：
+
+  probe_source_role.py      已有 reconfigure   OK
+  test_p1_p5.py             第 171 行的 ⇒ 在【注释】里，不输出  OK
+  test_mutations_v4.py      第 235 行的 ⇒ 在【print】里，崩      崩溃
+
+⇒ 关键不是"哪个文件有 ⇒"，是"哪个 ⇒ 会被打印出来"。
+⇒ 我第一眼看到 test_p1_p5.py 也有 ⇒ 会以为钳星报错了 —— 差点判错。
+```
+
+**根因不是编码，是验证范围：**
+
+```text
+我在 A 文件 §九 写了「Python 3.9+，无第三方依赖」，
+还写了「若你的结果与我写的不一致，那是我的错」。
+
+⇒ 但我只在 UTF-8 终端里跑过。
+⇒ 「跨平台可复算」是一句承诺，我验证的是"我这台机器可复算"。
+⇒ 钳星是第一个在非 UTF-8 终端跑它的人。
+```
+
+**修法（两件一起做，缺一件都不够）：**
+
+```text
+1. 加 _harden_stdio()：stdout/stderr 优先 reconfigure(utf-8)，
+   失败则 reconfigure(errors="backslashreplace")，绝不因输出崩溃。
+2. 把 print() 里的 ⇒ / → 全部换成 ASCII（=> / ->）。
+   ⇒ 只做 1，在真正的 GBK 控制台（不是模拟的）仍可能出问题；
+   ⇒ 只做 2，别的非 ASCII 字符（中文）仍可能崩。
+   ⇒ 两个都做才稳。
+```
+
+**验证（双编码，且证明检查不是空转）：**
+
+```text
+python .local_scratch/verify_both_enc.py
+  ⇒ 三个脚本 × UTF-8/GBK = 6/6，且判定数字确实被打印出来
+     （不只看 rc=0，还 grep CAUGHT 7 / REDUNDANT 2 / MISSED 0 / VERDICT: PASS）
+
+python .local_scratch/mut_gbk.py
+  ⇒ 把 _harden_stdio 改成 no-op，GBK 下重新崩溃（rc=1）
+  ⇒ 证明上面的 6/6 不是空转
+```
+
+```text
+⇒ 记法：把「可复算」写成承诺之前，先问：我在几种环境下跑过？
+⇒ 只在一种终端验证过的东西，不能叫「跨平台」。
+⇒ 钳星这一条虽不属「偷换研究对象」，但它比很多实质意见更有用：
+  它说明我的「已通过」是有环境前提的。
+```
+
 ---
 
 ## 四 · 原型覆盖不到的地方（诚实清单）
