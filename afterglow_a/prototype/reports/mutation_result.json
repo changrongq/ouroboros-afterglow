@@ -1,0 +1,78 @@
+{
+  "baseline": {
+    "passed": 14,
+    "total": 14
+  },
+  "verdict": "PASS",
+  "counts": {
+    "CAUGHT": 7,
+    "REDUNDANT": 2,
+    "MISSED": 0,
+    "INVALID": 0
+  },
+  "mutations": [
+    {
+      "mutation": "M1 放宽 source_kind 闭集（加入 user）",
+      "status": "CAUGHT",
+      "hint": "非法值不再被拒",
+      "redundant_with": null,
+      "failed_cases": 2
+    },
+    {
+      "mutation": "M2 摘要忽略 content 字段",
+      "status": "CAUGHT",
+      "hint": "篡改内容查不出来",
+      "redundant_with": null,
+      "failed_cases": 1
+    },
+    {
+      "mutation": "M3 取消 verify_chain 的 prev_digest 空值检查",
+      "status": "REDUNDANT",
+      "hint": "历史侧链完整性检查失效",
+      "redundant_with": "prev_digest_none_by_elif",
+      "failed_cases": 0
+    },
+    {
+      "mutation": "M3b 取消 validate 的 prev_digest 一致性检查",
+      "status": "REDUNDANT",
+      "hint": "写入侧拒绝逻辑失效",
+      "redundant_with": "prev_digest_none_by_verify_chain",
+      "failed_cases": 0
+    },
+    {
+      "mutation": "M4 match_kind 恒返回 exact",
+      "status": "CAUGHT",
+      "hint": "分类恒为 exact",
+      "redundant_with": null,
+      "failed_cases": 2
+    },
+    {
+      "mutation": "M5 not_run 被吞（未执行读成结果）",
+      "status": "CAUGHT",
+      "hint": "未执行被读成结论",
+      "redundant_with": null,
+      "failed_cases": 1
+    },
+    {
+      "mutation": "M6 工程测试被标成科学结果",
+      "status": "CAUGHT",
+      "hint": "工程冒充科学",
+      "redundant_with": null,
+      "failed_cases": 2
+    },
+    {
+      "mutation": "M7 纠正改为原地覆盖（删除旧版）",
+      "status": "CAUGHT",
+      "hint": "旧版被删除，P3 应失败",
+      "redundant_with": null,
+      "failed_cases": 4
+    },
+    {
+      "mutation": "M8 非法枚举不报错（静默放过）",
+      "status": "CAUGHT",
+      "hint": "P1/P4 的拒绝逻辑失效",
+      "redundant_with": null,
+      "failed_cases": 2
+    }
+  ]
+}
