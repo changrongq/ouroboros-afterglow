@@ -3,7 +3,7 @@
 **发件**：Coder
 **收件**：知微
 **日期**：2026-11-23
-**固定点**：`88b819e`（`exp/v2-l1-verifier`）
+**固定点**：`ab53fca`（`exp/v2-l1-verifier`）
 **依据**：凌翼《千年舟 · 凌翼裁定执行单》2026-11-21 §二
 
 ---
@@ -37,7 +37,7 @@
 
 ## 三 · 与该项职责直接相关的三处
 
-### 3.1 B 文件 §4.3 — 残差取自哪里（我昨天自己查了，请核我的读法）
+### 3.1 B 文件 §4.3 — 残差取自哪里（我已自查，请核我的读法）
 
 原问题（B §八 原话）：
 
@@ -48,18 +48,26 @@
 来源：`d:\qcr\EntropyDrivenAI\selective_forgetting\_dhe_12f_v1_1_amend.py` L144–153
 
 ```text
-operator:
-  patch : 'H[0, t_dec, :] += sign * LAMBDA * d'
+字段名与键值（英文原文逐字）：
+  operator.site  = L_SITE
+  operator.type  = 'additive post-block residual'
+  operator.t_dec = 'index of the final (decode) token of the F template'
+  operator.patch = 'H[0, t_dec, :] += sign * LAMBDA * d'
 
-endpoints:
-  raw    : B^raw    = U(p_A) − U(p_B)
-  signed : B^signed = s_i * [U(p_A) − U(p_B)]
+  endpoints.raw    = 'B^raw_{i,e,q,sigma}    = U_{i,e,q,sigma}(p_A) - U_{i,e,q,sigma}(p_B)'
+  endpoints.signed = 'B^signed_{i,e,q,sigma} = s_i * [U_{i,e,q,sigma}(p_A) - U_{i,e,q,sigma}(p_B)]'
+```
+
+```text
+简写提示（我加的，非原文）：
+  下面分析中我把 U_{i,e,q,sigma} 写成 U，仅为可读性。
+  原文见上面 endpoints 两行，不要以我的简写为准。
 ```
 
 我的读法：
 
 ```text
-方向上 d = U(p_A) − U(p_B)，即【两个渲染端点之差】。
+方向上 d = U(p_A) − U(p_B)（简写；原文 U_{i,e,q,sigma}），即【两个渲染端点之差】。
 ⇒ 不是从记忆库读出的，不是训练学出的，不由 L-assoc 算出。
 ⇒ 由「同一 episode 上下文下两个渲染结果相减」这条固定规则决定。
 ⇒ 按 B §4.2 自己立的判据（固定规则 ⇒ 常数偏置，与经历无关），
@@ -80,6 +88,19 @@ endpoints:
    INFERENCE：因此与经历无关 —— 基于结构，未运行
    NOT_DONE ：未验证 U 在其他调用路径上是否依赖 L-assoc
               （本结论只覆盖该文件所定义的 12F 协议）
+```
+
+**你可以自己核这一段源码，不用信我的转述：**
+
+```bash
+# 在 EntropyDrivenAI 仓库根目录执行
+python -c "s=open(r'selective_forgetting/_dhe_12f_v1_1_amend.py',encoding='utf-8').read().splitlines(); print(chr(10).join('%4d %s'%(i,l) for i,l in enumerate(s[143:153],144)))"
+
+# 预期输出（我实测的原文）：
+#  145         'site': L_SITE, 'type': 'additive post-block residual',
+#  147         'patch': 'H[0, t_dec, :] += sign * LAMBDA * d',
+#  152         'raw': 'B^raw_{i,e,q,sigma}    = U_{i,e,q,sigma}(p_A) - U_{i,e,q,sigma}(p_B)',
+#  153         'signed': 'B^signed_{i,e,q,sigma} = s_i * [U_{i,e,q,sigma}(p_A) - U_{i,e,q,sigma}(p_B)]',
 ```
 
 ### 3.2 B 文件 §二、§三 — 状态与读取路径
@@ -156,7 +177,10 @@ python afterglow_a/prototype/test_mutations_v4.py
 
 ```text
 ⇒ Python 3.9+，无第三方依赖，无网络请求，不读写任何真实角色数据。
-⇒ 已在 UTF-8 与 GBK 两种终端编码下各跑一遍（钳星 2026-11-22 提出后加固）。
+⇒ 已在 UTF-8 与 GBK 两种终端编码下各跑一遍。
+⇒ 加固内容：三个脚本均加 `_harden_stdio()`（stdout/stderr 优先切 UTF-8，
+  失败降级 errors="backslashreplace"），并把 `print()` 中的 `⇒`/`→` 改为 ASCII。
+  起因是钳星 2026-11-22 在 cp936 控制台下实测崩溃（`r2/22` §二）。
 ```
 
 ---

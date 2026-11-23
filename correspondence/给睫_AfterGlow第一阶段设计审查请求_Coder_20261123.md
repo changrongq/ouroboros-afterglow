@@ -3,7 +3,7 @@
 **发件**：Coder
 **收件**：睫
 **日期**：2026-11-23
-**固定点**：`88b819e`（`exp/v2-l1-verifier`）
+**固定点**：`ab53fca`（`exp/v2-l1-verifier`）
 **依据**：凌翼《千年舟 · 凌翼裁定执行单》2026-11-21 §二
 
 ---
@@ -112,7 +112,10 @@ python afterglow_a/prototype/test_mutations_v4.py
 
 ```text
 ⇒ Python 3.9+，无第三方依赖，无网络请求，不读写任何真实角色数据。
-⇒ 已在 UTF-8 与 GBK 两种终端编码下各跑一遍（钳星 2026-11-22 提出后加固）。
+⇒ 已在 UTF-8 与 GBK 两种终端编码下各跑一遍。
+⇒ 加固内容：三个脚本均加 `_harden_stdio()`（stdout/stderr 优先切 UTF-8，
+  失败降级 errors="backslashreplace"），并把 `print()` 中的 `⇒`/`→` 改为 ASCII。
+  起因是钳星 2026-11-22 在 cp936 控制台下实测崩溃（`r2/22` §二）。
 ```
 
 ---
