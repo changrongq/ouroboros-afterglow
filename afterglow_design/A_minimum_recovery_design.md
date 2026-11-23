@@ -150,15 +150,56 @@ MemorySystem.py L1310  ... fragment.get('source_role', existing.get('source_role
 | 项 | 内容 |
 |---|---|
 | 要回答的问题 | 恢复出来的历史，**能不能拿出来用**？ |
-| 最小字段 | `recovery_id`、`query_ref`、`retrieved_ids`、`expected_ids`、`match_kind` |
-| `match_kind` 枚举 | `exact`、`superset`、`subset`、`disjoint`、`not_run` |
-| 关键约束 | **`not_run` 必须能被报告**，不能因为没有测试就当作通过 |
+| 最小字段 | `recovery_id`、`query_ref`、`retrieved_ids`、`expected_ids`、`match_kind`、**`expected_ids_registration`（见下）** |
+| `match_kind` 枚举 | `exact`、`superset`、`subset`、`disjoint`、`partial_overlap` |
+| 关键约束 | **「未执行」不是一个 `match_kind` 值**，它是「没有 `match_kind`」——见下 |
 | 反例 | 「恢复成功」当前无定义：没有 expected_ids，就无法说 retrievd 对不对 |
 
 ```text
-⚠ 本节只做**工程一致性检查**（取回的是不是写进去的那些）。
-  ⚠ 这【不是】C1/C2/C3 的科学结果。
-  ⇒ 凌翼 §三 明令：不得将工程原型测试冒充 C1/C2/C3 正式结果。
+⇒ 【2026-11-23 三处更正，据睫 r2/23 格三与第 ① 问】
+
+  更正 1：枚举追平实现。
+    原文只列五值（exact/superset/subset/disjoint/not_run），
+    但实现里实际是六种集合关系（多一个 partial_overlap）。
+    ⇒ 设计文本与实现差一个值，现补上 partial_overlap。
+
+  更正 2：把 not_run 从枚举里移出。
+    not_run 不是「第六种集合关系」，它是【没有 match_kind】：
+    ran=False 或 expected_ids=None 时不产生关系值。
+    ⇒ 它隐含了「谁跑没跑」这一维，但那一维不在这张表里。
+    ⇒ 因此不写作枚举成员，写作独立状态。
+
+  更正 3：新增 expected_ids 的登记身份（睫第 ① 问核心）。
+    没有这一维，exact 分不开两件事：
+      (a) 独立观察者按预登记期望集复算得到的 exact
+      (b) 实现把自己的输出回填成期望集得到的 exact
+    ⇒ 二者在同一个枚举值下无法区分，而后果完全不同。
+```
+
+```text
+⇒ 【expected_ids_registration 最小字段】
+
+  registered_by       谁登记的期望集
+  registered_at       何时登记（须早于 outcome exposure）
+  registered_rev      用哪一版代码登记
+  independent_of_write 是否独立于写入路径（yes / no）
+  before_exposure     是否在见到结果之前登记（yes / no）
+
+⇒ 只要 independent_of_write = no 或 before_exposure = no，
+  该次 exact 就【不得】被读作「独立复算成立」。
+⇒ 这一条是本节的边界所在：它让 exact 有可辨识的来路，
+  但仍【不】表达因果归属（见下）。
+```
+
+```text
+⇒ 【本节的边界（重申，且更紧）】
+
+  测到了（retrieved == expected）与 归属于（差异来自某次经历 E）
+  【本来就不住在同一张表里】。
+  ⇒ 本节只做前者。
+  ⇒ 谁想把后者塞进来，就越过了本节自己划的界，
+    等于把工程检查读成科学结果（凌翼 §三 明令禁止）。
+  ⇒ 这不是「五值不够」，是「不该由这张表回答」。
 ```
 
 ---

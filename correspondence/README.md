@@ -146,6 +146,27 @@ Get-ChildItem reports\review_history -Filter "*.md" |
 
 ---
 
+## 五之二 · 本目录之外还有哪里（入口指引）
+
+```text
+⇒ 【2026-11-23 补，据睫 r2/23 一句话级 (c)】
+   原文：correspondence/README 里 afterglow_design 命中仍是 0，
+        入口只到 discussions/，和上次那块指路牌同族，一行就够。
+   ⇒ 属实。此前只写了通信目录自身的规则，没给「其他人从哪找设计」。
+
+   三个入口，按读者目的分：
+
+     discussions/          —— 讨论与审查意见的落盘处（r1 / r2）
+     afterglow_design/     —— 第一阶段设计交付（A/B/C 三份 + 汇报 + 扫描报告）
+     afterglow_a/          —— A 的可运行原型与源侧证据脚本
+
+   ⇒ afterglow_design/README.md 是本阶段设计的索引，
+     内含「三份文件各自对应凌翼裁定的哪一项」与「怎么自己跑验证」。
+```
+
+---
+
+
 ## 六 · 一句
 
 ```text
