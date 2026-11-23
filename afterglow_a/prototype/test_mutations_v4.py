@@ -98,8 +98,8 @@ MUTATIONS = [
      "工程冒充科学", None),
 
     ("M7 纠正改为原地覆盖（删除旧版）", "afcore.py",
-     '        self._history[record_id].append(d)\n        self._write_log.append({"op": "revise"',
-     '        self._history[record_id] = [d]  # 变异：覆盖\n        self._write_log.append({"op": "revise"',
+     '        self._history[record_id].append(copy.deepcopy(d))\n        self._write_log.append({"op": "revise"',
+     '        self._history[record_id] = [copy.deepcopy(d)]  # 变异：覆盖\n        self._write_log.append({"op": "revise"',
      "旧版被删除，P3 应失败", None),
 
     ("M8 非法枚举不报错（静默放过）", "afcore.py",
@@ -163,14 +163,25 @@ def run_in(d):
                        errors="replace", env=env, timeout=180)
     out = p.stdout + p.stderr
     passed = total = 0
+    saw_summary = False
     for line in out.splitlines():
         if line.startswith("合计"):
+            saw_summary = True
             parts = line.split()
             try:
                 total = int(parts[1]); passed = int(parts[3])
             except Exception:
                 pass
-    return p.returncode, passed, total, out
+    # ZA-04（知微 r2/24）：必须区分「测试真的跑了」与「测试根本没启动」。
+    # 原实现只看 rc!=0 或 passed!=total，于是「注入语法错误导致
+    # 0 条测试执行」也会被算成 CAUGHT —— 那是把「连测试都没进去」
+    # 当成「断言抓到了缺陷」。
+    # 语法错误 / 导入失败 / 模块属性缺失 三种都归入 NOT_EXECUTED。
+    markers = ("SyntaxError", "ImportError", "ModuleNotFoundError",
+               "IndentationError", "AttributeError: module")
+    hard_crash = any(m in out for m in markers)
+    executed = saw_summary and total > 0 and not hard_crash
+    return p.returncode, passed, total, out, executed, saw_summary, hard_crash
 
 
 def run_probe(d, kind):
@@ -190,8 +201,12 @@ def main():
     print("变异测试 v4（含纵深防御实测）")
     print("=" * 78)
 
-    rc, p0, t0, out0 = run_in(HERE)
-    print("\n基线: %s/%s 通过 (rc=%d)" % (p0, t0, rc))
+    rc, p0, t0, out0, execd0, saw_sum0, crash0 = run_in(HERE)
+    print("\n基线: %s/%s 通过 (rc=%d, 测试已执行=%s)" % (p0, t0, rc, execd0))
+    if not execd0:
+        print(out0[-1200:])
+        print("!! 基线未真正执行测试（0 条或无汇总行）—— 变异结果无意义")
+        return 1
     if p0 != t0 or rc != 0:
         print(out0[-1200:]); print("!! 基线不绿"); return 1
 
@@ -216,13 +231,26 @@ def main():
                 continue
             open(tgt, "w", encoding="utf-8", newline="").write(patched)
 
-            rc2, p2, t2, out2 = run_in(tmp)
+            rc2, p2, t2, out2, execd, saw_sum, hard_crash = run_in(tmp)
+
+            if not execd:
+                # 测试根本没启动 ⇒ 不能算「断言捕获了缺陷」
+                status = "NOT_EXECUTED"
+                print("%-46s NOT_EXECUTED（rc=%d summary=%s crash=%s）"
+                      % (name[:46], rc2, saw_sum, hard_crash))
+                results.append({"mutation": name, "status": status,
+                                "hint": hint, "redundant_with": redundant,
+                                "failed_cases": 0,
+                                "note": "变异导致测试未执行，不计入断言覆盖"})
+                continue
+
             caught = (rc2 != 0) or (p2 != t2)
             nfail = t2 - p2
 
             if caught:
                 status = "CAUGHT"
-                print("%-46s CAUGHT  (%d 失败)" % (name[:46], nfail))
+                print("%-46s CAUGHT  (%d 失败 / 共 %d 条)"
+                      % (name[:46], nfail, t2))
             elif redundant:
                 pr = run_probe(tmp, redundant)
                 if pr["ok"]:
@@ -244,15 +272,18 @@ def main():
 
     print("\n" + "=" * 78)
     c = {s: sum(1 for r in results if r["status"] == s)
-         for s in ("CAUGHT", "REDUNDANT", "MISSED", "INVALID")}
-    print("变异 %d：CAUGHT %d / REDUNDANT %d / MISSED %d / INVALID %d"
-          % (len(results), c["CAUGHT"], c["REDUNDANT"], c["MISSED"], c["INVALID"]))
+         for s in ("CAUGHT", "REDUNDANT", "MISSED", "INVALID",
+                   "NOT_EXECUTED")}
+    print("变异 %d：CAUGHT %d / REDUNDANT %d / MISSED %d / INVALID %d / "
+          "NOT_EXECUTED %d"
+          % (len(results), c["CAUGHT"], c["REDUNDANT"], c["MISSED"],
+             c["INVALID"], c["NOT_EXECUTED"]))
 
-    bad = c["MISSED"] + c["INVALID"]
+    bad = c["MISSED"] + c["INVALID"] + c["NOT_EXECUTED"]
     if bad:
         print("\n!! 判定 FAIL")
         for r in results:
-            if r["status"] in ("MISSED", "INVALID"):
+            if r["status"] in ("MISSED", "INVALID", "NOT_EXECUTED"):
                 print("   - %s -> %s" % (r["mutation"], r["hint"]))
         verdict = "FAIL"
     else:

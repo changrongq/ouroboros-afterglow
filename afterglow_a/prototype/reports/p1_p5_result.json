@@ -72,6 +72,24 @@
     "detail": "superset，含 4 条，已标 engineering_only"
   },
   {
+    "id": "ZA-01",
+    "case": "调用者改对象不得影响库内状态",
+    "pass": true,
+    "detail": "深拷贝隔断别名；get/history/chain 一致"
+  },
+  {
+    "id": "ZA-02",
+    "case": "revise 不得变更 record_id",
+    "pass": true,
+    "detail": "SchemaError 拒绝身份变更：revise 不允许变更字段 ['record_id']（允许：['ba"
+  },
+  {
+    "id": "ZA-03",
+    "case": "来源空引用与悬空纠正依据被拒",
+    "pass": true,
+    "detail": "空引用 / 悬空依据 / 无来源依据，三者均被拒"
+  },
+  {
     "id": "NC",
     "case": "工程结论不得冒充科学结果",
     "pass": true,

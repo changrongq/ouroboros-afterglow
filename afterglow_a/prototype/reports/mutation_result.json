@@ -1,14 +1,15 @@
 {
   "baseline": {
-    "passed": 14,
-    "total": 14
+    "passed": 17,
+    "total": 17
   },
   "verdict": "PASS",
   "counts": {
     "CAUGHT": 7,
     "REDUNDANT": 2,
     "MISSED": 0,
-    "INVALID": 0
+    "INVALID": 0,
+    "NOT_EXECUTED": 0
   },
   "mutations": [
     {
@@ -16,7 +17,7 @@
       "status": "CAUGHT",
       "hint": "非法值不再被拒",
       "redundant_with": null,
-      "failed_cases": 2
+      "failed_cases": 1
     },
     {
       "mutation": "M2 摘要忽略 content 字段",
@@ -72,7 +73,7 @@
       "status": "CAUGHT",
       "hint": "P1/P4 的拒绝逻辑失效",
       "redundant_with": null,
-      "failed_cases": 2
+      "failed_cases": 1
     }
   ]
 }

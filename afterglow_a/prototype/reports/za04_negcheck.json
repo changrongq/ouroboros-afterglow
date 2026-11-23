@@ -1,0 +1,11 @@
+{
+  "rc": 1,
+  "passed": 0,
+  "total": 0,
+  "saw_summary": false,
+  "hard_crash": true,
+  "executed": false,
+  "old_logic_would_say": "CAUGHT",
+  "new_logic_says": "NOT_EXECUTED",
+  "za04_fixed": true
+}
