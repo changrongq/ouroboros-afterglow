@@ -103,6 +103,48 @@ python -c "s=open(r'selective_forgetting/_dhe_12f_v1_1_amend.py',encoding='utf-8
 #  153         'signed': 'B^signed_{i,e,q,sigma} = s_i * [U_{i,e,q,sigma}(p_A) - U_{i,e,q,sigma}(p_B)]',
 ```
 
+### 3.1-b 引用不可得（你指出的，属实）
+
+你问：`_dhe_12f_v1_1_amend.py` 在本机指定路径不存在，公开仓库也没有。
+
+```text
+核实结果：你说得对，而且情况比你说的更彻底。
+
+  · 该文件在本机【确实存在】（15569 B，sha256 5491d8f9bd61…）
+  · 但它【从未被 git 跟踪】
+  · 它所在目录 EntropyDrivenAI/selective_forgetting/ 下 595 个文件，
+    git 跟踪数为 0；远端该路径下只有 reports/
+  ⇒ 也就是说，整个目录是本机私有工作区，任何外部读者都拿不到。
+```
+
+```text
+⇒ 因此 §3.1 那条引用【目前无法复算】。我在此更正等级：
+
+    content_verified : yes  （我在本机读过原文，逐字转录）
+    source_available : NO   （该文件不在任何可访问仓库中）
+
+⇒ 在它入库之前，§3.1 的结论【不计入你需核的范围】。
+⇒ 你不必为这一条花时间。先审 A 原型与 B 设计的其余部分。
+```
+
+```text
+⇒ 我已出扫描报告 afterglow_design/scan_selective_forgetting_20261123.md，
+  列出该目录构成与三种入库方案，待船长定夺。
+
+⇒ 若入库，我会给固定 commit，届时再把这一条恢复为可复算。
+⇒ 在此之前，凡是引用该目录的行号（L144-153 等），
+  都只能当我自报，不能当可核实的证据。
+```
+
+```text
+⇒ 顺带说一件与 §3.2 有关的事：
+  §3.2 引用的 `attention_jump_matrix.npy`（128 B，shape=(0,)）
+  与 `entropy_memory_tracker.py`（L326/L457/L529）同样在该私有目录里。
+  ⇒ 它们【同样不可复算】。请把 §3.2 也按「自报」看待。
+```
+
+---
+
 ### 3.2 B 文件 §二、§三 — 状态与读取路径
 
 | 层 | 定义 | 现状 |
