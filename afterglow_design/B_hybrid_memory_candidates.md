@@ -72,11 +72,12 @@ R2 讨论里最反复出现的分歧，是「什么算记得」。
      · 「实现了但为空」⇒ 读取路径存在，只是没数据
      · 「逻辑没跑到」  ⇒ 读取路径是否成立，尚未被验证过
 
-  ⚠ 引用可得性：上述矩阵与源码同在 selective_forgetting/ 私有目录，
-    该目录 595 个文件从未入库。
-    ⇒ 本节的数值与行号【外部读者无法复算】。
-    ⇒ 记为 content_verified / source_available = NO。
-    ⇒ 处置见 scan_selective_forgetting_20261123.md。
+  ⚠ 引用可得性：源码 `_dhe_12f_v1_1_amend.py` 已入库，
+    固定 commit `b2874e3`，sha256 5491d8f9bd61…，外部可复算。
+    ⇒ 但本节引用的 `attention_jump_matrix.npy` 与 `entropy_memory_tracker.py` 
+      【仍不在那 12 个文件之内】，仍在私有工作区。
+    ⇒ 因此本节的数值与行号【外部读者仍无法复算】，
+      记为 content_verified / source_available = NO。
 ```
 
 ### 2.2 为什么必须分开
@@ -266,25 +267,34 @@ P-b 的残差是【根据什么算出来的】？
 ```
 
 ```text
-⚠ 【2026-11-23 引用可得性更正（知微指出，属实）】
+⚠ 【2026-11-23 引用可得性：曾不可得，现已修复】
 
-  事实：`_dhe_12f_v1_1_amend.py` 位于
-        d:\qcr\EntropyDrivenAI\selective_forgetting\
-        该目录下 595 个文件【从未入库】（git 未跟踪，远端仅有 reports/）。
+  经过（如实记）：
+    · 知微指出该文件在公开仓库与本机指定路径均不可得。
+    · 核实：selective_forgetting/ 下 595 个文件从未被 git 跟踪，远端仅 1 个。
+    · 首次尝试入库（commit 9431d6e）后，core.autocrlf 把 319 处 CRLF 转成 LF，
+      文件 15569 B → 15250 B，sha256 5491d8f9bd61… → 40b790cd61df…。
+      ⇒ 能取到文件，仍核不到引用值。
+    · 加 `.gitattributes`（`selective_forgetting/** -text`）后重提（commit b2874e3），
+      blob 已还原为原始字节。
 
-  ⇒ 也就是说，上面这段引用【在任何公开仓库里都拿不到】。
-  ⇒ 任何人（含知微）都无法按我给的路径复算。
+  ⇒ 现状（本条的引用等级）：
 
-  ⇒ 因此本条在此更正为：
+      content_verified   : yes
+      source_available   : YES
 
-      content_verified   : yes （我在本机读过原文，逐字转录）
-      source_available   : NO  （该文件不在任何可访问仓库中）
+      仓库      : github.com/changrongq/EntropyDrivenAI
+      固定 commit: b2874e3d9c83397188988916ae1fe0e53adac42e
+      路径      : selective_forgetting/_dhe_12f_v1_1_amend.py
+      bytes     : 15569
+      sha256    : 5491d8f9bd61f3f1fb8474fb037aa88950050759d23d72b5bdbb90cf6db6f803
 
-  ⇒ 在它入库之前，本条【不计入可复算范围】。
-  ⇒ 不得因为我在文档里写了行号，就把它当作可核实的证据。
+  ⇒ 取回方式（任选）：
+      curl -sL https://raw.githubusercontent.com/changrongq/EntropyDrivenAI/b2874e3/selective_forgetting/_dhe_12f_v1_1_amend.py | sha256sum
+      应得上 5491d8f9bd61…
 
-  ⇒ 处置方案见 `afterglow_design/scan_selective_forgetting_20261123.md`，
-    待船长定夺入库范围。
+  ⇒ 入库范围：线 C 相关 12 个文件（见该 commit message 的清单）。
+    该目录其余 583 个文件仍未入库，凡引用它们的内容仍按 source_available = NO 处理。
 ```
 
 ---
