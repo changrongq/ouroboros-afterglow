@@ -131,6 +131,14 @@ class Record:
         if self.unknown_reason is not None and self.unknown_reason not in UNKNOWN_REASONS:
             problems.append("unknown_reason=%r 不在闭集内" % (self.unknown_reason,))
 
+        # ZA-03（知微 r2/24）：来源枚举不能代替引用存在性。
+        # 除 unknown 外，任何来源都应有非空 source_ref；
+        # 否则「来源已判定」是假的，只是枚举值看着确定。
+        if self.source_kind != "unknown" and not (self.source_ref or "").strip():
+            problems.append(
+                "source_kind=%s 但 source_ref 为空（A §1.1 把空引用列为未知）"
+                % self.source_kind)
+
         # 承诺态与承诺字段的一致性
         if self.commitment_state in {"proposed", "accepted", "fulfilled"}:
             if not self.committed_to:
@@ -202,12 +210,28 @@ class RecoveryStore:
             raise SchemaError("; ".join(probs))
         d = rec.to_dict()
         d["this_digest"] = canonical_digest(d)
-        self._live[rec.record_id] = rec
-        self._history.setdefault(rec.record_id, []).append(d)
+        # ZA-01（知微 r2/24）：取得独立状态所有权。
+        # 不能把调用者传入的 Record 本体放进 _live ——
+        # 调用者仍持有该对象，可在 insert 返回后不经 revise 直接改它，
+        # 造成 get() 与 history() 不一致而 verify_chain 仍通过。
+        _body = {k: v for k, v in d.items() if k != "this_digest"}
+        owned = Record(**copy.deepcopy(_body))
+        self._live[rec.record_id] = owned
+        self._history.setdefault(rec.record_id, []).append(copy.deepcopy(d))
         self._write_log.append({"op": "insert", "record_id": rec.record_id,
                                 "digest": d["this_digest"],
                                 "at": _now()})
         return d["this_digest"]
+
+    # 普通 revise 允许变更的字段白名单。
+    # ZA-02（知微 r2/24）：record_id 是链身份，不得经普通 revise 偷换。
+    # 若将来要支持改名/迁移，应设计显式关系，而不是复用 revise。
+    _REVISABLE = {
+        "content", "source_kind", "source_ref", "participant_id",
+        "participation_basis", "basis_ref", "commitment_state",
+        "committed_by", "committed_to", "commitment_ref",
+        "relation", "unknown_reason",
+    }
 
     # ---- 修订（不覆盖：旧版保留）
     def revise(self, record_id: str, changes: Dict[str, Any],
@@ -215,6 +239,14 @@ class RecoveryStore:
         cur = self._live.get(record_id)
         if cur is None:
             raise KeyError(record_id)
+
+        illegal = set(changes) - self._REVISABLE
+        if illegal:
+            raise SchemaError(
+                "revise 不允许变更字段 %s（允许：%s）。"
+                "record_id 等身份字段不得经普通 revise 变更。"
+                % (sorted(illegal), sorted(self._REVISABLE)))
+
         cur_d = cur.to_dict()
         prev_digest = canonical_digest(cur_d)
 
@@ -232,8 +264,9 @@ class RecoveryStore:
 
         d = rec.to_dict()
         d["this_digest"] = canonical_digest(d)
-        self._live[record_id] = rec
-        self._history[record_id].append(d)
+        _body = {k: v for k, v in d.items() if k != "this_digest"}
+        self._live[record_id] = Record(**copy.deepcopy(_body))
+        self._history[record_id].append(copy.deepcopy(d))
         self._write_log.append({"op": "revise", "record_id": record_id,
                                 "from": prev_digest, "to": d["this_digest"],
                                 "reason": reason, "at": _now()})
@@ -242,16 +275,51 @@ class RecoveryStore:
     # ---- 纠正（语义包装：加 correction_of 边，不删除原件）
     def correct(self, record_id: str, new_content: str,
                 correcting_record_id: str, reason: str) -> str:
-        cur = self._live[record_id]
+        """ZA-03（知微 r2/24）：
+
+        原实现可以引用根本不存在的 correcting_record_id，
+        同时换掉内容却保留旧的 source_kind / source_ref ——
+        链通过，但新内容没有经过核验的对应来源。
+
+        现改为：
+          1. correcting_record_id 必须已存在（否则拒绝生效）；
+          2. 该记录必须带有非空 source_ref；
+          3. 纠正后本记录的来源改指向【纠正依据】，不再是原始来源，
+             并保留 correction_of 边供追溯。
+        """
+        cur = self._live.get(record_id)
+        if cur is None:
+            raise KeyError(record_id)
+
+        basis = self._live.get(correcting_record_id)
+        if basis is None:
+            raise SchemaError(
+                "纠正依据不存在：%s。缺依据时不得让纠正在沿用原来源的情况下生效。"
+                % correcting_record_id)
+        if not (basis.source_ref or "").strip():
+            raise SchemaError(
+                "纠正依据 %s 没有可核验的 source_ref，不能为更正后内容作证。"
+                % correcting_record_id)
+
         rel = list(cur.relation) + [{
             "relation_type": "correction_of",
             "from_id": record_id,
             "to_id": correcting_record_id,
             "relation_basis": reason,
         }]
-        return self.revise(record_id,
-                           {"content": new_content, "relation": rel},
-                           reason="correction: " + reason)
+        return self.revise(
+            record_id,
+            {
+                "content": new_content,
+                "relation": rel,
+                # 来源改指向纠正依据，不再沿用原始来源
+                "source_kind": basis.source_kind,
+                "source_ref": basis.source_ref,
+                "participant_id": basis.participant_id,
+                "participation_basis": basis.participation_basis,
+                "basis_ref": basis.basis_ref,
+            },
+            reason="correction: " + reason)
 
     # ---- 链校验
     def verify_chain(self, record_id: str) -> Tuple[bool, List[str]]:

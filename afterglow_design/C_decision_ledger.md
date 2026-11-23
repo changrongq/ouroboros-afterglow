@@ -90,6 +90,74 @@ C3  固定引用必须使用具体提交身份。
 
 ---
 
+### 一之零之三 · 第三位分工审查的结果（2026-11-23 · 知微）
+
+| 项 | 内容 |
+|---|---|
+| 审查人 | 知微 |
+| 职责 | 审查状态、读取路径、重置及对照设计的技术可行性（裁定 §二） |
+| 被审对象 | `ab53fca`（他另比对 `e8b6c40`：A 未变，B 只增两处来源说明） |
+| **结论** | **需要修订**（他自定标签：`A_TRUSTED_RECOVERY_IMPLEMENTATION_REVIEW = REVISE`） |
+| 原件 | `discussions/r2/24_MEMCAND-R2_知微_第一阶段设计独立审查_REVISE_20261123.md`（**他本人成文，逐字节**） |
+
+```text
+⇒ 他指出的四项原型缺口，我逐条复现后确认【全部成立】，并已修复：
+
+  ZA-01  对象别名 —— insert 后调用者改 Record，get() 返回被改内容，
+         history 仍是原值，verify_chain 仍 True，恢复仍 exact。
+         ⇒ 已修：insert/revise 深拷贝入库，调用者改动被隔断。
+
+  ZA-02  revise 可改 record_id —— 身份被换，链仍通过，新 id 取不到。
+         ⇒ 已修：revise 加字段白名单，record_id 不在其中。
+
+  ZA-03  来源缺省与纠正来源 ——
+         (a) source_kind=user_utterance 且 source_ref=None 通过 validate；
+         (b) correct 可指向不存在的记录，且沿用旧 source_kind/source_ref。
+         ⇒ 已修：validate 拦空 source_ref；correct 要求依据存在且有来源。
+
+  ZA-04  无效变异被判 CAUGHT —— 注入语法错误后 0 条测试执行，
+         驱动 caught=(rc2!=0 or p2!=t2) 因 rc=1 即算 CAUGHT。
+         ⇒ 已修：run_in 增加 executed 判定，新增 NOT_EXECUTED 分类，
+           且它计入失败（整体 FAIL）。
+
+⇒ 修后状态：四项全部 FIXED。
+   复跑：python afterglow_a/evidence/repro_zh_hui.py
+   结果：afterglow_a/evidence/zh_hui_counterexamples.json
+```
+
+```text
+⇒ 【他还推翻了我 B §4.3 的核心结论，这一条最重】
+
+  我原读：d = U(p_A) − U(p_B)，「固定规则 ⇒ 与经历无关」。
+  他指：amend 开头已声明「本脚本只做三件事, 不加载模型, 不算任何 endpoint」。
+        实际 d 是 derive 阶段由【条件化激活差分】算出的方向向量（4096 维）；
+        U 之差是注入【之后】的标量测量指标。
+
+  我核对源码后确认：
+    derive L242  delta[episode_id] = (zA / 24.0) - (zB / 24.0)
+    derive L257  d64 = mean64 / n64
+    derive L317  np.save('_dhe_12f_raw_dm.npy', raw32)
+  ⇒ U 在 d 的下游，不是 d 的定义。
+  ⇒ 我把【注入方向】与【注入后的测量指标】混为一谈，且依赖方向倒置。
+  ⇒ 「规则固定 ⇒ 常数偏置 ⇒ 与经历无关」这个一般推论【撤回】。
+  ⇒ B §4.3 已重写：原结论标【已撤回】保留可追溯，另起第二版。
+
+⇒ 连带更正：我原建议「β 的可学习部分必须挪到 U 的输入侧」也【撤回】。
+   U 是测量读出，不应先把它当记忆构造器去改。
+   真正缺的是状态与更新契约：谁更新、如何保存与选版本、未来如何消费、
+   以及如何与未写入/无关经历/固定方向区分。
+```
+
+```text
+⇒ 他还指出 B 的三项控制需修订（ZB-01/02/03），我登记为待改，不在本轮改：
+  ZB-01  回滚 / 从持久文件重建 / 科学 Reset 三者必须分开列
+         （冻结预注册 §22/§23：Reset 是清输入侧痕迹、保留被测 substrate）
+  ZB-02  撤销后的【未来消费】≠ 追溯判定过去写入违法
+  ZB-03  候选机制探针与实际收益比较必须拆成两组对照
+```
+
+---
+
 ### 一之零之二 · 第二位分工审查的结果（2026-11-23 · 睫）
 
 | 项 | 内容 |

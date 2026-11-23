@@ -1,0 +1,70 @@
+{
+  "generated_by": "afterglow_a/evidence/repro_zh_hui.py",
+  "purpose": "固化知微 2026-11-23 审查：修前复现 + 修后状态",
+  "results": [
+    {
+      "id": "ZA-01",
+      "desc": "调用者改对象是否影响库内状态",
+      "observed": {
+        "get": "原始内容",
+        "history": "原始内容",
+        "chain_ok": true
+      },
+      "status": "FIXED",
+      "before_fix": "get() 返回被改内容，history 仍是原值，链仍通过",
+      "after_fix": "insert/revise 深拷贝入库，调用者的改动被隔断"
+    },
+    {
+      "id": "ZA-02",
+      "desc": "revise 是否允许变更 record_id",
+      "observed": {
+        "rejected": true,
+        "detail": "revise 不允许变更字段 ['record_id']（允许：['basis_ref', 'commitmen"
+      },
+      "status": "FIXED",
+      "before_fix": "身份被改 → get('syn-0001')['record_id']='renamed-id'，链仍通过",
+      "after_fix": "revise 加字段白名单，record_id 不在其中"
+    },
+    {
+      "id": "ZA-03",
+      "desc": "空引用 / 悬空依据 / 无来源依据",
+      "observed": {
+        "empty_ref_rejected": true,
+        "dangling_basis_rejected": true,
+        "basis_without_source_rejected": true
+      },
+      "status": "FIXED",
+      "before_fix": "三者均通过：空 ref 合法；纠正可指向不存在记录；可沿用旧来源",
+      "after_fix": "三者均被拒：validate 拦空 ref；correct 要求依据存在且有 source_ref"
+    },
+    {
+      "id": "ZA-04",
+      "desc": "语法错误变异是否被算 CAUGHT",
+      "observed": {
+        "exit": 1,
+        "saw_summary": false,
+        "hard_crash": true,
+        "executed": false,
+        "old_logic": "CAUGHT",
+        "new_logic": "NOT_EXECUTED"
+      },
+      "status": "FIXED",
+      "before_fix": "caught=(rc!=0 or p!=t)：rc=1 即算 CAUGHT，但 0 条测试执行",
+      "after_fix": "run_in 增加 executed 判定；NOT_EXECUTED 计入失败，整体 FAIL"
+    },
+    {
+      "id": "ZW-3.1",
+      "desc": "d 的来源：激活差分方向，非 endpoint 之差",
+      "observed": {
+        "amend_声明不加载模型且不算endpoint": true,
+        "amend_有_patch_定义": true,
+        "derive_delta_由激活差分算出": true,
+        "derive_归一化为方向": true,
+        "derive_保存方向_npy": true
+      },
+      "status": "MY_READING_WAS_WRONG",
+      "before_fix": "Coder 原读：d = U(p_A) − U(p_B)，固定规则 ⇒ 与经历无关",
+      "after_fix": "实际：d 由 (zA/24 − zB/24) 归一化得到（4096 维方向向量）；U 之差是注入后的标量测量指标，在 d 的下游。结论已撤回。"
+    }
+  ]
+}

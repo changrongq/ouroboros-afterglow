@@ -149,7 +149,9 @@ def p3():
 
     store.correct("syn-0004",
                   "记录称检修当天天气为阴。",
-                  correcting_record_id="syn-0005",
+    # ZA-03（知微 r2/24）：纠正依据必须存在且有可核验来源。
+    # 原用例用 syn-0005（unknown、无 source_ref），那正是应被拒绝的用法。
+                  correcting_record_id="syn-0001",
                   reason="第三方气象记录与当事人的雨/晴说法冲突，取中间值待核")
     after = store.history("syn-0004")
     assert len(after) == 2, "纠正后应有 2 版"
@@ -157,7 +159,7 @@ def p3():
     assert after[1]["content"] != old_content, "新版内容未变"
     rels = [r for r in after[1]["relation"] if r["relation_type"] == "correction_of"]
     assert len(rels) == 1, "纠正关系边缺失"
-    assert rels[0]["to_id"] == "syn-0005", "纠正指向错误"
+    assert rels[0]["to_id"] == "syn-0001", "纠正指向错误"
 
     cur = store.get("syn-0004")
     assert cur["content"] == "记录称检修当天天气为阴。", "当前版不是纠正后版本"
@@ -295,13 +297,86 @@ def nc2():
     return "写入日志 %d 条，含 from/to 摘要" % len(log)
 
 
+# ============================================================ ZA 回归
+# 以下四条对应知微 2026-11-23 独立审查（r2/24）指出的四项缺口。
+# 修前它们是「复现成立」，修后必须转为「已被拒绝或已被隔离」。
+
+@case("ZA-01", "调用者改对象不得影响库内状态")
+def za01():
+    store = RecoveryStore()
+    store.load_seed(SEED)
+    r = Record(record_id="alias-1", content="原始内容",
+               source_kind="user_utterance", source_ref="synth/turn/1",
+               participant_id="p1", participation_basis="first_person_report",
+               basis_ref="synth/turn/1", commitment_state="not_a_commitment",
+               revision=1, prev_digest=None,
+               changed_at="2026-11-23T00:00:00Z", change_authority="t")
+    store.insert(r)
+    before = store.get("alias-1")["content"]
+    r.content = "MUTATED OUTSIDE REVISE"
+    after = store.get("alias-1")["content"]
+    hist = store.history("alias-1")[0]["content"]
+    assert after == before, "别名生效：调用者改对象影响了库内状态"
+    assert hist == before, "history 被别名污染"
+    okc, probs = store.verify_chain("alias-1")
+    assert okc, probs
+    return "深拷贝隔断别名；get/history/chain 一致"
+
+
+@case("ZA-02", "revise 不得变更 record_id")
+def za02():
+    store = RecoveryStore()
+    store.load_seed(SEED)
+    try:
+        store.revise("syn-0001", {"record_id": "renamed-id"})
+    except SchemaError as e:
+        assert "record_id" in str(e), "报错未指向 record_id"
+        return "SchemaError 拒绝身份变更：%s" % str(e)[:36]
+    raise AssertionError("revise 仍允许改 record_id（ZA-02 未修）")
+
+
+@case("ZA-03", "来源空引用与悬空纠正依据被拒")
+def za03():
+    # (1) 非 unknown 来源但 source_ref 为空 ⇒ 拒绝
+    t = Record(record_id="x", content="c", source_kind="user_utterance",
+               source_ref=None, participant_id="p",
+               participation_basis="first_person_report", basis_ref=None,
+               commitment_state="not_a_commitment", revision=1,
+               prev_digest=None, changed_at="2026-11-23T00:00:00Z",
+               change_authority="t")
+    probs = t.validate()
+    assert any("source_ref" in p for p in probs), \
+        "空 source_ref 未被视为来源未判定"
+    # (2) 纠正依据不存在 ⇒ 拒绝
+    store = RecoveryStore()
+    store.load_seed(SEED)
+    try:
+        store.correct("syn-0004", "新内容",
+                      correcting_record_id="DOES-NOT-EXIST", reason="t")
+    except SchemaError as e:
+        assert "不存在" in str(e)
+    else:
+        raise AssertionError("纠正依据不存在却成功（ZA-03 未修）")
+    # (3) 纠正依据无来源 ⇒ 拒绝
+    try:
+        # syn-0005 是 unknown 且 source_ref=None，正是不该被当作依据的那种记录
+        store.correct("syn-0004", "新内容",
+                      correcting_record_id="syn-0005", reason="t")
+    except SchemaError as e:
+        assert "source_ref" in str(e)
+    else:
+        raise AssertionError("纠正依据无来源却成功（ZA-03 未修）")
+    return "空引用 / 悬空依据 / 无来源依据，三者均被拒"
+
+
 def main():
     print("=" * 74)
     print("AfterGlow-A 最小原型 · P1–P5 验收")
     print("=" * 74)
     tests = [v for k, v in sorted(globals().items())
              if callable(v) and hasattr(v, "pid")]
-    order = {"P1": 1, "P2": 2, "P3": 3, "P4": 4, "P5": 5, "NC": 6}
+    order = {"P1": 1, "P2": 2, "P3": 3, "P4": 4, "P5": 5,
+             "ZA-01": 8, "ZA-02": 8, "ZA-03": 8, "NC": 9}
     tests.sort(key=lambda f: (order.get(f.pid, 9), f.__name__))
 
     cur = None
