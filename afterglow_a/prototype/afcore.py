@@ -330,6 +330,10 @@ class RecoveryStore:
         self._live: Dict[str, Record] = {}          # 当前版
         self._history: Dict[str, List[Dict[str, Any]]] = {}  # 全版本
         self._write_log: List[Dict[str, Any]] = []
+        # ---- 观测链（Mion 2026-11-24 回复4 §三）
+        # 与 _history 分开：观测不进内容链，但有自己的一条链。
+        self._observed_chain: Dict[str, List[Dict[str, Any]]] = {}
+        self._observed_chain_head: Dict[str, str] = {}
 
     # ---- 载入合成种子
     def load_seed(self, path: str) -> int:
@@ -566,13 +570,29 @@ class RecoveryStore:
             conflict = ("none" if observed == "human_input"
                         else "asserted_contradicts_observed")
         elif asserted == "third_person_report":
-            conflict = ("asserted_contradicts_observed"
-                        if observed == "model_generation" else "none")
+            # Mion 2026-11-24 回复4 §4.1：
+            # 判冲突的根据是【断言与观测相反】，不是「模型生成的内容
+            # 没有第三方来源可言」。后者要求先定义「什么叫有来源」，
+            # 判定不可终止；前者只需看 observed 有没有 human_input 痕迹。
+            conflict = ("none" if observed == "human_input"
+                        else "asserted_contradicts_observed")
         elif asserted == "record_only":
-            conflict = ("asserted_contradicts_observed"
-                        if observed == "model_generation" else "none")
+            # Mion 2026-11-24 回复4 §4.2：
+            # record_only 的断言是「不指向任何陈述者」，
+            # 模型生成的内容【不违反】这个断言 ⇒ 判 none。
+            # 弱断言不容易被违反，这是它的性质，不是缺陷；
+            # 把「弱断言 + 不利观测」一律判冲突，是在惩罚诚实地不声称。
+            # ⚠ 但 record_only 会成为洗白档 ⇒ 用 record_only_ratio 单独度量。
+            conflict = "none"
         else:
             conflict = "observed_unresolved"
+
+        # 伪亲历的派生标记（Mion 2026-11-24 回复4 §五）
+        # ⚠ 不是第五个 basis_conflict 值：
+        #   「冲突」是一层事实，「伪亲历」是它的一个真子集 —— 两层。
+        #   一个字段装两层，就是我们从头到尾在治的病。
+        pseudo = (asserted == "first_person_report"
+                  and observed == "model_generation")
 
         _body = cur.to_dict()
         _body["observed_origin"] = observed_origin
@@ -581,11 +601,79 @@ class RecoveryStore:
             {k: v for k, v in _body.items() if k != "this_digest"}))
         self._live[record_id] = owned
 
+        # ---- 观测链（Mion 2026-11-24 回复4 §三 方案 b）
+        #
+        # ⚠ 原实现只写 _live，不写 _history、不重算摘要
+        #   ⇒ verify_chain 只迭代 _history，从不看 _live
+        #   ⇒ 观测字段成了【唯一不受校验的字段】
+        #   ⇒ 这很讽刺：整套东西是为了让观测约束声明，
+        #     结果观测本身成了链外的东西。
+        #
+        # ⇒ 修法：单独一条 _observed_chain，不动 revision 序，
+        #   不动内容摘要（content_digest 语义不变）。
+        #   冲突值本身也进摘要 ⇒ 改 basis_conflict 会断链。
+        prev = self._observed_chain_head.get(record_id)
+        entry = {
+            "record_id": record_id,
+            "asserted": asserted,
+            "observed": observed,
+            "basis_conflict": conflict,
+            "pseudo_first_person": pseudo,
+            "at": _now(),
+            "prev": prev,
+        }
+        entry["digest"] = canonical_digest(entry)
+        self._observed_chain.setdefault(record_id, []).append(entry)
+        self._observed_chain_head[record_id] = entry["digest"]
+
         self._write_log.append({
             "op": "record_observed", "record_id": record_id,
             "asserted": asserted, "observed": observed,
             "basis_conflict": conflict, "note": note, "at": _now(),
         })
+
+    def observed_chain(self, record_id: str) -> List[Dict[str, Any]]:
+        """该记录的观测链（每次 record_observed 一条）。"""
+        return [copy.deepcopy(e)
+                for e in self._observed_chain.get(record_id, [])]
+
+    def verify_observed_chain(self, record_id: str) -> Tuple[bool, List[str]]:
+        """校验观测链：链接与摘要是否自洽。
+
+        Mion 2026-11-24 回复4 §三：
+          「这一步之后，我想问的那个问题才有答案：
+            『这条记录的冲突判定有没有被动过？』」
+        """
+        chain = self._observed_chain.get(record_id, [])
+        problems: List[str] = []
+        if not chain:
+            # 没有观测不是错误，是 observed_absent —— 由上层表达
+            return True, []
+
+        prev = None
+        for i, e in enumerate(chain):
+            recomputed = canonical_digest(
+                {k: v for k, v in e.items() if k != "digest"})
+            if recomputed != e.get("digest"):
+                problems.append("第%d条观测摘要不符：记录 %s ≠ 重算 %s"
+                                % (i + 1, str(e.get("digest"))[:12],
+                                   recomputed[:12]))
+            if e.get("prev") != prev:
+                problems.append("第%d条观测 prev 未指向第%d条摘要"
+                                % (i + 1, i))
+            prev = e.get("digest")
+        return (len(problems) == 0), problems
+
+    def observed_chained(self, record_id: str) -> bool:
+        """该记录的观测是否已进入观测链。"""
+        return bool(self._observed_chain.get(record_id))
+
+    def pseudo_first_person(self, record_id: str) -> bool:
+        """该记录是否已被判为伪亲历（派生标记，非第五个枚举值）。"""
+        chain = self._observed_chain.get(record_id, [])
+        if not chain:
+            return False
+        return bool(chain[-1].get("pseudo_first_person"))
 
     def _was_modified(self, record_id: str) -> bool:
         """该记录是否曾被 revise / correct 过。
@@ -677,6 +765,13 @@ class RecoveryStore:
             parts.append([rid + "\x00live",
                           json.dumps(cur.to_dict(), sort_keys=True,
                                      ensure_ascii=False,
+                                     separators=(",", ":"))])
+        # 纳入观测链（Mion 2026-11-24 回复4 §三）
+        # ⇒ 否则「检查后改观测」不会被 stale_check 发现
+        for rid in sorted(self._observed_chain):
+            parts.append([rid + "\x00obs",
+                          json.dumps(self._observed_chain[rid],
+                                     sort_keys=True, ensure_ascii=False,
                                      separators=(",", ":"))])
         blob = json.dumps(parts, sort_keys=True, ensure_ascii=False,
                           separators=(",", ":")).encode("utf-8")

@@ -402,6 +402,14 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
             "unverifiable_ratio": None,
             "unverifiable_ids": [],
             "unverifiable_note": "未指定范围 ⇒ 不可计算，不是 0。",
+            "record_only_ratio": None,
+            "record_only_ids": [],
+            "record_only_note": "未指定范围 ⇒ 不可计算。",
+            "pseudo_first_person_ids": [],
+            "pseudo_first_person_note": "未指定范围 ⇒ 不可判定。",
+            "observed_chained_ids": [],
+            "observed_unchained_ids": [],
+            "observed_chained_note": "未指定范围 ⇒ 不可判定。",
         }
 
     ids = sorted(set(record_ids))
@@ -413,6 +421,14 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
             "unverifiable_ratio": None,
             "unverifiable_ids": [],
             "unverifiable_note": "取回集为空 ⇒ 不可计算，不是 0。",
+            "record_only_ratio": None,
+            "record_only_ids": [],
+            "record_only_note": "取回集为空 ⇒ 不可计算。",
+            "pseudo_first_person_ids": [],
+            "pseudo_first_person_note": "取回集为空 ⇒ 不可判定。",
+            "observed_chained_ids": [],
+            "observed_unchained_ids": [],
+            "observed_chained_note": "取回集为空 ⇒ 不可判定。",
         }
 
     buckets: Dict[str, List[str]] = {}
@@ -447,6 +463,40 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
     total = len(ids)
     ratio = (len(unverifiable) / total) if total else None
 
+    # ---- record_only_ratio（Mion 2026-11-24 回复4 §4.2）
+    #
+    # ⚠ 这是一个【行为漏洞】的度量，不是判定漏洞：
+    #   record_only 的断言是「不指向任何陈述者」，模型生成不违反它 ⇒ 判 none。
+    #   但这会让 record_only 成为【洗白档】：
+    #   把本该 first_person_report 的内容标成 record_only，
+    #   伪亲历就整体消失 —— 而且指标会变好看。
+    #
+    # ⇒ 判定管不了它，只有度量管得住。
+    #
+    # ⚠ 此指标【不是合格率】，是伪亲历统计可信度的前置条件。
+    record_only_ids = []
+    for rid in ids:
+        rec = store.get(rid)
+        if rec is not None and rec.get("participation_basis") == "record_only":
+            record_only_ids.append(rid)
+    record_only_ratio = (len(record_only_ids) / total) if total else None
+
+    # ---- 观测是否进链（Mion 2026-11-24 回复4 §三 状态词）
+    chained_ids = []
+    unchained_ids = []
+    for rid in ids:
+        if hasattr(store, "observed_chained") and store.observed_chained(rid):
+            chained_ids.append(rid)
+        else:
+            unchained_ids.append(rid)
+
+    # 伪亲历派生标记（不是第五个 basis_conflict 值）
+    pseudo_ids = []
+    for rid in ids:
+        if hasattr(store, "pseudo_first_person") and \
+                store.pseudo_first_person(rid):
+            pseudo_ids.append(rid)
+
     # 严重度优先：冲突 > 判不出 > 无观测 > 一致
     for level in ("asserted_contradicts_observed",
                   "observed_unresolved",
@@ -458,7 +508,7 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
                 "affected_ids": sorted(buckets[level]),
                 "detail": {
                     "asserted_contradicts_observed":
-                        "声明与系统观测不一致（伪亲历形态）",
+                        "声明与系统观测不一致（asserted_contradicts_observed）",
                     "observed_unresolved": "有观测但判不出来源",
                     "observed_absent": "无观测通道（不得读作无冲突）",
                     "none": "两路观测一致",
@@ -469,6 +519,25 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
                 "unverifiable_note":
                     "本值不是伪亲历率，而是「无法判定是否伪亲历」的记录占比；"
                     "它给出的是任何伪亲历结论的适用范围上限，不是结论本身。",
+                # Mion 回复4 §4.2：行为漏洞的度量
+                "record_only_ratio": record_only_ratio,
+                "record_only_ids": sorted(record_only_ids),
+                "record_only_note":
+                    "record_only 比例上升 ⇒ 伪亲历统计的分母被抽空。"
+                    "此指标不是合格率，是统计可信度的前置条件。",
+                # Mion 回复4 §五：派生标记，不是第五值
+                "pseudo_first_person_ids": sorted(pseudo_ids),
+                "pseudo_first_person_note":
+                    "basis_conflict 度量「断言与观测是否一致」，"
+                    "不度量「是否伪亲历」。伪亲历是它的一个真子集。"
+                    "⇒ 不得把 none 读成「没有伪亲历」，"
+                    "也不得把 asserted_contradicts_observed 读成「有伪亲历」。",
+                # Mion 回复4 §三：观测是否进链
+                "observed_chained_ids": sorted(chained_ids),
+                "observed_unchained_ids": sorted(unchained_ids),
+                "observed_chained_note":
+                    "未进链的记录，其观测值不在任何摘要内 ⇒ "
+                    "改它不会被任何检查发现。",
             }
 
     return {
@@ -479,6 +548,15 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
         "unverifiable_ids": unverifiable,
         "unverifiable_note":
             "本值不是伪亲历率，而是「无法判定是否伪亲历」的记录占比。",
+        "record_only_ratio": record_only_ratio,
+        "record_only_ids": sorted(record_only_ids),
+        "record_only_note":
+            "record_only 比例上升 ⇒ 伪亲历统计的分母被抽空。",
+        "pseudo_first_person_ids": sorted(pseudo_ids),
+        "pseudo_first_person_note": "basis_conflict ≠ 伪亲历，后者是真子集。",
+        "observed_chained_ids": sorted(chained_ids),
+        "observed_unchained_ids": sorted(unchained_ids),
+        "observed_chained_note": "未进链的观测值不在任何摘要内。",
     }
 
 

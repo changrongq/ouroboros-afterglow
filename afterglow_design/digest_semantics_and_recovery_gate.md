@@ -847,7 +847,203 @@ IMPORTANCE_LEARNING    = ABSENT（作者自述，非实测）
 
 ---
 
-## 十二 · 固定提交身份
+## 十二 · 观测进链与判定表修正（据 Mion 2026-11-24 回复4）
+
+Mion 复核 PR #70 后指出：**四项都到位了，但观测现在在链外。**
+这是四项一起造出来的新问题，不是四项之一。
+
+### 12.1 链外问题（这是本轮最重要的一条）
+
+```text
+事实：record_observed() 原实现只写 _live，不写 _history，不重算摘要。
+     verify_chain() 只迭代 _history，源码里 _live 出现 0 次。
+     ⇒ 把 live 的 observed_origin 改成任何值，链仍 True。
+
+实测：
+  把 live 的 observed_origin 改成 human_input、basis_conflict 改成 none
+  verify_chain('r1') = True   []
+```
+
+```text
+⇒ record_observed 是【第一个只改 live 的操作】，
+  它绕过了这个原型唯一的完整性机制。
+```
+
+```text
+⚠ 请注意这个反讽，Mion 原话：
+  「我们做这一整套，是为了让『观测』能约束『声明』。
+    结果观测字段本身，成了唯一不受校验的字段。」
+```
+
+```text
+⚠ 还有一处例外，而它让问题更糟：
+  若之后对该记录调用 revise()，观测会被带进 _history 重算摘要
+  ⇒ 那一刻起观测才进链。
+  但【观测过的记录，恰恰最可能不再被修订】——
+  它就是那条「已经定好了、用来作证」的记录。
+  ⇒ 在最需要它的情形下，它永远在链外。
+```
+
+### 12.2 修法：单独一条观测链（Mion 方案 b）
+
+```text
+三条路，选 (b)：
+
+(a) record_observed 后重算并替换 _history[0] 的摘要
+    ✗ 会让「建立时状态」消失，等于把观测混进内容摘要
+    ✗ revision 仍为 1，摘要与 revision 语义不一致
+
+(b) 单独一条观测链 _observed_chain            ← 已实现
+    每次 record_observed 追加一条：
+      { record_id, asserted, observed, basis_conflict,
+        pseudo_first_person, at, prev, digest }
+    最后一条的 digest 作为链头。
+
+(c) 在文档里声明「observed_origin 是链外字段」
+    ✗ 这不是修，这是把洞写成规格
+```
+
+```text
+为什么 (b) 对（Mion 原话）：
+  「它让观测【第一次进入完整性范围】，且：
+     － 不动 revision 序（verify_chain 不用改）
+     － 不动内容摘要（content_digest 语义不变）
+     － 冲突值本身也被摘要覆盖 ⇒ 改 basis_conflict 会断链」
+```
+
+```text
+⇒ 这一步之后，「这条记录的冲突判定有没有被动过」才有答案。
+   实现：verify_observed_chain() / observed_chain() / observed_chained()
+   并且 snapshot_token() 也纳入观测链
+   ⇒ 否则「检查后改观测」不会被 stale_check 发现。
+```
+
+### 12.3 判定表：Mion 改了两格
+
+#### `third_person_report × model_generation` ⇒ 冲突（我原判对，理由要换）
+
+```text
+我原写：模型生成的内容没有第三方来源可言。
+Mion 要求换成：断言是「我被某人告知」；观测说「这条是模型生成，
+              没有任何被告知的痕迹」⇒ 断言与观测相反。
+
+⇒ 差别不在措辞，在可测性：
+   按「没有来源可言」⇒ 要先去定义什么叫「有来源」，判定不可终止
+   按「断言与观测相反」⇒ 只需看 observed 有没有 human_input 痕迹，可判
+
+⇒ 用「相反」而不是「不存在」，是把一个哲学问题降成一个字段比较。
+```
+
+#### `record_only × model_generation` ⇒ `none`（我原判冲突，Mion 不同意）
+
+```text
+record_only 的断言：这条记录不指向任何陈述者
+model_generation 的观测：这条内容是模型生成的
+⇒ 一个不指向陈述者的记录，由模型生成 —— 两者不矛盾。
+```
+
+```text
+Mion 给的理由，比这一格本身重要：
+  「弱断言不容易被违反 —— 这是它的【性质】，不是它的缺陷。
+    你若把『弱断言 + 不利观测』一律判冲突，
+    那你是在惩罚『诚实地不声称』。」
+```
+
+```text
+⚠ 但这带来一个真漏洞，必须单独处理：
+   record_only 会成为【洗白档】。
+   把本该 first_person_report 的内容标成 record_only，
+   伪亲历就整体消失 —— 而且指标会变好看。
+
+⇒ 判定不改（none），但要【单独度量】：
+     record_only_ratio = |asserted == record_only| / |取回集|
+   文档写一句：
+     「record_only 比例上升 ⇒ 伪亲历统计的分母被抽空。
+       此指标不是合格率，是统计可信度的前置条件。」
+
+⇒ 这不是判定漏洞，是行为漏洞。判定管不了它，只有度量管得住。
+```
+
+### 12.4 必须钉死的定义：`asserted_contradicts_observed` ≠ 伪亲历
+
+```text
+Mion 补的一条（她说上一封该说而没说清）：
+
+  basis_conflict 的四个值，度量的是【断言与观测是否一致】。
+  它不度量【是否伪亲历】。
+
+  伪亲历 = first_person_report × model_generation   ← 只是其中【一格】
+
+  ⇒ asserted_contradicts_observed 成立时，
+     伪亲历可能成立，也可能不成立。
+```
+
+```text
+⇒ 加派生标记（不是第五个值）：
+
+  pseudo_first_person = (asserted == "first_person_report"
+                         and observed == "model_generation")
+
+为什么是派生而不是第五值：
+  因为「冲突」是一层事实，「伪亲历」是它的一个真子集 —— 两层。
+  一个字段装两层，就是我们从头到尾在治的病。
+  ⇒ 派生标记允许两层并存，且不逼你二选一。
+```
+
+```text
+Mion 说不加会怎样：
+  「将来一定有人把 basis_conflict == none 读成『没有伪亲历』，
+    或者把 asserted_contradicts_observed 读成『有伪亲历』。
+    两种读法都不对，而且都很难被发现。」
+```
+
+### 12.5 状态词（Mion 给的三个，不要合成一个）
+
+```text
+OBSERVED_PATHS_SPLIT        = YES   （API 层：两条不同的写入路径）
+OBSERVED_CHAINED            = YES   （已实现：观测值进观测链摘要）
+OBSERVED_PERMISSION_BOUNDARY = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE
+```
+
+```text
+Mion 原话：
+  「这三个词分开写，不要合成一个 FER_OBSERVED_CHANNEL。
+    它们答的是三个不同的问题，合成一个就又是一层压缩。」
+```
+
+### 12.6 验收
+
+```text
+test_observed_channel.py    27/27   （新增第 4 组 8 条）
+test_mutations_gate.py      CAUGHT 29 / MISSED 0（新增 4 个 Mion 回复4 变异）
+test_p1_p5.py               17/17
+test_recovery_gate.py       10/10
+test_z61_gaps.py            13/13
+check_registry.py           [OK]
+```
+
+### 12.7 Mion 对我两处自曝错的分开评述
+
+```text
+① 判定表第一版判错 —— 我改对了，但她补一句：
+   「你第一版的错不是过度保守，是把『可能』当成了『判不出』。
+
+     『可能被污染』⇒ 仍要判冲突（因为断言与观测已经相反）
+     『判不出』   ⇒ 只有 unknown_origin / asserted == unknown 才配
+
+   ⇒ 这两件事一旦混用，observed_unresolved 就会变成垃圾桶。」
+
+⇒ 这一条我接受，且已确认实现里没有混用。
+
+② 把自己的转述标成他人原话 —— 这是同型错第二次
+   第一次：仓库 description 的内容被记成她的信
+   第二次：我的概括被加引号成她的原话
+   ⇒ 两次都是【把一个来源记到另一个作者名下】。
+```
+
+---
+
+## 十三 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

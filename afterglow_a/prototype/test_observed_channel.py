@@ -346,10 +346,132 @@ def oc3c():
     return "None"
 
 
+# ======================================================== 第 4 项（Mion 回复4）
+@case("OC-4a", "观测已进链（Mion 回复4 §二·链外问题）")
+def oc4a():
+    s = mk(basis="first_person_report", kind="model_echo")
+    assert s.observed_chained("r1") is False, "前置：未观测不应有链"
+    s.record_observed("r1", "model_generation")
+    assert s.observed_chained("r1") is True, (
+        "观测未进链 ⇒ 观测字段是唯一不受校验的字段")
+    chain = s.observed_chain("r1")
+    assert len(chain) == 1, len(chain)
+    for k in ("record_id", "asserted", "observed", "basis_conflict",
+              "pseudo_first_person", "at", "prev", "digest"):
+        assert k in chain[0], "链条目缺键 %s" % k
+    return "进链成功，8 键齐全"
+
+
+@case("OC-4b", "篡改观测链必须被发现")
+def oc4b():
+    s = mk(basis="first_person_report", kind="model_echo")
+    s.record_observed("r1", "model_generation")
+    ok, _ = s.verify_observed_chain("r1")
+    assert ok, "前置：正常链应自洽"
+
+    # 篡改冲突值
+    s._observed_chain["r1"][0]["basis_conflict"] = "none"
+    ok2, msgs = s.verify_observed_chain("r1")
+    assert ok2 is False, "改观测链里的冲突值未被发现"
+    assert any("摘要不符" in m for m in msgs), msgs
+    return "改 basis_conflict 会被检出"
+
+
+@case("OC-4c", "snapshot_token 必须覆盖观测链")
+def oc4c():
+    s = mk()
+    t0 = s.snapshot_token()
+    s.record_observed("r1", "model_generation")
+    t1 = s.snapshot_token()
+    assert t0 != t1, "record_observed 未改变 snapshot_token"
+    # 直接篡改链
+    s._observed_chain["r1"][0]["basis_conflict"] = "none"
+    t2 = s.snapshot_token()
+    assert t1 != t2, "篡改观测链未改变 snapshot_token"
+    return "观测与篡改都改变 token"
+
+
+@case("OC-4d", "record_only × model_generation ⇒ none（弱断言不被违反）")
+def oc4d():
+    s = mk(basis="record_only", kind="model_echo")
+    s.record_observed("r1", "model_generation")
+    v = s.get("r1")["basis_conflict"]
+    assert v == "none", (
+        "record_only 断言「不指向任何陈述者」，模型生成不违反它；实为 %r" % (v,))
+    return "none"
+
+
+@case("OC-4e", "third_person_report × model_generation ⇒ 冲突（断言与观测相反）")
+def oc4e():
+    s = mk(basis="third_person_report", kind="model_echo")
+    s.record_observed("r1", "model_generation")
+    v = s.get("r1")["basis_conflict"]
+    assert v == "asserted_contradicts_observed", v
+    return "asserted_contradicts_observed"
+
+
+@case("OC-4f", "pseudo_first_person 是派生标记，不是第五个值")
+def oc4f():
+    # 伪亲历：first + model_generation
+    a = mk(basis="first_person_report", kind="model_echo")
+    a.record_observed("r1", "model_generation")
+    assert a.get("r1")["basis_conflict"] == "asserted_contradicts_observed"
+    assert a.pseudo_first_person("r1") is True
+
+    # 冲突但非伪亲历：first + system_dispatch
+    b = mk(basis="first_person_report", kind="system_generated")
+    b.record_observed("r1", "system_dispatch")
+    assert b.get("r1")["basis_conflict"] == "asserted_contradicts_observed"
+    assert b.pseudo_first_person("r1") is False, (
+        "非伪亲历也能冲突 —— 证明伪亲历是冲突的真子集")
+    # 枚举仍是四值
+    assert len(BASIS_CONFLICTS) == 4, len(BASIS_CONFLICTS)
+    return "冲突 ⊋ 伪亲历，枚举仍 4 值"
+
+
+@case("OC-4g", "record_only_ratio 是行为漏洞度量，单独一栏")
+def oc4g():
+    s = RecoveryStore()
+    for i, basis in enumerate(["record_only", "record_only",
+                               "first_person_report"], 1):
+        s.insert(Record(
+            record_id="q%d" % i, content="c", source_kind="model_echo",
+            source_ref="g/%d" % i, participant_id=None,
+            participation_basis=basis, basis_ref="g/%d" % i,
+            commitment_state="not_a_commitment", revision=1, prev_digest=None,
+            changed_at=PIN, change_authority="f"))
+    cs = summarize_conflicts(s, ["q1", "q2", "q3"])
+    assert cs["record_only_ratio"] is not None
+    assert abs(cs["record_only_ratio"] - 2.0 / 3.0) < 1e-9, \
+        cs["record_only_ratio"]
+    assert "分母被抽空" in cs["record_only_note"], cs["record_only_note"]
+    # 不进 ineligible_reasons
+    rep = verify_recovery(s, "q", lambda r: True, ["q1", "q2", "q3"],
+                          registration=good_reg())
+    assert "record_only_ratio" not in rep["ineligible_reasons"]
+    return "ratio=2/3，独立一栏"
+
+
+@case("OC-4h", "observed_chained 进返回结构")
+def oc4h():
+    s = mk(basis="first_person_report", kind="model_echo")
+    s.record_observed("r1", "model_generation")
+    cs = summarize_conflicts(s, ["r1"])
+    assert cs["observed_chained_ids"] == ["r1"], cs["observed_chained_ids"]
+    assert cs["observed_unchained_ids"] == [], cs["observed_unchained_ids"]
+
+    # 未观测的记录应出现在 unchained 里
+    s2 = mk()
+    cs2 = summarize_conflicts(s2, ["r1"])
+    assert cs2["observed_chained_ids"] == []
+    assert cs2["observed_unchained_ids"] == ["r1"]
+    return "chained / unchained 分开列"
+
+
 # ======================================================== 汇总
 def main():
     print("=" * 78)
-    print("观测通道改造回归 · 据 Mion 2026-11-24 回复2 / 回复3")
+    print("观测通道改造回归 · 据 Mion 2026-11-24 回复2 / 回复3 / 回复4")
     print("=" * 78)
     print()
 
@@ -362,6 +484,8 @@ def main():
          [oc2a, oc2b, oc2c, oc2d]),
         ("第 3 项 · unverifiable_ratio 独立一栏",
          [oc3a, oc3b, oc3c]),
+        ("第 4 项 · 观测进链 + 判定表修正 + 派生标记（Mion 回复4）",
+         [oc4a, oc4b, oc4c, oc4d, oc4e, oc4f, oc4g, oc4h]),
     ]
     for g, fns in groups:
         print("[%s]" % g)

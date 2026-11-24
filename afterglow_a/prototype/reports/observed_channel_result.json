@@ -1,7 +1,7 @@
 {
   "baseline": "Mion 2026-11-24 回复2 / 回复3",
-  "total": 19,
-  "passed": 19,
+  "total": 27,
+  "passed": 27,
   "failed": 0,
   "results": [
     {
@@ -117,6 +117,54 @@
       "name": "未指定范围 ⇒ ratio=None（不可计算 ≠ 0）",
       "ok": true,
       "detail": "None"
+    },
+    {
+      "id": "OC-4a",
+      "name": "观测已进链（Mion 回复4 §二·链外问题）",
+      "ok": true,
+      "detail": "进链成功，8 键齐全"
+    },
+    {
+      "id": "OC-4b",
+      "name": "篡改观测链必须被发现",
+      "ok": true,
+      "detail": "改 basis_conflict 会被检出"
+    },
+    {
+      "id": "OC-4c",
+      "name": "snapshot_token 必须覆盖观测链",
+      "ok": true,
+      "detail": "观测与篡改都改变 token"
+    },
+    {
+      "id": "OC-4d",
+      "name": "record_only × model_generation ⇒ none（弱断言不被违反）",
+      "ok": true,
+      "detail": "none"
+    },
+    {
+      "id": "OC-4e",
+      "name": "third_person_report × model_generation ⇒ 冲突（断言与观测相反）",
+      "ok": true,
+      "detail": "asserted_contradicts_observed"
+    },
+    {
+      "id": "OC-4f",
+      "name": "pseudo_first_person 是派生标记，不是第五个值",
+      "ok": true,
+      "detail": "冲突 ⊋ 伪亲历，枚举仍 4 值"
+    },
+    {
+      "id": "OC-4g",
+      "name": "record_only_ratio 是行为漏洞度量，单独一栏",
+      "ok": true,
+      "detail": "ratio=2/3，独立一栏"
+    },
+    {
+      "id": "OC-4h",
+      "name": "observed_chained 进返回结构",
+      "ok": true,
+      "detail": "chained / unchained 分开列"
     }
   ]
 }

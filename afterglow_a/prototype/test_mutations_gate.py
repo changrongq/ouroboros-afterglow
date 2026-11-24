@@ -265,6 +265,34 @@ MUTATIONS = [
         '        if rec.observed_origin is not None or rec.basis_conflict is not None:',
         '        if False:  # MUTANT',
     ),
+    # ---- Mion 回复4：观测在链外 + 判定表 + 派生标记
+    (
+        "M27", "观测不写进观测链（Mion 回复4 §二·链外问题）",
+        "afcore.py",
+        '        self._observed_chain.setdefault(record_id, []).append(entry)',
+        '        pass  # MUTANT: 观测不进链',
+    ),
+    (
+        "M28", "观测链不纳入 snapshot_token（Mion 回复4 §三）",
+        "afcore.py",
+        '        for rid in sorted(self._observed_chain):',
+        '        for rid in []:  # MUTANT',
+    ),
+    (
+        "M29", "record_only × model_generation 判成冲突（Mion 回复4 §4.2）",
+        "afcore.py",
+        '            conflict = "none"\n        else:\n'
+        '            conflict = "observed_unresolved"',
+        '            conflict = "asserted_contradicts_observed"\n        else:\n'
+        '            conflict = "observed_unresolved"',
+    ),
+    (
+        "M30", "伪亲历合并进 basis_conflict 当第五值（Mion 回复4 §五）",
+        "afcore.py",
+        '        pseudo = (asserted == "first_person_report"\n'
+        '                  and observed == "model_generation")',
+        '        pseudo = False  # MUTANT: 不派生伪亲历标记',
+    ),
 ]
 
 
