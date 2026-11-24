@@ -178,7 +178,11 @@ def z61_02():
     assert not ok_after, "前置：改后链应失败"
     assert tok_before != tok_after, (
         "历史正文被改但令牌未变（Z61-02 未修）")
-    return "token 变 %s→%s，链 False" % (tok_before[:8], tok_after[:8])
+    # 不把 token 值写进 detail：
+    #   changed_at 精确到秒，同一次运行内的 token 跨进程不可复算。
+    #   写进报告会让每次跑都产生一份「看似不同」的产物 ——
+    #   这正是第二封函里讲的那件事，测试自己也该遵守。
+    return "历史正文改动后令牌改变，链校验 False"
 
 
 @case("Z61-02b", "快照覆盖摘要串本身：改 this_digest 也改变令牌")
