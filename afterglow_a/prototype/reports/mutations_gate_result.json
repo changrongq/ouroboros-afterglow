@@ -1,0 +1,104 @@
+{
+  "verdict": "PASS",
+  "counts": {
+    "CAUGHT": 16
+  },
+  "rows": [
+    {
+      "id": "M1",
+      "desc": "把 integrity_failed 的阻断删掉（失败也不影响资格）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-4 取回集合 exact 但链校验失败 ⇒ 资格必须拒绝 — exa; RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M2",
+      "desc": "只删 failed 分支，未检查仍阻断",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-4 取回集合 exact 但链校验失败 ⇒ 资格必须拒绝 — 拒绝原"
+    },
+    {
+      "id": "M3",
+      "desc": "把 not_checked 当通过（默认为通过）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M4",
+      "desc": "删掉 stale_check 阻断（旧检查结果可沿用）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-7 检查后被消费前对象被替换 ⇒ 不得沿用旧检查结果 — 拒绝原因缺"
+    },
+    {
+      "id": "M5",
+      "desc": "删掉登记独立性阻断",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-8 登记身份：独立且早于观察才允许 eligible — 非独立登记"
+    },
+    {
+      "id": "M6",
+      "desc": "让 check_registration 永远判独立",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-8 登记身份：独立且早于观察才允许 eligible — 非独立登记"
+    },
+    {
+      "id": "M7",
+      "desc": "删掉 no_expected_ids 阻断",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M8",
+      "desc": "让完整性失败改写 match_kind（两轴串了）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-4 取回集合 exact 但链校验失败 ⇒ 资格必须拒绝 — 串轴："
+    },
+    {
+      "id": "M9",
+      "desc": "not_run 重新进入 MATCH_KINDS",
+      "status": "CAUGHT",
+      "evidence": "失败用例：P5 集合关系四值 + partial_overlap 可区分 — n"
+    },
+    {
+      "id": "M10",
+      "desc": "未执行时返回字符串 not_run",
+      "status": "CAUGHT",
+      "evidence": "失败用例：P5 not_run 不是集合关系值，不得被读成通过 — 未执行却报 "
+    },
+    {
+      "id": "M11",
+      "desc": "内容摘要缺字段时按缺省填充而不是报错",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M12",
+      "desc": "让 changed_at 混进内容摘要投影",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M13",
+      "desc": "声称外部锚定已建立",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-6 链局部自洽但缺外部锚定，不得声称独立真实性 — 链通过却声称外部"
+    },
+    {
+      "id": "M14",
+      "desc": "把工程结果标成科学结果",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-6 链局部自洽但缺外部锚定，不得声称独立真实性 — 被标成科学结果; P5 实际恢复验证：检索 syn-0001 与期望集对比 — 工程测试; NC 工程结论不得冒充科学结果 —"
+    },
+    {
+      "id": "M15",
+      "desc": "snapshot_token 对写入不敏感",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-7 检查后被消费前对象被替换 ⇒ 不得沿用旧检查结果 — 快照已变却"
+    },
+    {
+      "id": "M16",
+      "desc": "空检查范围当作 verified",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    }
+  ]
+}

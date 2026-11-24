@@ -59,7 +59,11 @@ COMMITMENT_STATES = {
     "unknown",
 }
 
-MATCH_KINDS = {"exact", "superset", "subset", "disjoint", "not_run"}
+MATCH_KINDS = {"exact", "superset", "subset", "disjoint"}
+# 凌翼裁定 2026-11-24 §三 + A §1.8 更正二：
+#   not_run 不是「第六种集合关系」，它是【没有 match_kind】。
+#   已从闭集移出，改由 verify_recovery 用显式状态表达。
+#   （此前 MATCH_KINDS 含 not_run，与设计文本不一致，本轮追平。）
 
 UNKNOWN_REASONS = {
     "field_absent",
@@ -67,6 +71,21 @@ UNKNOWN_REASONS = {
     "ref_dangling",
     "never_observed",
     "not_applicable",
+}
+
+# 凌翼裁定 2026-11-24 §一 第 4 点：明确区分三种操作。
+# 它们对记录摘要的影响【不同】，不可混为一谈。
+HISTORY_OPERATIONS = {
+    # 原样恢复：字节级搬运，changed_at 等字段一字不改
+    # ⇒ 重算 record_digest 必然一致
+    "restore_verbatim",
+    # 内容重建：凭内容重新生成记录，会重新取 _now()
+    # ⇒ record_digest 会变，content_digest 应不变
+    "rebuild_from_content",
+    # 历史迁移：换存储/换格式/换编码，但仍搬运原字段
+    # ⇒ 若不动 changed_at，record_digest 应一致；
+    #    若迁移过程规范化了时间戳格式，record_digest 会变
+    "migrate_history",
 }
 
 
@@ -80,11 +99,89 @@ DIGEST_FIELDS_EXCLUDED = {"this_digest"}
 
 
 def canonical_digest(record: Dict[str, Any]) -> str:
-    """对记录做规范化摘要（排除摘要字段自身）。"""
+    """对记录做规范化摘要（排除摘要字段自身）。
+
+    ⚠ 语义（凌翼裁定 2026-11-24 §一）：
+    这是【版本记录摘要 record_digest】，不是内容摘要。
+    changed_at 属于记录身份的一部分，因此同内容不同时刻重建会产生不同摘要。
+    ⇒ 这种差异【不是】算法不可复算，而是记录身份确实变了。
+
+    要比较「内容是否等价」，请用 content_digest()，见下。
+    """
     payload = {k: v for k, v in record.items() if k not in DIGEST_FIELDS_EXCLUDED}
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False,
                       separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
+
+
+# ---------------------------------------------------------------- 内容等价摘要
+#
+# 凌翼裁定 2026-11-24 §一：允许增设独立的 content_digest，
+# 但【本轮只限 schema 与设计论证】；运行时实现须在明确兼容与
+# 历史迁移策略后单独批准。
+#
+# ⇒ 因此本函数标为 EXPERIMENTAL，且默认不被链校验使用。
+#   verify_chain() 仍只用 record_digest，旧链算法未被改动。
+
+CONTENT_DIGEST_VERSION = "cd-v1"
+
+# 内容摘要的字段投影：只取「这条记录说了什么」，
+# 不取「它何时被写、由谁写、上一版是谁」。
+CONTENT_DIGEST_FIELDS = (
+    "record_id",      # 身份仍要进，否则不同记录的同文本会撞
+    "content",
+    "source_kind",
+    "source_ref",
+    "participant_id",
+    "participation_basis",
+    "basis_ref",
+    "commitment_state",
+    "committed_by",
+    "committed_to",
+    "commitment_ref",
+    "unknown_reason",
+    "relation",       # relation 是内容的一部分（指向谁、为何指向）
+)
+
+# 明确【不进入】内容摘要的字段，及其理由。
+# 这三个字段描述「这一版如何产生」，不描述「它说了什么」。
+CONTENT_DIGEST_EXCLUDED = {
+    "this_digest": "摘要字段自身",
+    "prev_digest": "链指针：属于历史位置，不属于内容",
+    "revision":    "版本序号：同内容不同版本号仍应内容等价",
+    "changed_at":  "写入时刻：同内容不同时刻仍应内容等价",
+    "change_authority": "写入授权方：同内容不同授权方仍应内容等价",
+}
+
+
+def content_digest(record: Dict[str, Any]) -> str:
+    """内容等价摘要（EXPERIMENTAL，cd-v1）。
+
+    投影规则（必须与 CONTENT_DIGEST_FIELDS 完全一致，缺一字段即报错）：
+      1. 只取 CONTENT_DIGEST_FIELDS 列出的字段；
+      2. 缺失字段【不得】按缺省填充，必须显式报错 ——
+         否则「缺字段」与「字段为空」会算出同一个摘要；
+      3. 规范化：json.dumps(sort_keys=True, ensure_ascii=False,
+         separators=(",", ":"))，UTF-8 编码；
+      4. 摘要串以版本前缀开头，便于将来区分 cd-v1 / cd-v2。
+
+    ※ 本函数不参与 verify_chain；改用它需要单独立项批准（裁定 §一 末段）。
+    """
+    missing = [k for k in CONTENT_DIGEST_FIELDS if k not in record]
+    if missing:
+        raise SchemaError(
+            "content_digest 缺字段 %s —— 不得按缺省填充，"
+            "否则「字段缺失」与「字段为空」不可区分" % (sorted(missing),))
+    # 同时排除本该排除的字段被误纳入的情况
+    leaked = [k for k in CONTENT_DIGEST_EXCLUDED
+              if k in CONTENT_DIGEST_FIELDS]
+    if leaked:
+        raise SchemaError(
+            "内容摘要字段表混入了应排除字段 %s" % (sorted(leaked),))
+    payload = {k: record[k] for k in CONTENT_DIGEST_FIELDS}
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
+    return "%s:%s" % (CONTENT_DIGEST_VERSION, hashlib.sha256(blob).hexdigest())
 
 
 # ---------------------------------------------------------------- 记录
@@ -360,6 +457,27 @@ class RecoveryStore:
     def sqlite_rows(self) -> List[Dict[str, Any]]:
         """全部当前记录（供查询）。"""
         return [d.to_dict() for d in self._live.values()]
+
+    def snapshot_token(self) -> str:
+        """当前库状态的指纹，用于识别「检查后对象被替换」。
+
+        凌翼裁定 2026-11-24 §三 第 7 条：
+          检查完成后、结果被消费前若发生对象替换或版本改变，
+          不能沿用旧检查结果。
+
+        ⇒ 做法：把每条记录的 record_id + 当前版摘要 + 版本数排序后摘要。
+          任何写入（insert/revise/correct）都会改变这个指纹。
+        """
+        parts = []
+        for rid in sorted(self._live):
+            cur = self._live[rid]
+            hist = self._history.get(rid, [])
+            cur_d = cur.to_dict()
+            cur_dig = canonical_digest(cur_d)
+            parts.append([rid, cur.revision, cur_dig, len(hist)])
+        blob = json.dumps(parts, sort_keys=True, ensure_ascii=False,
+                          separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(blob).hexdigest()
 
     def write_log(self) -> List[Dict[str, Any]]:
         return list(self._write_log)
