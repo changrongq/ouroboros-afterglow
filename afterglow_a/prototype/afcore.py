@@ -73,6 +73,36 @@ UNKNOWN_REASONS = {
     "not_applicable",
 }
 
+# ---------------------------------------------------------------- 观测通道
+#
+# Mion 2026-11-24 回复2 §一 / 回复3 §一：
+#
+#   basis_conflict 与 unknown_reason 是【元数不同】的两个字段：
+#     unknown_reason  是一元谓词：关于【一个值】的确定程度
+#     basis_conflict  是二元谓词：关于【(asserted, observed) 一对值】是否一致
+#   ⇒ 一元字段装不下二元事实。不是「语义不够贴」，是【类型不对】。
+#
+#   ⇒ 必须另设字段，不得复用 unknown_reason = value_conflict。
+
+# 系统侧观测到的生成来源。由 record_observed() 设置，不经 Record 构造。
+# ⇒ 命名避免「可信」含义：这里只说「系统看到它从哪来」，不说「这来源可信」。
+OBSERVED_ORIGINS = {
+    "system_dispatch",   # 由调度/框架派发产生
+    "model_generation",  # 模型自发生成
+    "human_input",       # 人类直接输入
+    "unknown_origin",    # 有观测但判不出来源（≠ 没有观测）
+}
+
+# 两路观测的一致性。
+# ⚠ 后两个值的存在理由：防止「没有观测」被读成「没有冲突」。
+#   这与 unknown / not_a_commitment 的区分是同一条纪律。
+BASIS_CONFLICTS = {
+    "none",                          # 两路一致
+    "asserted_contradicts_observed", # 声明与观测冲突（伪亲历挂这里）
+    "observed_absent",               # 没有观测通道 —— 不许当成 none
+    "observed_unresolved",           # 有观测但判不出 —— 不许当成 none
+}
+
 # 凌翼裁定 2026-11-24 §一 第 4 点：明确区分三种操作。
 # 它们对记录摘要的影响【不同】，不可混为一谈。
 HISTORY_OPERATIONS = {
@@ -206,6 +236,15 @@ class Record:
     committed_to: Optional[str] = None
     commitment_ref: Optional[str] = None
 
+    # ---- 观测通道字段（Mion 2026-11-24 回复2 §一）
+    # ⚠ 这两个字段【不应】由调用方在构造 Record 时直接给定。
+    #   正确路径是 store.record_observed()。
+    #   但 dataclass 无法真正阻止关键字传参，
+    #   所以在 validate() 里加：insert() 时若二者非 None ⇒ 拒绝。
+    #   ⇒ 这不是权限边界（同进程可绕过），只是把「随手填」变成「写不进去」。
+    observed_origin: Optional[str] = None
+    basis_conflict: Optional[str] = None
+
     def validate(self) -> List[str]:
         """返回问题列表。空列表 = 通过。任何不在闭集内的值都算问题。"""
         problems: List[str] = []
@@ -257,6 +296,19 @@ class Record:
         if self.revision < 1:
             problems.append("revision < 1")
 
+        # 观测字段（Mion 2026-11-24）：闭集校验。
+        # ⚠ 「不得经构造器填入」这条约束放在 insert() 里检查，
+        #   不放在 validate()：因为 record_observed() 内部改 live 时
+        #   要构造带这两个字段的 Record。
+        if self.observed_origin is not None:
+            if self.observed_origin not in OBSERVED_ORIGINS:
+                problems.append(
+                    "observed_origin=%r 不在闭集内" % (self.observed_origin,))
+        if self.basis_conflict is not None:
+            if self.basis_conflict not in BASIS_CONFLICTS:
+                problems.append(
+                    "basis_conflict=%r 不在闭集内" % (self.basis_conflict,))
+
         return problems
 
     def to_dict(self) -> Dict[str, Any]:
@@ -302,6 +354,13 @@ class RecoveryStore:
             raise ValueError("已存在，请用 revise(): %s" % rec.record_id)
         if rec.revision != 1:
             raise ValueError("insert 只接受 revision=1")
+        # 观测字段只能经 record_observed() 设置，不得从构造参数带进来。
+        # ⇒ 这不是权限边界（同进程可绕过），只是把「随手填」变成「写不进去」。
+        if rec.observed_origin is not None or rec.basis_conflict is not None:
+            raise SchemaError(
+                "observed_origin / basis_conflict 不得经 Record 构造写入；"
+                "请用 store.record_observed()。"
+                "（本原型无进程隔离，此约束是语义约束，不是权限边界）")
         probs = rec.validate()
         if probs:
             raise SchemaError("; ".join(probs))
@@ -329,6 +388,9 @@ class RecoveryStore:
         "committed_by", "committed_to", "commitment_ref",
         "relation", "unknown_reason",
     }
+    # ⚠ observed_origin / basis_conflict 不在白名单内：
+    #   一旦写入，不得经 revise 修改（Mion 2026-11-24）。
+    #   否则「观测」可以被事后改写，等于没有观测。
 
     # ---- 修订（不覆盖：旧版保留）
     def revise(self, record_id: str, changes: Dict[str, Any],
@@ -417,6 +479,123 @@ class RecoveryStore:
                 "basis_ref": basis.basis_ref,
             },
             reason="correction: " + reason)
+
+    # ---- 观测通道（Mion 2026-11-24 回复2 §一 / 回复3 §一、§二）
+    #
+    # ⚠ 这条路径买到的【不是「防填」】，是：
+    #     「观测写入必留痕，且与内容写入是两次不同的调用」。
+    #   不要叫它「通道」——「通道」暗示隔离，这里没有隔离。
+    #
+    # ⚠ 它【不构成权限边界】：
+    #    本原型是单进程 Python 库，任何 import afcore 的代码都能调本方法。
+    #    真正的权限边界（进程/身份隔离）超出本原型层级，
+    #    登记为 OBSERVED_PERMISSION_BOUNDARY = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE。
+
+    def record_observed(self, record_id: str, observed_origin: str,
+                        note: str = "") -> None:
+        """记录一次【系统侧】对生成来源的观测。
+
+        时序约束（Mion 2026-11-24 回复3 §一，这是本方法的要害）：
+
+          只在 record 的 revision == 1 且【从未被 revise / correct 过】时可用。
+          一旦被修改过，观测通道关闭。
+
+        ⇒ 理由：一条晚于内容写入的 observed，可能是照着内容编的。
+          观测的价值在于它【早于、或至少独立于】内容。
+          事后补的观测不是观测，是第二个声明。
+
+        ⇒ 这条约束把本方法从「防手滑」变成「防批量补」。
+          「防批量补」才是真正会发生的那个：
+          若允许任意时刻补，一个脚本就能给全部历史刷上
+          observed_origin = system_dispatch，那与 (b) 档无区别，
+          而且更糟 —— 因为它看起来像观测。
+        """
+        if observed_origin not in OBSERVED_ORIGINS:
+            raise SchemaError(
+                "observed_origin=%r 不在闭集内（允许：%s）"
+                % (observed_origin, sorted(OBSERVED_ORIGINS)))
+
+        cur = self._live.get(record_id)
+        if cur is None:
+            raise KeyError(record_id)
+
+        # --- 时序约束 ---
+        if cur.revision != 1:
+            raise SchemaError(
+                "记录 %s 已是第 %d 版；观测必须在首版写入时/前完成。"
+                "晚于内容写入的观测可能是照着内容编的，不得接受。"
+                % (record_id, cur.revision))
+
+        if self._was_modified(record_id):
+            raise SchemaError(
+                "记录 %s 曾被 revise/correct 过；观测通道已关闭。"
+                "事后补的观测不是观测，是第二个声明。" % record_id)
+
+        if cur.observed_origin is not None:
+            raise SchemaError(
+                "记录 %s 已有 observed_origin=%r；观测是一次性的，不得覆盖。"
+                % (record_id, cur.observed_origin))
+
+        # --- 计算冲突（二元：asserted vs observed）---
+        # asserted 侧 = participation_basis（写入方声称「多近」）
+        # observed 侧 = observed_origin（系统看到它从哪来）
+        #
+        # 判定表（保守优先：宁可判 unresolved，不轻易判 none）：
+        #
+        #   asserted \ observed | system_dispatch | model_generation | human_input
+        #   first_person_report |  【冲突】        |    【冲突】      |  none
+        #   third_person_report |  none            |    【冲突】      |  none
+        #   record_only         |  none            |  【冲突】        |  none
+        #
+        # ⇒ 「声称第一人称亲历，但系统看到是派发/模型生成」= 冲突。
+        #   这不是「判不出」——声称与观测直接矛盾。
+        #
+        # ⇒ 「声称第三人称转述，但系统看到是模型生成」也判冲突：
+        #   因为模型生成的内容没有第三方来源可言。
+        #
+        # ⚠ 这是我按下表实现的判定，已在设计中列出并标为【待 Mion 复核】。
+        #   若她认为某一格应改判，改这一处即可。
+        observed = observed_origin
+        asserted = cur.participation_basis
+
+        if observed == "unknown_origin":
+            conflict = "observed_unresolved"
+        elif asserted == "unknown":
+            conflict = "observed_unresolved"
+        elif asserted == "first_person_report":
+            conflict = ("none" if observed == "human_input"
+                        else "asserted_contradicts_observed")
+        elif asserted == "third_person_report":
+            conflict = ("asserted_contradicts_observed"
+                        if observed == "model_generation" else "none")
+        elif asserted == "record_only":
+            conflict = ("asserted_contradicts_observed"
+                        if observed == "model_generation" else "none")
+        else:
+            conflict = "observed_unresolved"
+
+        _body = cur.to_dict()
+        _body["observed_origin"] = observed_origin
+        _body["basis_conflict"] = conflict
+        owned = Record(**copy.deepcopy(
+            {k: v for k, v in _body.items() if k != "this_digest"}))
+        self._live[record_id] = owned
+
+        self._write_log.append({
+            "op": "record_observed", "record_id": record_id,
+            "asserted": asserted, "observed": observed,
+            "basis_conflict": conflict, "note": note, "at": _now(),
+        })
+
+    def _was_modified(self, record_id: str) -> bool:
+        """该记录是否曾被 revise / correct 过。
+
+        判据：写日志里存在该 id 的 revise 操作，或历史长度 > 1。
+        """
+        for e in self._write_log:
+            if e.get("record_id") == record_id and e.get("op") == "revise":
+                return True
+        return len(self._history.get(record_id, [])) > 1
 
     # ---- 链校验
     def verify_chain(self, record_id: str) -> Tuple[bool, List[str]]:

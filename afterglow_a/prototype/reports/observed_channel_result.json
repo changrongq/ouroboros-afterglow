@@ -1,0 +1,122 @@
+{
+  "baseline": "Mion 2026-11-24 回复2 / 回复3",
+  "total": 19,
+  "passed": 19,
+  "failed": 0,
+  "results": [
+    {
+      "id": "OC-0a",
+      "name": "conflict_summary 必须随 verify_recovery 结果返回",
+      "ok": true,
+      "detail": "返回结构含 conflict_summary（3 键齐全）"
+    },
+    {
+      "id": "OC-0b",
+      "name": "未观测 ⇒ observed_absent，不得是 none",
+      "ok": true,
+      "detail": "observed_absent"
+    },
+    {
+      "id": "OC-0c",
+      "name": "取回集为空 ⇒ observed_absent 且 ratio=None（不是 0）",
+      "ok": true,
+      "detail": "observed_absent + ratio=None"
+    },
+    {
+      "id": "OC-0d",
+      "name": "conflict 不影响 recovery_eligible（激励约束）",
+      "ok": true,
+      "detail": "冲突但 eligible=True，且未进 ineligible_reasons"
+    },
+    {
+      "id": "OC-1a",
+      "name": "OBSERVED_ORIGINS / BASIS_CONFLICTS 闭集正确",
+      "ok": true,
+      "detail": "四值闭集正确，且与 UNKNOWN_REASONS 无重名"
+    },
+    {
+      "id": "OC-1b",
+      "name": "observed_origin 不在闭集内 ⇒ 报错",
+      "ok": true,
+      "detail": "5 种非法值全部被拒"
+    },
+    {
+      "id": "OC-1c",
+      "name": "不得经 Record 构造器填写 observed_origin",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-1d",
+      "name": "revise 不得修改 observed_origin / basis_conflict",
+      "ok": true,
+      "detail": "两个字段都不在白名单内"
+    },
+    {
+      "id": "OC-1e",
+      "name": "伪亲历：声称亲历但系统看到模型生成 ⇒ 冲突",
+      "ok": true,
+      "detail": "asserted_contradicts_observed"
+    },
+    {
+      "id": "OC-1f",
+      "name": "声称亲历但系统看到派发 ⇒ 也判冲突",
+      "ok": true,
+      "detail": "asserted_contradicts_observed"
+    },
+    {
+      "id": "OC-1g",
+      "name": "声称亲历且系统看到人类输入 ⇒ none",
+      "ok": true,
+      "detail": "none"
+    },
+    {
+      "id": "OC-1h",
+      "name": "observed_origin=unknown_origin ⇒ observed_unresolved",
+      "ok": true,
+      "detail": "observed_unresolved"
+    },
+    {
+      "id": "OC-2a",
+      "name": "revise 之后 record_observed 必须被拒（防事后补观测）",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-2b",
+      "name": "correct 之后 record_observed 必须被拒",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-2c",
+      "name": "观测是一次性的，重复调用必须被拒",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-2d",
+      "name": "批量补观测：第二至 N 条必须全部失败",
+      "ok": true,
+      "detail": "5 条历史记录全部拒绝补观测"
+    },
+    {
+      "id": "OC-3a",
+      "name": "unverifiable_ratio 是独立一栏，且不进合格率",
+      "ok": true,
+      "detail": "ratio=2/3，且未进 ineligible_reasons"
+    },
+    {
+      "id": "OC-3b",
+      "name": "全部可判定 ⇒ ratio=0（不是 None）",
+      "ok": true,
+      "detail": "ratio=0.0，basis_conflict=none"
+    },
+    {
+      "id": "OC-3c",
+      "name": "未指定范围 ⇒ ratio=None（不可计算 ≠ 0）",
+      "ok": true,
+      "detail": "None"
+    }
+  ]
+}

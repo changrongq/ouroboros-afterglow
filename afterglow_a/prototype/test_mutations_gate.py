@@ -30,7 +30,8 @@ PROTO_FILES = ("afcore.py", "afrecover.py")
 # 变异验证必须跑【全部】守护测试。
 # 之前只列了 test_recovery_gate / test_p1_p5，导致 Z61 新门禁的变异
 # 全部 MISSED —— 不是门禁没守住，是守护它的测试没被跑。
-TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py")
+TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py",
+              "test_observed_channel.py")
 
 
 def _harden_stdio():
@@ -235,6 +236,34 @@ MUTATIONS = [
         '    if not ids:\n'
         '        return {\n'
         '            "status": "verified",',
+    ),
+    # ---- Mion 2026-11-24 回复2 / 回复3 的四项改造
+    (
+        "M21", "conflict_summary 从返回结构删掉（Mion 第 0 项）",
+        "afrecover.py",
+        '        "conflict_summary": conflict,',
+        '        # MUTANT: 不返回冲突摘要',
+    ),
+    (
+        "M22", "「未观测」返回成 none 而非 observed_absent（Mion 第 0 项核心）",
+        "afrecover.py",
+        '        if val is None:\n'
+        '            # 字段缺失 = 从未计算过 ⇒ 不得当作 none\n'
+        '            buckets.setdefault("observed_absent", []).append(rid)',
+        '        if val is None:\n'
+        '            buckets.setdefault("none", []).append(rid)  # MUTANT',
+    ),
+    (
+        "M23", "去掉 record_observed 的时序约束（Mion 第 2 项·批量补洞）",
+        "afcore.py",
+        '        if cur.revision != 1:',
+        '        if False:  # MUTANT: 允许事后补观测',
+    ),
+    (
+        "M26", "允许 Record 构造器填 observed_origin（Mion 第 1 项）",
+        "afcore.py",
+        '        if rec.observed_origin is not None or rec.basis_conflict is not None:',
+        '        if False:  # MUTANT',
     ),
 ]
 

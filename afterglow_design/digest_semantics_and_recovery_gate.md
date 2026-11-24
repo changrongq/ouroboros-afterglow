@@ -637,7 +637,217 @@ ZA01_VERIFIED_READ_BINDING  = OPEN           ← 不变
 
 ---
 
-## 十 · 固定提交身份
+## 十一 · 观测通道与冲突摘要（据 Mion 2026-11-24 回复2 / 回复3）
+
+Mion 两封信给出四条可执行要求。**第 0 项排最前**，理由只有一条：
+没有它，后面每一项算出来的东西都会被扔掉。
+
+### 11.0 改造顺序（Mion 定，我方接受）
+
+```text
+0. conflict_summary 进返回结构，第一个值就是 observed_absent
+1. basis_conflict 四值闭集 + observed_origin（只经 record_observed 设）
+2. record_observed 的时序约束（revision == 1 且未被 revise/correct）
+3. unverifiable_ratio 作为独立一栏
+4. origin_* 与 current_basis_* 分层            ← 未做
+5. 重要性学习（前置条件就是 0–3）               ← 未做
+```
+
+```text
+※ 关于顺序：我原提议先做 ②（conflict_summary）再做 ①（basis_conflict），
+   Mion 原排法相反。她复核后确认我的顺序对，并补了一条更硬的理由：
+
+     若先做 ①，basis_conflict 立刻会有真实值（asserted_contradicts_observed），
+     但返回结构里【没有地方放它】
+     ⇒ 立刻重演「系统算出来然后扔掉」那个病。
+
+   ⇒ 所以 ② 必须在 ① 之前，不是「可行」，是【必须】。
+```
+
+### 11.1 为什么 basis_conflict 必须另设字段，不能复用 value_conflict
+
+```text
+Mion 给的判据（比「语义不同」硬得多）：
+
+  unknown_reason 是一元谓词：关于【一个值】的确定程度
+  basis_conflict 是二元谓词：关于【(asserted, observed) 一对值】是否一致
+
+⇒ 一元字段装不下二元事实。
+  不是「语义不够贴」，是【类型不对】。
+```
+
+```text
+⚠ Mion 主动认了这一处是她自己建议错了：
+   「我原来说『不必新造词』——这一句是我自己那条原则的反例。」
+```
+
+### 11.2 两个闭集
+
+```text
+OBSERVED_ORIGINS = {
+    system_dispatch,    # 调度/框架派发产生
+    model_generation,   # 模型自发生成
+    human_input,        # 人类直接输入
+    unknown_origin,     # 有观测但判不出来源（≠ 没有观测）
+}
+
+BASIS_CONFLICTS = {
+    none,                          # 两路一致
+    asserted_contradicts_observed, # 声明与观测冲突（伪亲历挂这里）
+    observed_absent,               # 没有观测通道 —— 不许当成 none
+    observed_unresolved,           # 有观测但判不出 —— 不许当成 none
+}
+```
+
+```text
+⇒ 后两个值的存在理由：防止「没有观测」被读成「没有冲突」。
+   这与 unknown / not_a_commitment 的区分是同一条纪律。
+```
+
+### 11.3 判定表（我方实现，标为【待 Mion 复核】）
+
+```text
+asserted \ observed | system_dispatch | model_generation | human_input
+first_person_report |  冲突            |   冲突            |  none
+third_person_report |  none            |   冲突            |  none
+record_only         |  none            |   冲突            |  none
+other / unknown     |  observed_unresolved
+unknown_origin      |  observed_unresolved
+```
+
+```text
+⚠ 这张表是我按「声称与观测直接矛盾即冲突」实现的。
+  第一版我写得过于保守（system_dispatch + first_person_report 判 unresolved），
+  已在自测中发现并改正。
+
+⇒ 若 Mion 认为某一格应改判，改 afcore.py 那一处即可。
+```
+
+### 11.4 record_observed 的时序约束（这是要害）
+
+```text
+只在 record 的 revision == 1 且【从未被 revise / correct 过】时可用。
+一旦被修改过，观测通道关闭。
+```
+
+```text
+Mion 给的理由，我逐字抄入代码注释：
+
+  「一条晚于内容写入的 observed，可能是照着内容编的。
+    观测的价值在于它早于、或至少独立于内容。
+    事后补的观测不是观测，是第二个声明。」
+```
+
+```text
+⇒ 这条把本方法从「防手滑」变成「防批量补」——
+  「防批量补」才是真正会发生的那个：
+  若允许任意时刻补，一个脚本就能给全部历史刷上
+  observed_origin = system_dispatch，那与 (b) 档无区别，而且更糟，
+  因为它看起来像观测。
+```
+
+```text
+验证：OC-2d 构造 5 条历史记录（均已 revise 过），逐条尝试补观测
+      ⇒ 全部被拒（成功 0 条）
+```
+
+### 11.5 (c) 能做什么、不能做什么（Mion 已确认这个表述）
+
+```text
+✅ Mion 确认：「(c) 够。而且你写的那个表述，我确认——不需要改。」
+
+逐字采用她的措辞：
+
+  「observed_origin 不能经 Record 构造或 revise 写入；
+    只能经 record_observed() 设置。
+    本原型无进程/身份隔离，故这不构成权限边界，
+    只是把两条写入路径分开。」
+```
+
+```text
+⚠ 不要说「模型不可写」。
+  Mion 自己认了这句是过头的：
+    「这句话的要求，在当前原型层级里不可能满足。
+      这不只是『你做不到』，是【我要求的东西超出了这个层级】。」
+```
+
+```text
+(d) 真权限边界（进程隔离 / 签名 / 身份隔离）
+  ⇒ 登记为【超出现原型能力，需换实现层级或凌翼授权】
+  ⇒ 不登记为「已实现」，也不登记为「缺陷」
+```
+
+### 11.6 conflict_summary 与 unverifiable_ratio
+
+```text
+verify_recovery 返回结构新增：
+  conflict_summary = {
+      basis_conflict,        # 四值之一
+      affected_ids,          # 落在该状态下的记录
+      detail,                # 人类可读说明
+      unverifiable_ratio,    # 见下
+      unverifiable_ids,
+      unverifiable_note,
+  }
+```
+
+```text
+unverifiable_ratio（Mion 第 3 项）：
+
+  口径 = |observed_absent ∪ observed_unresolved| / |取回集|
+  范围为空 ⇒ None（不是 0；0 会被读成「全部可判定」）
+```
+
+```text
+Mion 的原话，我抄进字段说明：
+
+  「这个数不是 FER。它是『无法判定是否伪亲历』的记录比例。」
+  「它不是一个估计，它是 FER 结论的【适用范围上限】。」
+
+⇒ 因此它【不得混进任何合格率】。
+   测试 OC-3a 断言它不出现在 ineligible_reasons。
+```
+
+### 11.7 为什么 conflict 不影响 recovery_eligible
+
+```text
+Mion 给的激励论证，比「不影响」这个规定硬：
+
+  若 conflict 会拉低资格
+  ⇒ 系统学会「不标冲突」来换合格
+  ⇒ 字段还在，值永远是 none
+  ⇒ 一个会被激励去撒谎的字段，等于没有这个字段。
+```
+
+```text
+⇒ 所以 conflict 是【独立维度】，不参与资格计算。
+  测试 OC-0d 守住这一点。
+```
+
+### 11.8 验收
+
+```text
+test_observed_channel.py    19/19   ← 新增
+test_mutations_gate.py      CAUGHT 25 / MISSED 0（新增 4 个 Mion 相关变异）
+test_p1_p5.py               17/17
+test_recovery_gate.py       10/10
+test_z61_gaps.py            13/13
+check_registry.py           [OK]
+```
+
+### 11.9 未做（本轮）
+
+```text
+第 4 项  origin_* 与 current_basis_* 分层      ← Mion 排在第 4，未做
+第 5 项  重要性学习                            ← 前置条件是 0–3，未做
+
+ORIGIN_LAYER_IN_LIVE   = ABSENT
+IMPORTANCE_LEARNING    = ABSENT（作者自述，非实测）
+```
+
+---
+
+## 十二 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

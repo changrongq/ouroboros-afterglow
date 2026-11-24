@@ -1,7 +1,7 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 21
+    "CAUGHT": 25
   },
   "rows": [
     {
@@ -129,6 +129,30 @@
       "desc": "空检查范围当作 verified",
       "status": "CAUGHT",
       "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M21",
+      "desc": "conflict_summary 从返回结构删掉（Mion 第 0 项）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-0a conflict_summary 必须随 verify_reco"
+    },
+    {
+      "id": "M22",
+      "desc": "「未观测」返回成 none 而非 observed_absent（Mion 第 0 项核心）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-0b 未观测 ⇒ observed_absent，不得是 none —; OC-3a unverifiable_ratio 是独立一栏，且不进合格率 "
+    },
+    {
+      "id": "M23",
+      "desc": "去掉 record_observed 的时序约束（Mion 第 2 项·批量补洞）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-2a revise 之后 record_observed 必须被拒（防"
+    },
+    {
+      "id": "M26",
+      "desc": "允许 Record 构造器填 observed_origin（Mion 第 1 项）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-1c 不得经 Record 构造器填写 observed_origin"
     }
   ]
 }

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from afcore import MATCH_KINDS, SchemaError
+from afcore import MATCH_KINDS, SchemaError, BASIS_CONFLICTS
 
 
 # ---------------------------------------------------------------- 闭集
@@ -335,6 +335,24 @@ def verify_recovery(store, query_ref: str,
 
     eligible = (len(reasons) == 0)
 
+    # ---- 7. 冲突摘要（Mion 2026-11-24 回复2 §二② / 回复3 §三）
+    #
+    # 为什么【必须】在返回结构里，而不只在报告里：
+    #   系统算出来然后扔掉，与「消费路径为空」是同一个病
+    #   （我给衔环的信里写过：「此后谁读、读了做什么，代码里一个字都没有」）。
+    #
+    # 为什么【必须】区分 none 与 observed_absent：
+    #   这两件事后果相反：
+    #     none             = 算过，确认两路一致
+    #     observed_absent  = 根本没观测通道，无所谓一致
+    #   若把「没有观测」返回成 none，等于把缺席读成通过。
+    #
+    # 为什么【不影响】eligible（Mion 给的激励论证）：
+    #   若 conflict 会拉低资格 ⇒ 系统学会「不标冲突」来换合格
+    #   ⇒ 字段还在，值永远是 none
+    #   ⇒ 一个会被激励去撒谎的字段，等于没有这个字段。
+    conflict = summarize_conflicts(store, retrieved_ids)
+
     return {
         "recovery_id": "rec-" + query_ref,
         "query_ref": query_ref,
@@ -349,12 +367,118 @@ def verify_recovery(store, query_ref: str,
         "integrity_scope": integ["scope"],
         "recovery_eligible": eligible,
         "ineligible_reasons": sorted(set(reasons)),
+        # Mion：冲突摘要必须随结果返回，且允许「缺席」是显式值
+        "conflict_summary": conflict,
         # A §1.8：登记身份
         "expected_ids_registration": reg,
         # 边界：门禁通过也不提升为科学结论
         "engineering_only": True,
         "is_scientific_result": False,
         "trusted_chain_anchor": "not_established",
+    }
+
+
+def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
+                        ) -> Dict[str, Any]:
+    """汇总本次取回范围内的「声明 vs 观测」冲突状态。
+
+    返回值恒含三个键，不可省略：
+      basis_conflict : 四值之一（见 afcore.BASIS_CONFLICTS）
+      affected_ids   : 落在该状态下的记录
+      detail         : 人类可读说明
+
+    ⚠ basis_conflict 表达的是【整批】的状态：
+       · 只要有一条 asserted_contradicts_observed ⇒ 整批取该值（最严重优先）
+       · 全部都没有观测通道 ⇒ observed_absent
+       · 有观测但都判不出    ⇒ observed_unresolved
+       · 全部有观测且一致    ⇒ none
+       · 范围为空            ⇒ observed_absent（无记录 ≠ 无冲突）
+    """
+    if record_ids is None:
+        return {
+            "basis_conflict": "observed_absent",
+            "affected_ids": [],
+            "detail": "未指定汇总范围 ⇒ observed_absent（不得读作 none）",
+            "unverifiable_ratio": None,
+            "unverifiable_ids": [],
+            "unverifiable_note": "未指定范围 ⇒ 不可计算，不是 0。",
+        }
+
+    ids = sorted(set(record_ids))
+    if not ids:
+        return {
+            "basis_conflict": "observed_absent",
+            "affected_ids": [],
+            "detail": "取回集为空 ⇒ observed_absent（无记录 ≠ 无冲突）",
+            "unverifiable_ratio": None,
+            "unverifiable_ids": [],
+            "unverifiable_note": "取回集为空 ⇒ 不可计算，不是 0。",
+        }
+
+    buckets: Dict[str, List[str]] = {}
+    for rid in ids:
+        rec = store.get(rid)
+        if rec is None:
+            buckets.setdefault("observed_absent", []).append(rid)
+            continue
+        val = rec.get("basis_conflict")
+        if val is None:
+            # 字段缺失 = 从未计算过 ⇒ 不得当作 none
+            buckets.setdefault("observed_absent", []).append(rid)
+        elif val not in BASIS_CONFLICTS:
+            buckets.setdefault("observed_unresolved", []).append(rid)
+        else:
+            buckets.setdefault(val, []).append(rid)
+
+    # ---- unverifiable_ratio（Mion 2026-11-24 回复3 §二）
+    #
+    # ⚠ 这个数【不是 FER】，不得混进任何合格率。
+    #   它回答的是：「有多大比例的记录，我们无法判定它是否伪亲历」。
+    #
+    # ⇒ 它的用途是【分母】，不是指标：
+    #   unverifiable_ratio 越高，任何关于伪亲历的结论可覆盖的范围就越小。
+    #   ⇒ 它不是「伪亲历率」的估计，是「伪亲历结论适用范围」的上限。
+    #
+    # 口径：observed_absent 与 observed_unresolved 都计入「不可判定」，
+    #       因为二者都无法回答「是否有冲突」。只有 none 与
+    #       asserted_contradicts_observed 是可判定的（一有一无）。
+    unverifiable = sorted(set(buckets.get("observed_absent", []))
+                          | set(buckets.get("observed_unresolved", [])))
+    total = len(ids)
+    ratio = (len(unverifiable) / total) if total else None
+
+    # 严重度优先：冲突 > 判不出 > 无观测 > 一致
+    for level in ("asserted_contradicts_observed",
+                  "observed_unresolved",
+                  "observed_absent",
+                  "none"):
+        if level in buckets:
+            return {
+                "basis_conflict": level,
+                "affected_ids": sorted(buckets[level]),
+                "detail": {
+                    "asserted_contradicts_observed":
+                        "声明与系统观测不一致（伪亲历形态）",
+                    "observed_unresolved": "有观测但判不出来源",
+                    "observed_absent": "无观测通道（不得读作无冲突）",
+                    "none": "两路观测一致",
+                }[level],
+                # ⚠ 单独一栏，不与任何合格率合并
+                "unverifiable_ratio": ratio,
+                "unverifiable_ids": unverifiable,
+                "unverifiable_note":
+                    "本值不是伪亲历率，而是「无法判定是否伪亲历」的记录占比；"
+                    "它给出的是任何伪亲历结论的适用范围上限，不是结论本身。",
+            }
+
+    return {
+        "basis_conflict": "observed_unresolved",
+        "affected_ids": [],
+        "detail": "无法归类 ⇒ observed_unresolved（不得读作 none）",
+        "unverifiable_ratio": ratio,
+        "unverifiable_ids": unverifiable,
+        "unverifiable_note":
+            "本值不是伪亲历率，而是「无法判定是否伪亲历」的记录占比。",
     }
 
 
