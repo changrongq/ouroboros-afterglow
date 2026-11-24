@@ -293,6 +293,25 @@ MUTATIONS = [
         '                  and observed == "model_generation")',
         '        pseudo = False  # MUTANT: 不派生伪亲历标记',
     ),
+    # ---- 知微 2026-11-24：逐条绑定 + 观测携带所见版本
+    (
+        "M31", "不逐条绑定（只返回整批枚举，知微第一条）",
+        "afrecover.py",
+        '                "per_record": build_per_record(store, ids, buckets),',
+        '                "per_record": [],  # MUTANT: 只有整批枚举',
+    ),
+    (
+        "M32", "不校验观测所指版本是否存在（知微第二条）",
+        "afcore.py",
+        '            if observed_record_digest not in known_digests:',
+        '            if False:  # MUTANT: 任何 digest 都接受',
+    ),
+    (
+        "M33", "允许旧版 digest 贴到新内容上（知微指出的错位）",
+        "afcore.py",
+        '            if observed_rev != cur.revision:',
+        '            if False:  # MUTANT: 不检查版本是否当前',
+    ),
 ]
 
 

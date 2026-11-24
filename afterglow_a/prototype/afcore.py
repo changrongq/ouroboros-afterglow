@@ -496,7 +496,8 @@ class RecoveryStore:
     #    登记为 OBSERVED_PERMISSION_BOUNDARY = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE。
 
     def record_observed(self, record_id: str, observed_origin: str,
-                        note: str = "") -> None:
+                        note: str = "",
+                        observed_record_digest: Optional[str] = None) -> None:
         """记录一次【系统侧】对生成来源的观测。
 
         时序约束（Mion 2026-11-24 回复3 §一，这是本方法的要害）：
@@ -523,17 +524,63 @@ class RecoveryStore:
         if cur is None:
             raise KeyError(record_id)
 
-        # --- 时序约束 ---
-        if cur.revision != 1:
-            raise SchemaError(
-                "记录 %s 已是第 %d 版；观测必须在首版写入时/前完成。"
-                "晚于内容写入的观测可能是照着内容编的，不得接受。"
-                % (record_id, cur.revision))
+        # ---- 观测属于哪一版？（知微 2026-11-24）
+        #
+        # 问题：只凭 record_id，旧观测会被贴到新内容上。
+        #   观察者看到第 1 版，等他提交观测时记录已纠正到第 2 版，
+        #   只凭同一个 record_id 就可能把旧观测记到新内容名下。
+        #
+        # ⇒ 要求观测携带【所见版本的 record_digest】。
+        #   若给出，必须是该记录【某一真实存在版本】的摘要。
+        #
+        # ⚠ 不解环（船长「不要用尺子量尺子」）：
+        #   这里只读 _history 里已有的 this_digest 做集合比对，
+        #   【不调用 verify_chain】，也【不把链校验结论写进条目】。
+        #   ⇒ 比对的是「外部输入 vs 已知集合」，不是自证。
+        hist = self._history.get(record_id, [])
+        known_digests = {d.get("this_digest"): d.get("revision")
+                         for d in hist}
+        observed_rev = None
 
-        if self._was_modified(record_id):
-            raise SchemaError(
-                "记录 %s 曾被 revise/correct 过；观测通道已关闭。"
-                "事后补的观测不是观测，是第二个声明。" % record_id)
+        if observed_record_digest is not None:
+            if observed_record_digest not in known_digests:
+                raise SchemaError(
+                    "观测所指版本的摘要 %s 不属于记录 %s 的任何一版；"
+                    "这条观测是错位的（observer 看的那份已不存在或非本记录）。"
+                    % (str(observed_record_digest)[:12], record_id))
+            observed_rev = known_digests[observed_record_digest]
+            # 观测必须指向【当前版】才能用于当前冲突判定
+            if observed_rev != cur.revision:
+                raise SchemaError(
+                    "观测所指是第 %d 版，而当前是第 %d 版；"
+                    "旧观测不得贴到新内容上。"
+                    "若要在当前版上判定，须重新观测。"
+                    % (observed_rev, cur.revision))
+
+        # ---- 时序约束（放宽后）
+        #
+        # 原实现：revision != 1 或曾被修改 ⇒ 一律拒绝。
+        # 那会【宁可丢掉一个真实观测】，也不接受可能错位的观测。
+        #
+        # 知微指出的路径更好：
+        #   观测携带所见版本 digest ⇒ 可以判断它属于哪一版，
+        #   于是「跨时间的真实观测」可以接受，
+        #   而「错位观测」照样被拒。
+        #
+        # ⇒ 现行规则：
+        #   · 未给 digest：仍要求 revision == 1 且未被修改（旧规则，保守）
+        #   · 给了 digest：必须指向当前版（上面已校验）；
+        #     此时允许 revision > 1 —— 因为版本已被明确绑定
+        if observed_record_digest is None:
+            if cur.revision != 1:
+                raise SchemaError(
+                    "记录 %s 已是第 %d 版；未指明所见版本摘要的观测"
+                    "只允许在首版上使用。请给出 observed_record_digest。"
+                    % (record_id, cur.revision))
+            if self._was_modified(record_id):
+                raise SchemaError(
+                    "记录 %s 曾被 revise/correct 过；未指明所见版本的观测"
+                    "不得事后补。请给出 observed_record_digest。" % record_id)
 
         if cur.observed_origin is not None:
             raise SchemaError(
@@ -615,6 +662,11 @@ class RecoveryStore:
         prev = self._observed_chain_head.get(record_id)
         entry = {
             "record_id": record_id,
+            # 知微 2026-11-24：观测属于哪一版？
+            # ⇒ 携带所见版本的 record_digest 与 revision，
+            #   使「谁实际见过什么」落到一条具体记录的具体版本上。
+            "observed_record_digest": observed_record_digest,
+            "observed_revision": observed_rev,
             "asserted": asserted,
             "observed": observed,
             "basis_conflict": conflict,

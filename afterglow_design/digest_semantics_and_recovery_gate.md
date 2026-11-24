@@ -1043,7 +1043,134 @@ check_registry.py           [OK]
 
 ---
 
-## 十三 · 固定提交身份
+## 十三 · 逐条绑定与观测版本绑定（据知微 2026-11-24）
+
+知微在 Mion/Coder 的讨论中提出两条具体情形。两条都成立，已实现。
+
+### 13.1 逐条绑定：整批枚举不能替代逐条
+
+```text
+知微的原话（情形）：
+  「一次取回三条记录，一条的自述与观测相符，一条从未收到观测，
+    第三条存在矛盾。如果 conflict_summary 只返回一个枚举，
+    读者就看不出哪条可以怎样引用。」
+
+⇒ 实测确认：整批 basis_conflict 取最严重那一档，
+  于是「相符」的那条也被整批值掩盖。
+```
+
+```text
+修法：新增 per_record（逐条）与 counts（各类数量）。
+  per_record 每条给出：
+    record_id / revision / record_digest /
+    asserted / observed_origin / basis_conflict /
+    pseudo_first_person / chained /
+    citable_as_source / citation_limit
+
+⇒ citable_as_source 是该条【可否被引用为来源】的判断。
+  ⚠ 注意 asserted_contradicts_observed 也是 citable=True ——
+    因为「这条有冲突」这个事实本身可引用；
+    citation_limit 写明「不得引用其自述来源」。
+```
+
+```text
+知微补的用途，我抄进设计：
+  「这样，荣弦在新窗口问『这句话是谁说的』，
+    恢复方才能针对那句话作答。」
+```
+
+### 13.2 观测属于哪一版（这一条指出了我实现里的一个洞）
+
+```text
+知微的原话：
+  「观测属于哪一版？假如观察者看到第 1 版，等它提交观测时
+    记录已经纠正到第 2 版，只凭同一个 record_id 就可能
+    把旧观测贴到新内容上。」
+
+⇒ 我的原实现：时序约束是【一刀切拒】——
+  只要 revision != 1 或曾被修改，观测就递不进来。
+  ⇒ 这换来了「不贴错」，代价是「宁可丢掉一个真实观测」。
+
+⇒ 知微给的路径更好：观测携带【所见版本的 record_digest】。
+  于是「跨时间的真实观测」可以接受，「错位观测」照样被拒。
+```
+
+```text
+实现：record_observed(record_id, observed_origin, note,
+                      observed_record_digest=None)
+
+  · 未给 digest：仍要求 revision == 1 且未被修改（旧规则，保守）
+  · 给了 digest：必须是该记录【某一真实存在版本】的摘要；
+                 且必须指向【当前版】，否则拒绝（旧观测不得贴新内容）
+
+观测条目新增：observed_record_digest / observed_revision
+⇒ 「谁实际见过什么」落到了一条具体记录的具体版本上。
+```
+
+### 13.3 关于「不要用尺子量尺子」（船长 2026-11-24）
+
+```text
+船长提醒：「谁来观测观测」这个问题要谨慎，
+          不要陷入用尺子量尺子的循环。
+
+⇒ 加 digest 到观测条目，【不构成环】。判据：
+    观测条目里的 observed_record_digest 来自 L1（内容摘要），
+    是【外部输入】，不是观测链自产。
+    verify_observed_chain 校验的是条目自身的摘要 + prev 链。
+    两者并行，不相互引用。
+```
+
+```text
+⚠ 但有一条真会成环的路，必须明令禁止：
+   若为了「验证观测所见的版本是否真实存在」而调用 verify_chain ——
+   那是 L4 校验 L1，而 L4 的结论又被写进 L2 的条目 ⇒ 这才是环。
+
+⇒ 实现硬约束（OC-5g 守着）：
+   · record_observed 不调用 verify_chain
+   · record_observed 不调用 verify_observed_chain
+   · 观测条目里不写「链是否通过」这类结论
+```
+
+```text
+判据（写下来，供将来用）：
+  ✗ 「这个校验本身对不对？」        ← 成环
+  ✓ 「被校验的这个对象，是不是我以为的那个？」 ← 不成环
+
+⇒ 知微的建议属于后者：观测说「我看到 digest X」，
+  系统问「X 属于这条记录的哪一版？」
+  这是【外部输入 vs 已知集合】的比对，不是自证。
+```
+
+```text
+⚠ 若将来有人想加「观测链自身的可信度」这类字段，那才是真环。
+  届时应停在「不可判定」，而不是再套一层。
+```
+
+### 13.4 谁有权写入观测
+
+```text
+知微：「至于谁有权写入观测，Coder 对单进程入口能力的描述是准确的，
+       仍应单独登记。」
+
+⇒ 保持：
+  OBSERVED_PATHS_SPLIT         = YES（API 层两条路径）
+  OBSERVED_PERMISSION_BOUNDARY = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE
+```
+
+### 13.5 验收
+
+```text
+test_observed_channel.py    34/34   （新增第 5 组 7 条）
+test_mutations_gate.py      CAUGHT 32 / MISSED 0（新增 3 个知微相关变异）
+test_p1_p5.py               17/17
+test_recovery_gate.py       10/10
+test_z61_gaps.py            13/13
+check_registry.py           [OK]
+```
+
+---
+
+## 十四 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

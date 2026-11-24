@@ -398,6 +398,8 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
         return {
             "basis_conflict": "observed_absent",
             "affected_ids": [],
+            "per_record": [],
+            "counts": {},
             "detail": "未指定汇总范围 ⇒ observed_absent（不得读作 none）",
             "unverifiable_ratio": None,
             "unverifiable_ids": [],
@@ -417,6 +419,8 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
         return {
             "basis_conflict": "observed_absent",
             "affected_ids": [],
+            "per_record": [],
+            "counts": {},
             "detail": "取回集为空 ⇒ observed_absent（无记录 ≠ 无冲突）",
             "unverifiable_ratio": None,
             "unverifiable_ids": [],
@@ -506,6 +510,11 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
             return {
                 "basis_conflict": level,
                 "affected_ids": sorted(buckets[level]),
+                # 知微 2026-11-24：逐条绑定记录 ID、版本与判定
+                #   汇总保留各类数量；读者能看出【哪条可以怎样引用】。
+                #   若只给一个枚举，三条各不相同的情形就读不出来。
+                "per_record": build_per_record(store, ids, buckets),
+                "counts": {k: len(v) for k, v in sorted(buckets.items())},
                 "detail": {
                     "asserted_contradicts_observed":
                         "声明与系统观测不一致（asserted_contradicts_observed）",
@@ -543,6 +552,8 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
     return {
         "basis_conflict": "observed_unresolved",
         "affected_ids": [],
+        "per_record": build_per_record(store, ids, buckets),
+        "counts": {k: len(v) for k, v in sorted(buckets.items())},
         "detail": "无法归类 ⇒ observed_unresolved（不得读作 none）",
         "unverifiable_ratio": ratio,
         "unverifiable_ids": unverifiable,
@@ -558,6 +569,63 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
         "observed_unchained_ids": sorted(unchained_ids),
         "observed_chained_note": "未进链的观测值不在任何摘要内。",
     }
+
+
+def build_per_record(store, ids: List[str],
+                     buckets: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    """逐条绑定：记录 ID / 版本 / 判定 / 该条可否引用。
+
+    知微 2026-11-24：
+      「一次取回三条记录，一条自述与观测相符，一条从未收到观测，
+        第三条存在矛盾。如果 conflict_summary 只返回一个枚举，
+        读者就看不出哪条可以怎样引用。」
+
+    ⇒ 逐条给出，汇总另保留各类数量。
+    """
+    rev_of = {}
+    for level, rids in buckets.items():
+        for rid in rids:
+            rev_of[rid] = level
+
+    out = []
+    for rid in ids:
+        rec = store.get(rid)
+        level = rev_of.get(rid, "observed_absent")
+
+        # 该条的观测链信息（若已进链）
+        chain = []
+        if hasattr(store, "observed_chain"):
+            chain = store.observed_chain(rid)
+        last = chain[-1] if chain else {}
+
+        # 可否引用：只有判定明确（none / asserted_contradicts_observed）
+        # 且已进链时，才允许把「来源」的说法挂到这条上。
+        citable = (level in ("none", "asserted_contradicts_observed")
+                   and bool(last))
+        if level == "observed_absent":
+            why = "无观测 ⇒ 无法判定来源，不得引用其来源说法"
+        elif level == "observed_unresolved":
+            why = "有观测但判不出 ⇒ 来源不确定，不得引用"
+        elif level == "asserted_contradicts_observed":
+            why = "断言与观测冲突 ⇒ 可引用「有冲突」这一事实，不得引用其自述来源"
+        else:
+            why = "断言与观测一致 ⇒ 可引用其来源说法（仅限本机此刻）"
+
+        out.append({
+            "record_id": rid,
+            "revision": rec.get("revision") if rec else None,
+            "record_digest": (last.get("observed_record_digest")
+                              if last else None),
+            "asserted": rec.get("participation_basis") if rec else None,
+            "observed_origin": rec.get("observed_origin") if rec else None,
+            "basis_conflict": level,
+            "pseudo_first_person": (last.get("pseudo_first_person", False)
+                                    if last else False),
+            "chained": bool(chain),
+            "citable_as_source": citable,
+            "citation_limit": why,
+        })
+    return out
 
 
 def check_unknown_preserved(store, record_id: str,

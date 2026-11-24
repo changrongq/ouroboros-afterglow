@@ -1,7 +1,7 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 29
+    "CAUGHT": 32
   },
   "rows": [
     {
@@ -140,7 +140,7 @@
       "id": "M22",
       "desc": "「未观测」返回成 none 而非 observed_absent（Mion 第 0 项核心）",
       "status": "CAUGHT",
-      "evidence": "失败用例：OC-0b 未观测 ⇒ observed_absent，不得是 none —; OC-3a unverifiable_ratio 是独立一栏，且不进合格率 "
+      "evidence": "失败用例：OC-0b 未观测 ⇒ observed_absent，不得是 none —; OC-3a unverifiable_ratio 是独立一栏，且不进合格率 ; OC-5b 整批枚举不得替代逐条（知微举的三条情形） — none"
     },
     {
       "id": "M23",
@@ -176,7 +176,25 @@
       "id": "M30",
       "desc": "伪亲历合并进 basis_conflict 当第五值（Mion 回复4 §五）",
       "status": "CAUGHT",
-      "evidence": "失败用例：OC-4f pseudo_first_person 是派生标记，不是第五个值"
+      "evidence": "失败用例：OC-4f pseudo_first_person 是派生标记，不是第五个值; OC-5a conflict_summary 必须逐条绑定记录 ID / 版"
+    },
+    {
+      "id": "M31",
+      "desc": "不逐条绑定（只返回整批枚举，知微第一条）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-5a conflict_summary 必须逐条绑定记录 ID / 版"
+    },
+    {
+      "id": "M32",
+      "desc": "不校验观测所指版本是否存在（知微第二条）",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M33",
+      "desc": "允许旧版 digest 贴到新内容上（知微指出的错位）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-5d 旧版 digest 贴到新内容 ⇒ 拒（知微指出的错位） — 旧"
     }
   ]
 }

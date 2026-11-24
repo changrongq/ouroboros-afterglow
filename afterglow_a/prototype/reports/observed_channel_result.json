@@ -1,7 +1,7 @@
 {
   "baseline": "Mion 2026-11-24 回复2 / 回复3",
-  "total": 27,
-  "passed": 27,
+  "total": 34,
+  "passed": 34,
   "failed": 0,
   "results": [
     {
@@ -165,6 +165,48 @@
       "name": "observed_chained 进返回结构",
       "ok": true,
       "detail": "chained / unchained 分开列"
+    },
+    {
+      "id": "OC-5a",
+      "name": "conflict_summary 必须逐条绑定记录 ID / 版本 / 判定",
+      "ok": true,
+      "detail": "3 条各自绑定，r1 可引用 / r2 不可 / r3 只可引用「有冲突」"
+    },
+    {
+      "id": "OC-5b",
+      "name": "整批枚举不得替代逐条（知微举的三条情形）",
+      "ok": true,
+      "detail": "整批 observed_absent，但逐条 a=none / b=absent / c=none"
+    },
+    {
+      "id": "OC-5c",
+      "name": "观测必须携带所见版本（未带 digest 且非首版 ⇒ 拒）",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-5d",
+      "name": "旧版 digest 贴到新内容 ⇒ 拒（知微指出的错位）",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-5e",
+      "name": "不存在的 digest ⇒ 拒",
+      "ok": true,
+      "detail": "被拒"
+    },
+    {
+      "id": "OC-5f",
+      "name": "带当前版 digest ⇒ 允许跨版观测（放宽后的新能力）",
+      "ok": true,
+      "detail": "第2版上允许观测且记录版本"
+    },
+    {
+      "id": "OC-5g",
+      "name": "不得引入环：record_observed 不调用任何链校验",
+      "ok": true,
+      "detail": "不调用链校验，不写链结论"
     }
   ]
 }

@@ -468,10 +468,159 @@ def oc4h():
     return "chained / unchained 分开列"
 
 
+# ======================================================== 第 5 项（知微 2026-11-24）
+@case("OC-5a", "conflict_summary 必须逐条绑定记录 ID / 版本 / 判定")
+def oc5a():
+    s = RecoveryStore()
+    for rid, basis, kind in (("r1", "first_person_report", "user_utterance"),
+                             ("r2", "first_person_report", "user_utterance"),
+                             ("r3", "first_person_report", "model_echo")):
+        s.insert(Record(
+            record_id=rid, content="c-" + rid, source_kind=kind,
+            source_ref="u/" + rid, participant_id=None,
+            participation_basis=basis, basis_ref="u/" + rid,
+            commitment_state="not_a_commitment", revision=1, prev_digest=None,
+            changed_at=PIN, change_authority="f"))
+    s.record_observed("r1", "human_input")        # 相符
+    # r2 从未观测
+    s.record_observed("r3", "model_generation")   # 矛盾
+
+    cs = summarize_conflicts(s, ["r1", "r2", "r3"])
+    assert "per_record" in cs, "缺 per_record"
+    assert len(cs["per_record"]) == 3, len(cs["per_record"])
+    assert "counts" in cs, "缺 counts"
+
+    by = {p["record_id"]: p for p in cs["per_record"]}
+    for rid in ("r1", "r2", "r3"):
+        assert rid in by, "per_record 缺 %s" % rid
+        assert by[rid]["revision"] is not None, "%s 缺 revision" % rid
+        assert "basis_conflict" in by[rid]
+
+    assert by["r1"]["citable_as_source"] is True, "相符的记录应可引用"
+    assert by["r2"]["citable_as_source"] is False, "从未观测不得可引用"
+    assert by["r3"]["pseudo_first_person"] is True
+    assert "不得引用其自述来源" in by["r3"]["citation_limit"]
+    return "3 条各自绑定，r1 可引用 / r2 不可 / r3 只可引用「有冲突」"
+
+
+@case("OC-5b", "整批枚举不得替代逐条（知微举的三条情形）")
+def oc5b():
+    s = RecoveryStore()
+    for rid in ("a", "b", "c"):
+        s.insert(Record(
+            record_id=rid, content="c", source_kind="user_utterance",
+            source_ref="u/" + rid, participant_id=None,
+            participation_basis="first_person_report", basis_ref="u/" + rid,
+            commitment_state="not_a_commitment", revision=1, prev_digest=None,
+            changed_at=PIN, change_authority="f"))
+    s.record_observed("a", "human_input")   # none
+    # b 未观测
+    s.record_observed("c", "human_input")   # none
+    cs = summarize_conflicts(s, ["a", "b", "c"])
+    # 整批取最严重 ⇒ observed_absent
+    assert cs["basis_conflict"] == "observed_absent", cs["basis_conflict"]
+    # 但逐条能区分
+    by = {p["record_id"]: p for p in cs["per_record"]}
+    assert by["a"]["basis_conflict"] == "none"
+    assert by["b"]["basis_conflict"] == "observed_absent"
+    assert by["c"]["basis_conflict"] == "none"
+    return "整批 observed_absent，但逐条 a=none / b=absent / c=none"
+
+
+@case("OC-5c", "观测必须携带所见版本（未带 digest 且非首版 ⇒ 拒）")
+def oc5c():
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="x", content="第1版", source_kind="user_utterance",
+        source_ref="u/x", participant_id=None,
+        participation_basis="first_person_report", basis_ref="u/x",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="f"))
+    s.revise("x", {"content": "第2版"}, reason="纠正")
+    try:
+        s.record_observed("x", "human_input")
+    except SchemaError as e:
+        assert "observed_record_digest" in str(e), str(e)
+        return "被拒"
+    raise AssertionError("未带 digest 且非首版却被接受")
+
+
+@case("OC-5d", "旧版 digest 贴到新内容 ⇒ 拒（知微指出的错位）")
+def oc5d():
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="x", content="第1版", source_kind="user_utterance",
+        source_ref="u/x", participant_id=None,
+        participation_basis="first_person_report", basis_ref="u/x",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="f"))
+    old_digest = s._history["x"][0]["this_digest"]
+    s.revise("x", {"content": "第2版"}, reason="纠正")
+    try:
+        s.record_observed("x", "human_input",
+                          observed_record_digest=old_digest)
+    except SchemaError as e:
+        assert "旧观测不得贴到新内容上" in str(e), str(e)
+        return "被拒"
+    raise AssertionError("旧版 digest 被贴到新内容上")
+
+
+@case("OC-5e", "不存在的 digest ⇒ 拒")
+def oc5e():
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="x", content="c", source_kind="user_utterance",
+        source_ref="u/x", participant_id=None,
+        participation_basis="first_person_report", basis_ref="u/x",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="f"))
+    try:
+        s.record_observed("x", "human_input", observed_record_digest="0" * 64)
+    except SchemaError as e:
+        assert "不属于记录" in str(e), str(e)
+        return "被拒"
+    raise AssertionError("不存在的 digest 被接受")
+
+
+@case("OC-5f", "带当前版 digest ⇒ 允许跨版观测（放宽后的新能力）")
+def oc5f():
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="x", content="第1版", source_kind="user_utterance",
+        source_ref="u/x", participant_id=None,
+        participation_basis="first_person_report", basis_ref="u/x",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="f"))
+    s.revise("x", {"content": "第2版"}, reason="纠正")
+    cur_digest = s._history["x"][1]["this_digest"]
+    s.record_observed("x", "human_input",
+                      observed_record_digest=cur_digest)
+    chain = s.observed_chain("x")
+    assert chain[-1]["observed_revision"] == 2, chain[-1]["observed_revision"]
+    assert chain[-1]["observed_record_digest"] == cur_digest
+    return "第2版上允许观测且记录版本"
+
+
+@case("OC-5g", "不得引入环：record_observed 不调用任何链校验")
+def oc5g():
+    import re as _re
+    import inspect
+    src = inspect.getsource(afcore.RecoveryStore.record_observed)
+    code_only = "\n".join(l for l in src.splitlines()
+                          if not l.strip().startswith("#"))
+    assert not _re.search(r"verify_chain\s*\(", code_only), \
+        "record_observed 调用了 verify_chain ⇒ 环"
+    assert not _re.search(r"verify_observed_chain\s*\(", code_only), \
+        "record_observed 调用了 verify_observed_chain ⇒ 环"
+    assert '"verified"' not in code_only and "chain_ok" not in code_only, \
+        "观测条目写进了链校验结论 ⇒ 环"
+    return "不调用链校验，不写链结论"
+
+
 # ======================================================== 汇总
 def main():
     print("=" * 78)
-    print("观测通道改造回归 · 据 Mion 2026-11-24 回复2 / 回复3 / 回复4")
+    print("观测通道改造回归 · 据 Mion 回复2/3/4 + 知微 2026-11-24")
     print("=" * 78)
     print()
 
@@ -486,6 +635,8 @@ def main():
          [oc3a, oc3b, oc3c]),
         ("第 4 项 · 观测进链 + 判定表修正 + 派生标记（Mion 回复4）",
          [oc4a, oc4b, oc4c, oc4d, oc4e, oc4f, oc4g, oc4h]),
+        ("第 5 项 · 逐条绑定 + 观测携带所见版本（知微 2026-11-24）",
+         [oc5a, oc5b, oc5c, oc5d, oc5e, oc5f, oc5g]),
     ]
     for g, fns in groups:
         print("[%s]" % g)
