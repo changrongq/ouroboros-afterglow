@@ -12,9 +12,20 @@ def chk(c, m):
     else: bad += 1; print("  [XX]", m)
 
 print("=== 1. 25 号落盘保真 ===")
-SRC = open(os.path.join(ROOT, "correspondence",
-                        "给Coder_睫_AfterGlow第一阶段设计审查意见_成文原件_20261124.md"),
-           encoding="utf-8").read()
+# ---------------------------------------------------------------- 来件可得性
+# 同上：来件按惯例不入库，外部克隆取不到时报 SKIP。
+_SRC = os.path.join(ROOT, "correspondence",
+                    "给Coder_睫_AfterGlow第一阶段设计审查意见_成文原件_20261124.md")
+if not os.path.exists(_SRC):
+    print("=" * 74)
+    print("SKIP · 来件原件不在仓库中，无法做保真比对")
+    print("  期望位置: correspondence/给Coder_睫_AfterGlow第一阶段设计审查意见_成文原件_20261124.md")
+    print("  说明: 来件按惯例不入库。已落盘件见 discussions/r2/25，其正文已含原文。")
+    print("  ⇒ 本脚本未执行任何断言。SKIP != PASS。")
+    print("=" * 74)
+    sys.exit(0)
+
+SRC = open(_SRC, encoding="utf-8").read()
 P25 = os.path.join(RD, "25_MEMCAND-R2_睫_第一阶段设计审查意见_成文原件_CONDITIONAL_20261124.md")
 T25 = open(P25, encoding="utf-8").read()
 chk(SRC in T25, "原文 18698 B 逐字节包含")
