@@ -1,0 +1,68 @@
+{
+  "baseline": "凌翼裁定 2026-11-24",
+  "total": 10,
+  "passed": 10,
+  "failed": 0,
+  "results": [
+    {
+      "id": "RG-1",
+      "name": "原样保存的历史跨时刻再次校验，摘要一致",
+      "ok": true,
+      "detail": "跨秒重算一致 c2575b28fb88，链校验 True"
+    },
+    {
+      "id": "RG-2",
+      "name": "同内容不同时刻重建：record_digest 不同，content_digest 相同",
+      "ok": true,
+      "detail": "record_digest 不同(c2575b28/88789d9b)，content_digest 相同(cd-v1:5fdc814fe6)"
+    },
+    {
+      "id": "RG-3",
+      "name": "历史字段或链指针遭破坏，校验明确失败",
+      "ok": true,
+      "detail": "摘要破坏→1 条问题；指针破坏→2 条问题"
+    },
+    {
+      "id": "RG-4",
+      "name": "取回集合 exact 但链校验失败 ⇒ 资格必须拒绝",
+      "ok": true,
+      "detail": "exact 仍 exact，integrity=failed，eligible=False（原因 integrity_failed）"
+    },
+    {
+      "id": "RG-5",
+      "name": "取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝",
+      "ok": true,
+      "detail": "关闭检查⇒拒绝；空范围⇒拒绝；非空取回+空期望⇒no_expected_ids 拒绝"
+    },
+    {
+      "id": "RG-6",
+      "name": "链局部自洽但缺外部锚定，不得声称独立真实性",
+      "ok": true,
+      "detail": "eligible=True 但 anchor=not_established，科学结果=False"
+    },
+    {
+      "id": "RG-7",
+      "name": "检查后被消费前对象被替换 ⇒ 不得沿用旧检查结果",
+      "ok": true,
+      "detail": "写入后快照变，eligible=False（stale_check）"
+    },
+    {
+      "id": "RG-8",
+      "name": "登记身份：独立且早于观察才允许 eligible",
+      "ok": true,
+      "detail": "独立=no/事后=no/缺字段/非法值 四种均被拒"
+    },
+    {
+      "id": "RG-9",
+      "name": "content_digest 投影：缺字段报错，不按缺省填充",
+      "ok": true,
+      "detail": "cd-v1 前缀正常；缺 3 类字段均报错；排除表无泄漏"
+    },
+    {
+      "id": "RG-10",
+      "name": "三种操作语义在闭集内且互不相同",
+      "ok": true,
+      "detail": "操作三值齐备；重建改 record_digest 不改 content_digest"
+    }
+  ]
+}

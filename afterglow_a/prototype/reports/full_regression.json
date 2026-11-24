@@ -1,0 +1,29 @@
+{
+  "rows": [
+    {
+      "suite": "P1-P5 验收",
+      "status": "PASS",
+      "note": "rc=0"
+    },
+    {
+      "suite": "恢复资格门禁",
+      "status": "PASS",
+      "note": "rc=0"
+    },
+    {
+      "suite": "熵/记忆跟踪",
+      "status": "SKIP",
+      "note": "文件不存在"
+    },
+    {
+      "suite": "变异测试 v4",
+      "status": "PASS",
+      "note": "rc=0"
+    },
+    {
+      "suite": "变异测试 gate",
+      "status": "PASS",
+      "note": "rc=0"
+    }
+  ]
+}

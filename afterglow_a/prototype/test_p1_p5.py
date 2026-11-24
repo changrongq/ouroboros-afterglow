@@ -15,8 +15,10 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from afcore import (Record, RecoveryStore, SchemaError, SOURCE_KINDS,
-                    COMMITMENT_STATES, canonical_digest)
-from afrecover import classify_match, verify_recovery, check_unknown_preserved
+                    COMMITMENT_STATES, MATCH_KINDS, canonical_digest,
+                    content_digest)
+from afrecover import (classify_match, verify_recovery, check_unknown_preserved,
+                       check_registration, check_integrity)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -226,7 +228,7 @@ def p4b2():
 
 
 # ============================================================ P5
-@case("P5", "五种 match_kind 可区分")
+@case("P5", "集合关系四值 + partial_overlap 可区分")
 def p5():
     cases = [
         (["a", "b"], ["a", "b"], "exact"),
@@ -240,16 +242,33 @@ def p5():
         kind, _ = classify_match(r, e)
         got.append((kind, want))
         assert kind == want, "retrieved=%s expected=%s 得 %s，应 %s" % (r, e, kind, want)
-    return "5 类 + partial_overlap 均正确：" + "/".join(g[0] for g in got)
+    # 裁定 §三：not_run 不在集合关系闭集内
+    assert "not_run" not in MATCH_KINDS, \
+        "not_run 仍在 MATCH_KINDS 内（裁定 §三 要求移出）"
+    return "4 类 + partial_overlap 均正确；not_run 已不在闭集"
 
 
-@case("P5", "not_run 不得被读成通过")
+@case("P5", "not_run 不是集合关系值，不得被读成通过")
 def p5b():
+    # 裁定 §三 + A §1.8 更正二：未执行时【没有】match_kind
     kind, detail = classify_match([], None, ran=False)
-    assert kind == "not_run", "未执行却报 %s" % kind
-    kind2, _ = classify_match(["a"], None, ran=True)
-    assert kind2 == "not_run", "无期望集却报 %s" % kind2
-    return "ran=False 与 expected=None 均落 not_run"
+    assert kind is None, "未执行却报 %r（应为 None，不是字符串）" % (kind,)
+    assert detail["ran"] is False, "detail.ran 应为 False"
+
+    kind2, detail2 = classify_match(["a"], None, ran=True)
+    assert kind2 is None, "无期望集却报 %r" % (kind2,)
+    assert detail2["ran"] is False, "无期望集时 ran 应为 False"
+
+    # 反例：期望集为空列表时，会算出 disjoint —— 但这不是「通过」
+    kind3, _ = classify_match([], [])
+    assert kind3 == "exact", "空集对空集应 exact（但资格门禁会拒）"
+
+    # 确认字符串 "not_run" 不再被当作合法值返回
+    for bad in ([], ["a"]):
+        k, _ = classify_match(bad, None, ran=False)
+        assert k != "not_run", "仍返回了字符串 not_run"
+
+    return "ran=False/expected=None ⇒ match_kind=None；字符串 not_run 不再出现"
 
 
 @case("P5", "实际恢复验证：检索 syn-0001 与期望集对比")

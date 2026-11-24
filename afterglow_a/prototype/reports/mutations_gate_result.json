@@ -1,0 +1,134 @@
+{
+  "verdict": "PASS",
+  "counts": {
+    "CAUGHT": 21
+  },
+  "rows": [
+    {
+      "id": "M1",
+      "desc": "把 integrity_failed 的阻断删掉（失败也不影响资格）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-4 取回集合 exact 但链校验失败 ⇒ 资格必须拒绝 — exa; RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — ; Z61-04 链已失败 + 过期令牌：failed 不得被覆盖成 not_ch"
+    },
+    {
+      "id": "M2",
+      "desc": "只删 failed 分支，未检查仍阻断",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-4 取回集合 exact 但链校验失败 ⇒ 资格必须拒绝 — 拒绝原; Z61-04 链已失败 + 过期令牌：failed 不得被覆盖成 not_ch"
+    },
+    {
+      "id": "M3",
+      "desc": "把 not_checked 当通过（默认为通过）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M4",
+      "desc": "删掉 stale_check 阻断（旧检查结果可沿用）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-7 检查后被消费前对象被替换 ⇒ 不得沿用旧检查结果 — 拒绝原因缺; Z61-01 G6 默认消费本次检查快照：检查中途被改必须拒绝 — 缺 sta; Z61-04 链已失败 + 过期令牌：failed 不得被覆盖成 not_ch"
+    },
+    {
+      "id": "M5",
+      "desc": "删掉登记独立性阻断",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-8 登记身份：独立且早于观察才允许 eligible — 非独立登记; Z61-03b 空身份登记进入门禁后必须拒绝资格 — 空登记人却给了资格"
+    },
+    {
+      "id": "M6",
+      "desc": "让 check_registration 永远判独立",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-8 登记身份：独立且早于观察才允许 eligible — 非独立登记; Z61-03 登记身份空值必须判不合格 — 以下情形仍被判独立：[\"regis; Z61-03b 空身份登记进入门禁后必须拒绝资格 — 空登记人却给了资格"
+    },
+    {
+      "id": "M7",
+      "desc": "删掉 no_expected_ids 阻断",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M8",
+      "desc": "让完整性失败改写 match_kind（两轴串了）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-4 取回集合 exact 但链校验失败 ⇒ 资格必须拒绝 — 串轴："
+    },
+    {
+      "id": "M9",
+      "desc": "not_run 重新进入 MATCH_KINDS",
+      "status": "CAUGHT",
+      "evidence": "失败用例：P5 集合关系四值 + partial_overlap 可区分 — n"
+    },
+    {
+      "id": "M10",
+      "desc": "未执行时返回字符串 not_run",
+      "status": "CAUGHT",
+      "evidence": "失败用例：P5 not_run 不是集合关系值，不得被读成通过 — 未执行却报 "
+    },
+    {
+      "id": "M11",
+      "desc": "内容摘要缺字段时按缺省填充而不是报错",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M12",
+      "desc": "让 changed_at 混进内容摘要投影",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M13",
+      "desc": "声称外部锚定已建立",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-6 链局部自洽但缺外部锚定，不得声称独立真实性 — 链通过却声称外部"
+    },
+    {
+      "id": "M14",
+      "desc": "把工程结果标成科学结果",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-6 链局部自洽但缺外部锚定，不得声称独立真实性 — 被标成科学结果; P5 实际恢复验证：检索 syn-0001 与期望集对比 — 工程测试; NC 工程结论不得冒充科学结果 —"
+    },
+    {
+      "id": "M15",
+      "desc": "snapshot_token 忽略 live 侧",
+      "status": "CAUGHT",
+      "evidence": "失败用例：Z61-02e 只改 live 不改 history：令牌必须变 — 只改 li"
+    },
+    {
+      "id": "M15b",
+      "desc": "snapshot_token 只取历史条数不看内容（Z61-02 原缺陷形态）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：Z61-02 快照覆盖历史实际内容：只改历史也必须改变令牌 — 历史正文被改但; Z61-02b 快照覆盖摘要串本身：改 this_digest 也改变令牌 — ; Z61-02c 快照覆盖链指针：改 prev_digest 也改变令牌 — pr"
+    },
+    {
+      "id": "M17",
+      "desc": "G6 只在外部传 expected_snapshot 时生效（Z61-01 原缺陷形态）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：Z61-01 G6 默认消费本次检查快照：检查中途被改必须拒绝 — 检查中途被; Z61-01b G6 默认生效：不传 expected_snapshot 也能检"
+    },
+    {
+      "id": "M18",
+      "desc": "stale 时无条件改写状态（Z61-04 原缺陷形态）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：Z61-04 链已失败 + 过期令牌：failed 不得被覆盖成 not_ch"
+    },
+    {
+      "id": "M19",
+      "desc": "不校验 registered_by/rev 的空白（Z61-03 原缺陷形态）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：Z61-03 登记身份空值必须判不合格 — 以下情形仍被判独立：[\"regis; Z61-03b 空身份登记进入门禁后必须拒绝资格 — 空登记人却给了资格"
+    },
+    {
+      "id": "M20",
+      "desc": "registered_by 非字符串类型被放行（Z61-03 变形）",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M16",
+      "desc": "空检查范围当作 verified",
+      "status": "CAUGHT",
+      "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    }
+  ]
+}
