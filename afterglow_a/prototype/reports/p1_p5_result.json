@@ -55,15 +55,15 @@
   },
   {
     "id": "P5",
-    "case": "五种 match_kind 可区分",
+    "case": "集合关系四值 + partial_overlap 可区分",
     "pass": true,
-    "detail": "5 类 + partial_overlap 均正确：exact/superset/subset/disjoint/partial_overlap"
+    "detail": "4 类 + partial_overlap 均正确；not_run 已不在闭集"
   },
   {
     "id": "P5",
-    "case": "not_run 不得被读成通过",
+    "case": "not_run 不是集合关系值，不得被读成通过",
     "pass": true,
-    "detail": "ran=False 与 expected=None 均落 not_run"
+    "detail": "ran=False/expected=None ⇒ match_kind=None；字符串 not_run 不再出现"
   },
   {
     "id": "P5",

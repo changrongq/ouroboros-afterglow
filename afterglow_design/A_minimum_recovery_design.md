@@ -202,6 +202,32 @@ MemorySystem.py L1310  ... fragment.get('source_role', existing.get('source_role
   ⇒ 这不是「五值不够」，是「不该由这张表回答」。
 ```
 
+```text
+⇒ 【2026-11-24 据凌翼裁定回执补记：本节契约已实现，另立门禁】
+
+  裁定要点：
+    · 采用 B 方案：match_kind 保持纯集合语义，
+      完整性另立 integrity_status 一轴，失败必须阻断资格
+    · not_run 从集合关系枚举移出（本轮实现已追平）
+    · expected_ids_registration 五字段已实现并接入门禁
+
+  实现位置：afterglow_a/prototype/afrecover.py
+  设计更正：afterglow_design/digest_semantics_and_recovery_gate.md
+
+  验收（只报测得的结果，不报「已实现」）：
+    test_p1_p5.py           17/17
+    test_recovery_gate.py   10/10（覆盖裁定 §三 全部七条场景 + 3 项契约）
+    test_mutations_gate.py  16 个变异全部 CAUGHT，MISSED 0
+
+  ⚠ 状态登记：RECOVERY_GATE_IMPLEMENTED = NOT_VERIFIED
+     我方不自行判定「实现完成」。判定权在知微（实现与设计一致性）
+     与睫（声明边界）。本节只提供可复算的材料。
+
+  ⚠ ZA01_VERIFIED_READ_BINDING 仍为 OPEN：
+     门禁检查的是「检查时刻」的快照，覆盖「检查后消费前被替换」。
+     不覆盖「读取与检查本身非原子」的情形。此项未解决。
+```
+
 ---
 
 ## 二 · 与现状的差异表（逐项可核对）
@@ -243,7 +269,16 @@ P1  一条记录的来源可以被判定为五个值之一，缺省为 unknown
 P2  修改一条记录会留下上一版摘要，链可校验
 P3  一条被纠正的记录，旧版仍在，且能被指认
 P4  系统能报告「我不知道」而不自动填值
-P5  恢复后取回的结果能与期望集对比，并区分 exact/superset/subset/disjoint/not_run
+P5  恢复后取回的结果能与期望集对比，并区分
+    exact / superset / subset / disjoint / partial_overlap
+    （未执行时 match_kind = None，不是枚举值 not_run —— 见 §1.8 更正二）
+```
+
+```text
+⇒ 2026-11-24 据凌翼裁定同步 P5 措辞：
+   原写 "…/disjoint/not_run"，与 §1.8 更正二自相矛盾。
+   实现已于本轮追平：MATCH_KINDS 不含 not_run，
+   未执行返回 None。回归见 test_p1_p5.py P5 / P5b。
 ```
 
 ⇒ 这五条都是**工程一致性**命题，不涉及「是否记住了」的科学判断。
