@@ -231,11 +231,15 @@ python afterglow_a/prototype/test_mutations_gate.py
 ```
 
 ```text
-预期：
-  test_p1_p5.py           17/17
-  test_recovery_gate.py   10/10
-  test_z61_gaps.py        13/13
-  test_mutations_gate.py  PASS（CAUGHT 21）
+预期（每行末的 @oid 即该数字实测所在的提交）：
+  test_p1_p5.py           17/17     @236c5f6
+  test_recovery_gate.py   10/10     @236c5f6
+  test_z61_gaps.py        13/13     @236c5f6
+  test_mutations_gate.py  PASS（CAUGHT 21）  @236c5f6
+
+  完整 oid = 236c5f6e7e7789736fe87a10e21ff29b204ac9af（= 本信所审基线）
+  ⇒ 这四个数字【不是】本信所在提交的结果，是基线的结果。
+⇒ 你若要核，请 checkout 236c5f6 再跑。
 
 若你的数字与我不同，以你的为准。
 ```
