@@ -402,6 +402,153 @@ MAIN_MERGE                 = DEFERRED
 
 ---
 
+## 十 · Z61 四项修正（据知微 2026-11-24 独立复核）
+
+知微在 `给Coder_PR61恢复资格门禁独立复核_知微_20261124.md` 中指出四个缺口。
+**四项全部复现成立，无一误报。** 本轮逐一修正。
+
+### 10.1 Z61-01 · P1：G6 默认路径没有消费本次检查的快照
+
+```text
+原缺陷（afrecover.py 步骤 4）：
+  只在调用方显式传 expected_snapshot 时才比较；
+  默认 None ⇒ G6 被整体跳过。
+  而 check_integrity() 自己已取得并返回 scope.snapshot —— 那个才该是基准。
+
+⇒ 修法：默认比较【本次检查实际取得的快照】（checked_tok）。
+  外部 expected_snapshot 作为额外前提保留。
+⇒ 两个基准分别产生 stale 说明，均可触达。
+```
+
+```text
+验证：Z61-01（单次调用内检查后被改 ⇒ eligible=False + stale_check）
+      Z61-01b（不传外部令牌也能检出；断言 checked_tok 比较不带外部条件）
+```
+
+### 10.2 Z61-02 · P1：快照没有绑定被检查的历史内容
+
+```text
+原缺陷（afcore.py snapshot_token）：
+  投影 = record_id / revision / canonical_digest(live) / len(history)
+  而 verify_chain 检查的是历史记录的实际字段与链指针。
+  ⇒ 历史长度不变、live 不变时，历史正文可改而令牌不变。
+
+⇒ 修法：覆盖【每一版历史的全部字段 + 存档摘要】，
+  并保留 live 侧投影。
+  ⇒ 改正文、改 this_digest、改 prev_digest、改任意历史字段，
+    令牌都会变。
+  ⇒ 不是「只相信历史自报的摘要串」——那种做法在正文改而摘要不变时漏检。
+```
+
+```text
+验证：Z61-02（只改历史正文 ⇒ 令牌变，链 False）
+      Z61-02b（改 this_digest ⇒ 令牌变）
+      Z61-02c（改 prev_digest ⇒ 令牌变）
+      Z61-02d（正常写入仍敏感，同内容稳定，不误伤）
+      Z61-02e（只改 live 不改 history ⇒ 令牌变；守护 live 侧投影）
+```
+
+### 10.3 Z61-03 · P2：空登记身份被判为 independent
+
+```text
+原缺陷（afrecover.py check_registration）：
+  只检查五个键是否存在，只对 registered_at 检查非空。
+  registered_by / registered_rev 为空串、None、纯空白时仍判 independent=True。
+
+⇒ 修法：两个身份字段必须是非空字符串（去空白后）；
+  None / 空串 / 纯空白 / 非字符串类型 一律记问题。
+
+⚠ 边界（承知微同节末段，写进代码 docstring）：
+  两个 yes 加结构合法，最多验证「声明满足本地格式与标志条件」，
+  【不能】证明「确实来自独立观察者、确实早于结果暴露」。
+  independent=True 不得被读作「独立来源证据已建立」。
+```
+
+```text
+验证：Z61-03（11 种非法值全部拒绝：空串/None/纯空白/123/3.14/True/[]）
+      Z61-03b（空身份进入门禁 ⇒ 资格被拒）
+      Z61-03c（未提供登记仍不阻断，兼容路径不变）
+```
+
+### 10.4 Z61-04 · P2：发现链失败后 stale 分支覆盖了失败类型
+
+```text
+原缺陷（afrecover.py 步骤 4）：
+  stale 时无条件把 integ["status"] 改写为 "not_checked"
+  ⇒ 「查过且失败」被改写为「未检查」
+  ⇒ integrity_failed 不进入原因集合，消费原因码的统计会错分类。
+
+⇒ 修法：failed 不得被覆盖 —— 它是既成事实，只追加 stale 说明。
+  未失败的状态在快照失效后不再可信 ⇒ 才降级为 not_checked。
+```
+
+```text
+验证：Z61-04（failed + 过期令牌 ⇒ status=failed，
+               reasons 同时含 integrity_failed 与 stale_check）
+      Z61-04b（未失败 + 过期令牌 ⇒ 降级 not_checked）
+      Z61-04c（健康库 + 正确令牌 ⇒ 不误报 stale）
+```
+
+### 10.5 验收
+
+```text
+test_p1_p5.py            17/17
+test_recovery_gate.py    10/10
+test_z61_gaps.py         13/13    ← 新增，覆盖 Z61 四项
+test_mutations_gate.py   CAUGHT 21 / MISSED 0 / INVALID 0   ← 新增 5 个 Z61 变异
+test_mutations_v4.py     PASS
+check_registry.py        [OK] 登记表一致
+```
+
+### 10.6 变异验证抓到的两个自身问题
+
+```text
+① 变异集的守护测试清单不完整
+   首轮加入 Z61 变异后全部 MISSED —— 不是门禁没守住，
+   是 test_mutations_gate.py 的 TEST_FILES 只跑了
+   test_recovery_gate / test_p1_p5，没跑 test_z61_gaps。
+   ⇒ 已补：TEST_FILES 现含三个测试文件。
+
+② 一行永不独立生效的代码
+   check_registration 里 if v is None 分支，
+   被后面的 elif not isinstance(v, str) 完全覆盖 ——
+   删掉它测试也不会失败（变异存活）。
+   ⇒ 保留该行作为显式意图说明，但把变异改为测类型检查那一行。
+   ⇒ 这是「写了但不会被执行」的又一例。
+```
+
+### 10.7 状态更新（承知微 §8）
+
+```text
+G6_DEFAULT_FRESHNESS        = FIXED_IN_SYNTHETIC_PROTOTYPE
+G6_HISTORY_COVERAGE         = FIXED_IN_SYNTHETIC_PROTOTYPE
+REGISTRATION_EMPTY_IDENTITY = FIXED_IN_SYNTHETIC_PROTOTYPE
+FAILED_AND_STALE_REPORTING  = FIXED_IN_SYNTHETIC_PROTOTYPE
+
+※ 用 FIXED_IN_SYNTHETIC_PROTOTYPE 而非 FIXED，
+  因为：仅合成原型、单进程、本机验证；
+  判定权仍在知微，我不自行宣布闭合。
+
+RECOVERY_GATE_IMPLEMENTED   = NOT_VERIFIED   ← 不变，等知微复核
+ZA01_VERIFIED_READ_BINDING  = OPEN           ← 不变
+```
+
+```text
+⚠ 对知微 §3 末段的一点回应：
+  他写道「若承诺的是返回结果之后仍可安全消费，还须让消费者使用被验证的
+  不可变快照，或在相应临界区/消费入口重新验证；单次函数末尾比较本身
+  不证明无限期有效」。
+
+  ⇒ 本轮只做到「返回时点的快照一致性」。
+     报告里的 recovery_eligible 只在【返回那一刻】有效。
+     消费方若延后使用，必须自己带上 integrity_scope.snapshot 再校验一次。
+     这一条已写入返回值的语义说明，但【没有】实现强制消费期校验。
+  ⇒ 它仍在 ZA01_VERIFIED_READ_BINDING = OPEN 的范围内。
+```
+```
+
+---
+
 ## 十 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。

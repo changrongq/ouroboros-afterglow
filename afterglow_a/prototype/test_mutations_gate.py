@@ -27,7 +27,10 @@ import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROTO_FILES = ("afcore.py", "afrecover.py")
-TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py")
+# 变异验证必须跑【全部】守护测试。
+# 之前只列了 test_recovery_gate / test_p1_p5，导致 Z61 新门禁的变异
+# 全部 MISSED —— 不是门禁没守住，是守护它的测试没被跑。
+TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py")
 
 
 def _harden_stdio():
@@ -167,10 +170,58 @@ MUTATIONS = [
     ),
     # ---- snapshot_token
     (
-        "M15", "snapshot_token 对写入不敏感",
+        "M15", "snapshot_token 忽略 live 侧",
         "afcore.py",
-        '            parts.append([rid, cur.revision, cur_dig, len(hist)])',
-        '            parts.append([rid])',
+        '        for rid in sorted(self._live):\n'
+        '            cur = self._live[rid]\n'
+        '            parts.append([rid + "\\x00live",\n'
+        '                          json.dumps(cur.to_dict(), sort_keys=True,\n'
+        '                                     ensure_ascii=False,\n'
+        '                                     separators=(",", ":"))])',
+        '        pass  # MUTANT: 不纳入 live 侧',
+    ),
+    # Z61-02（知微 2026-11-24 §4）：快照必须覆盖历史实际内容
+    (
+        "M15b", "snapshot_token 只取历史条数不看内容（Z61-02 原缺陷形态）",
+        "afcore.py",
+        '            ver_parts = []\n'
+        '            for d in hist:\n'
+        '                ver_parts.append(json.dumps(\n'
+        '                    d, sort_keys=True, ensure_ascii=False,\n'
+        '                    separators=(",", ":")))\n'
+        '            parts.append([rid, ver_parts])',
+        '            parts.append([rid, len(hist)])  # MUTANT: 只看条数',
+    ),
+    # Z61-01（知微 2026-11-24 §3）：默认必须比较本次检查的快照
+    (
+        "M17", "G6 只在外部传 expected_snapshot 时生效（Z61-01 原缺陷形态）",
+        "afrecover.py",
+        '        if checked_tok is not None and now_tok != checked_tok:',
+        '        if False and checked_tok is not None and now_tok != checked_tok:',
+    ),
+    # Z61-04（知微 2026-11-24 §6）：failed 不得被 stale 覆盖
+    (
+        "M18", "stale 时无条件改写状态（Z61-04 原缺陷形态）",
+        "afrecover.py",
+        '            if integ["status"] == "failed":',
+        '            if False:',
+    ),
+    # Z61-03（知微 2026-11-24 §5）：登记身份空值必须判不合格
+    (
+        "M19", "不校验 registered_by/rev 的空白（Z61-03 原缺陷形态）",
+        "afrecover.py",
+        '        elif not v.strip():\n'
+        '            problems.append("%s 为空或纯空白（须给出实际取值）" % k)',
+        '        elif False:\n'
+        '            problems.append("%s 为空或纯空白（须给出实际取值）" % k)',
+    ),
+    (
+        "M20", "registered_by 非字符串类型被放行（Z61-03 变形）",
+        "afrecover.py",
+        '        elif not isinstance(v, str):\n'
+        '            problems.append("%s 类型为 %s（须为字符串）" % (k, type(v).__name__))',
+        '        elif False:\n'
+        '            problems.append("%s 类型为 %s（须为字符串）" % (k, type(v).__name__))',
     ),
     # ---- 完整性检查：空范围当通过
     (

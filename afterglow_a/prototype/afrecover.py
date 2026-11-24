@@ -102,7 +102,22 @@ REGISTRATION_FIELDS = (
 
 
 def check_registration(reg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """校验期望集登记身份。返回规范化结果，不修改输入。"""
+    """校验期望集登记身份。返回规范化结果，不修改输入。
+
+    ⚠ Z61-03（知微 2026-11-24 §5）：
+      原实现只检查五个键是否存在，且只对 registered_at 检查非空。
+      registered_by / registered_rev 为空串、None、纯空白时，
+      仍被判 independent=True —— 登记人和版本都没有值，
+      却被报告为「已给出合格登记」。
+
+    ⇒ 现补齐：registered_by / registered_rev 必须是非空字符串（去空白后）。
+    ⇒ 对 None / 空串 / 纯空白 一律记问题，并纳入负向测试。
+
+    ⚠ 边界（承知微同节末段）：
+      两个 yes 加上结构合法，最多验证「声明满足本地格式与标志条件」，
+      【不能】独立证明「确实来自独立观察者、确实早于结果暴露」。
+      不得把 independent=True 读作「独立来源证据已建立」。
+    """
     if reg is None:
         return {
             "present": False,
@@ -120,8 +135,20 @@ def check_registration(reg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if v is not None and v not in _YES_NO:
             problems.append("%s=%r 不在 yes/no 闭集内" % (k, v))
 
+    # 时间必须可读，且 registry 里 registered_at 为必填
     if not (reg.get("registered_at") or "").strip():
         problems.append("registered_at 为空")
+
+    # Z61-03：身份字段必须有实际取值。
+    # None / 空串 / 纯空白 都不是「谁登记」「用哪一版登记」的答案。
+    for k in ("registered_by", "registered_rev"):
+        v = reg.get(k)
+        if v is None:
+            problems.append("%s 为 None（须为非空字符串）" % k)
+        elif not isinstance(v, str):
+            problems.append("%s 类型为 %s（须为字符串）" % (k, type(v).__name__))
+        elif not v.strip():
+            problems.append("%s 为空或纯空白（须给出实际取值）" % k)
 
     independent = (
         reg.get("independent_of_write") == "yes"
@@ -237,18 +264,51 @@ def verify_recovery(store, query_ref: str,
         }
 
     # ---- 4. 快照一致性：检查后对象若被替换，旧结论不得沿用
+    #
+    # ⚠ Z61-01（知微 2026-11-24 §3）：
+    #   原实现只在调用方显式传 expected_snapshot 时才做比较，
+    #   默认 None ⇒ G6 整体被跳过。而 check_integrity() 自己已经取得并
+    #   返回了 scope.snapshot —— 那个才应该是默认比较基准。
+    #   ⇒ 现改为：默认比较【本次检查实际取得的快照】。
+    #     外部传入的 expected_snapshot 作为额外前提保留。
+    #
+    # ⚠ Z61-04（知微 2026-11-24 §6）：
+    #   原实现在 stale 时把 integ["status"] 整体改写成 "not_checked"，
+    #   于是「查过且失败」被改写成「未检查」，integrity_failed 丢失。
+    #   ⇒ 现改为：failed 不被覆盖；stale 只作为【独立原因】记录。
+    #     只有未失败的状态才降级为 not_checked（因为其结论已不可信）。
     stale: List[str] = []
-    if expected_snapshot is not None and hasattr(store, "snapshot_token"):
+    if hasattr(store, "snapshot_token"):
         now_tok = store.snapshot_token()
-        if now_tok != expected_snapshot:
+        checked_tok = (integ.get("scope") or {}).get("snapshot")
+
+        # 基准一：本次检查实际取得的快照（默认生效，不可省略）
+        if checked_tok is not None and now_tok != checked_tok:
             stale.append(
-                "完整性检查所依据的快照 %s 与当前 %s 不同：旧结论不得沿用"
+                "本次完整性检查所依据的快照 %s 与当前 %s 不同：旧结论不得沿用"
+                % (checked_tok, now_tok))
+        # 基准二：调用方显式给出的期望快照（额外前提）
+        if expected_snapshot is not None and now_tok != expected_snapshot:
+            stale.append(
+                "调用方期望快照 %s 与当前 %s 不同：旧结论不得沿用"
                 % (expected_snapshot, now_tok))
-            integ = {
-                "status": "not_checked",
-                "detail": list(integ["detail"]) + stale,
-                "scope": integ["scope"],
-            }
+
+        if stale:
+            if integ["status"] == "failed":
+                # Z61-04：已经查过并失败 —— 这是既成事实，不得被覆盖。
+                # 只追加说明，保留 failed 与 integrity_failed 原因码。
+                integ = {
+                    "status": "failed",
+                    "detail": list(integ["detail"]) + stale,
+                    "scope": integ["scope"],
+                }
+            else:
+                # 未失败的状态在快照失效后不再可信 ⇒ 降级为 not_checked。
+                integ = {
+                    "status": "not_checked",
+                    "detail": list(integ["detail"]) + stale,
+                    "scope": integ["scope"],
+                }
 
     # ---- 5. 期望集登记身份
     reg = check_registration(registration)

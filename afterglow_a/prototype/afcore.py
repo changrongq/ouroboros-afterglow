@@ -465,16 +465,40 @@ class RecoveryStore:
           检查完成后、结果被消费前若发生对象替换或版本改变，
           不能沿用旧检查结果。
 
-        ⇒ 做法：把每条记录的 record_id + 当前版摘要 + 版本数排序后摘要。
-          任何写入（insert/revise/correct）都会改变这个指纹。
+        ⚠ Z61-02（知微 2026-11-24 §4）：原实现只取
+             record_id / revision / canonical_digest(live) / len(history)
+          而 verify_chain 检查的是【历史记录的实际字段与链指针】。
+          历史长度不变、live 不变时，历史正文可被改动而令牌不变 ——
+          这正是需要检出的情形。
+
+        ⇒ 现改为覆盖【每一版历史的实际内容】：
+             对每一版 d，取其完整字段（排除 this_digest 之外的都保留），
+             与 this_digest 一并纳入。
+          ⇒ 改正文、改摘要串、改 prev_digest、改任意历史字段，
+            都会改变本令牌。
+          ⇒ 不是「只相信历史自报的摘要串」——那样正文改而摘要不变就漏了，
+            因为这里把每一版的全部字段都纳入投影。
+
+        说明：本函数只是【本地一致性】指纹，不表达任何外部真实性。
         """
         parts = []
+        for rid in sorted(self._history):
+            hist = self._history[rid]
+            # 每一版：全部字段 + 存档摘要。
+            # 不排除 this_digest —— 摘要串本身被改也必须反映出来。
+            ver_parts = []
+            for d in hist:
+                ver_parts.append(json.dumps(
+                    d, sort_keys=True, ensure_ascii=False,
+                    separators=(",", ":")))
+            parts.append([rid, ver_parts])
+        # 同时纳入 live 侧（防止 history 与 live 不一致时漏检）
         for rid in sorted(self._live):
             cur = self._live[rid]
-            hist = self._history.get(rid, [])
-            cur_d = cur.to_dict()
-            cur_dig = canonical_digest(cur_d)
-            parts.append([rid, cur.revision, cur_dig, len(hist)])
+            parts.append([rid + "\x00live",
+                          json.dumps(cur.to_dict(), sort_keys=True,
+                                     ensure_ascii=False,
+                                     separators=(",", ":"))])
         blob = json.dumps(parts, sort_keys=True, ensure_ascii=False,
                           separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(blob).hexdigest()

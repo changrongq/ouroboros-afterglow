@@ -1,0 +1,86 @@
+{
+  "baseline": "知微 2026-11-24 独立复核",
+  "total": 13,
+  "passed": 13,
+  "failed": 0,
+  "results": [
+    {
+      "id": "Z61-01",
+      "name": "G6 默认消费本次检查快照：检查中途被改必须拒绝",
+      "ok": true,
+      "detail": "eligible=False, reasons=['integrity_not_checked', 'stale_check']"
+    },
+    {
+      "id": "Z61-01b",
+      "name": "G6 默认生效：不传 expected_snapshot 也能检出",
+      "ok": true,
+      "detail": "无条件比较 checked_tok；不传令牌也能检出"
+    },
+    {
+      "id": "Z61-02",
+      "name": "快照覆盖历史实际内容：只改历史也必须改变令牌",
+      "ok": true,
+      "detail": "token 变 369d78a7→99251a13，链 False"
+    },
+    {
+      "id": "Z61-02b",
+      "name": "快照覆盖摘要串本身：改 this_digest 也改变令牌",
+      "ok": true,
+      "detail": "改 this_digest ⇒ token 变"
+    },
+    {
+      "id": "Z61-02c",
+      "name": "快照覆盖链指针：改 prev_digest 也改变令牌",
+      "ok": true,
+      "detail": "改 prev_digest ⇒ token 变"
+    },
+    {
+      "id": "Z61-02d",
+      "name": "快照仍对正常写入敏感（不误伤）",
+      "ok": true,
+      "detail": "正常写入变，同内容稳定"
+    },
+    {
+      "id": "Z61-02e",
+      "name": "只改 live 不改 history：令牌必须变",
+      "ok": true,
+      "detail": "只改 live ⇒ token 变"
+    },
+    {
+      "id": "Z61-03",
+      "name": "登记身份空值必须判不合格",
+      "ok": true,
+      "detail": "11 种非法值全部拒绝；齐全时通过"
+    },
+    {
+      "id": "Z61-03b",
+      "name": "空身份登记进入门禁后必须拒绝资格",
+      "ok": true,
+      "detail": "eligible=False，原因含 registration_not_independent"
+    },
+    {
+      "id": "Z61-03c",
+      "name": "未提供登记仍不阻断（兼容路径不变）",
+      "ok": true,
+      "detail": "present=False 但不阻断"
+    },
+    {
+      "id": "Z61-04",
+      "name": "链已失败 + 过期令牌：failed 不得被覆盖成 not_checked",
+      "ok": true,
+      "detail": "status=failed，reasons=['integrity_failed', 'stale_check']"
+    },
+    {
+      "id": "Z61-04b",
+      "name": "未失败 + 过期令牌：仍应降级为 not_checked",
+      "ok": true,
+      "detail": "status=not_checked，含 stale_check"
+    },
+    {
+      "id": "Z61-04c",
+      "name": "健康库 + 正确令牌：不应误报 stale",
+      "ok": true,
+      "detail": "verified 且 eligible，无 stale_check"
+    }
+  ]
+}
