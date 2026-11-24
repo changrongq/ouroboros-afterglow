@@ -13,9 +13,23 @@ def chk(c, m):
 RD = os.path.join(ROOT, "discussions", "r2")
 P24 = os.path.join(RD, "24_MEMCAND-R2_知微_第一阶段设计独立审查_REVISE_20261123.md")
 T24 = open(P24, encoding="utf-8").read()
-SRC = open(os.path.join(ROOT, "correspondence",
-                        "给Coder_AfterGlow第一阶段设计独立审查_知微_20261123.md"),
-           encoding="utf-8").read()
+# ---------------------------------------------------------------- 来件可得性
+# 本脚本要比对「来件原件 ↔ 已落盘件」。来件（别人写的原文）按本项目惯例
+# 【不入库】，因此外部克隆里取不到。
+# ⇒ 取不到时本脚本报 SKIP，不报 PASS，也不报失败 ——
+#   因为「没核」和「核过了」不是一回事。
+_SRC = os.path.join(ROOT, "correspondence",
+                    "给Coder_AfterGlow第一阶段设计独立审查_知微_20261123.md")
+if not os.path.exists(_SRC):
+    print("=" * 74)
+    print("SKIP · 来件原件不在仓库中，无法做保真比对")
+    print("  期望位置: correspondence/给Coder_AfterGlow第一阶段设计独立审查_知微_20261123.md")
+    print("  说明: 来件按惯例不入库。已落盘件见 discussions/r2/24，其正文已含原文。")
+    print("  ⇒ 本脚本未执行任何断言。SKIP != PASS。")
+    print("=" * 74)
+    sys.exit(0)
+
+SRC = open(_SRC, encoding="utf-8").read()
 B = open(os.path.join(ROOT, "afterglow_design/B_hybrid_memory_candidates.md"), encoding="utf-8").read()
 C = open(os.path.join(ROOT, "afterglow_design/C_decision_ledger.md"), encoding="utf-8").read()
 A = open(os.path.join(ROOT, "afterglow_design/A_minimum_recovery_design.md"), encoding="utf-8").read()
