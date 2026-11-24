@@ -1,7 +1,7 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 32
+    "CAUGHT": 35
   },
   "rows": [
     {
@@ -195,6 +195,24 @@
       "desc": "允许旧版 digest 贴到新内容上（知微指出的错位）",
       "status": "CAUGHT",
       "evidence": "失败用例：OC-5d 旧版 digest 贴到新内容 ⇒ 拒（知微指出的错位） — 旧"
+    },
+    {
+      "id": "M34",
+      "desc": "insert 不写 origin_*（Mion 第 4 项 ①）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OL-1a insert 时自动写入 origin_* 五字段 — orig; OL-2c correct() 之后 origin_* 保持原值不动 — N; OL-3a 只 revise 不改来源 ⇒ was_corrected = "
+    },
+    {
+      "id": "M35",
+      "desc": "revise 允许直接改来源（Mion 第 4 项 ②）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OL-2a revise 不得直接改来源字段（否则被纠正过这件事会消失） —"
+    },
+    {
+      "id": "M36",
+      "desc": "was_corrected 用 revision>1 而非 origin≠current（Mion 第 4 项 ③）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OL-3a 只 revise 不改来源 ⇒ was_corrected = ; OL-3c was_corrected 是 origin ≠ current"
     }
   ]
 }

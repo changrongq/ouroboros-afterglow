@@ -245,6 +245,28 @@ class Record:
     observed_origin: Optional[str] = None
     basis_conflict: Optional[str] = None
 
+    # ---- 原始来源层（Mion 2026-11-24 §二 第 4 项）
+    #
+    # 问题：correct() 会把 source_kind/source_ref 等 5 个字段【改指向纠正依据】，
+    #      于是 live 上「这句话最初是谁说的」就查不到了，
+    #      而 C 的污染会被静默继承且无任何不一致可查。
+    #
+    # ⇒ 分两层：
+    #      origin_*        建记录时写入，终身不变
+    #      current_basis_* 纠正时改这里（实际就是现有的 source_* 那 5 个字段）
+    #
+    # ⇒ 「被纠正过」= origin ≠ current，不再是 revision > 1。
+    #   revision > 1 只说明「被改过」，不说明「被谁依据什么改过」。
+    #
+    # ⚠ 硬约束（Mion 三条之一）：
+    #   origin_* 【不进 revise 白名单】，只在 insert 时设定，之后终身不变。
+    #   否则它就成了第二个可改的来源字段 —— 也就是第二个自报。
+    origin_source_kind: Optional[str] = None
+    origin_source_ref: Optional[str] = None
+    origin_participant_id: Optional[str] = None
+    origin_participation_basis: Optional[str] = None
+    origin_basis_ref: Optional[str] = None
+
     def validate(self) -> List[str]:
         """返回问题列表。空列表 = 通过。任何不在闭集内的值都算问题。"""
         problems: List[str] = []
@@ -368,6 +390,15 @@ class RecoveryStore:
         probs = rec.validate()
         if probs:
             raise SchemaError("; ".join(probs))
+        # ---- 原始来源层：建时写入，终身不变（Mion 2026-11-24 §二）
+        #   correct() 只改 current_basis_*（即 source_* 那 5 个），
+        #   不改 origin_* ⇒ 「最初是谁说的」永远可查。
+        if rec.origin_source_kind is None:
+            rec.origin_source_kind = rec.source_kind
+            rec.origin_source_ref = rec.source_ref
+            rec.origin_participant_id = rec.participant_id
+            rec.origin_participation_basis = rec.participation_basis
+            rec.origin_basis_ref = rec.basis_ref
         d = rec.to_dict()
         d["this_digest"] = canonical_digest(d)
         # ZA-01（知微 r2/24）：取得独立状态所有权。
@@ -403,12 +434,31 @@ class RecoveryStore:
         if cur is None:
             raise KeyError(record_id)
 
+        # 内部标记（correct() 调用时置 True），先取出，不参与白名单校验
+        via_correct = bool(changes.get("_via_correct"))
+        changes = {k: v for k, v in changes.items() if k != "_via_correct"}
+
         illegal = set(changes) - self._REVISABLE
         if illegal:
             raise SchemaError(
                 "revise 不允许变更字段 %s（允许：%s）。"
                 "record_id 等身份字段不得经普通 revise 变更。"
                 % (sorted(illegal), sorted(self._REVISABLE)))
+
+        # ---- 来源字段只能由 correct() 改（Mion 2026-11-24 §二 第 ② 条）
+        #
+        # 「否则用户可以直接 revise 掉来源，而不留下 correction_of 边。
+        #   那样『被纠正过』这个事实本身就会消失。」
+        _SOURCE_FIELDS = {"source_kind", "source_ref", "participant_id",
+                          "participation_basis", "basis_ref"}
+        touching_source = _SOURCE_FIELDS & set(changes)
+
+        if touching_source and not via_correct:
+            raise SchemaError(
+                "revise 不允许直接改来源字段 %s。"
+                "否则来源被改而『被纠正过』这一事实会消失。"
+                "请改用 correct()（它会加 correction_of 边并改来源）。"
+                % (sorted(touching_source),))
 
         cur_d = cur.to_dict()
         prev_digest = canonical_digest(cur_d)
@@ -476,11 +526,14 @@ class RecoveryStore:
                 "content": new_content,
                 "relation": rel,
                 # 来源改指向纠正依据，不再沿用原始来源
+                # （origin_* 不动 ⇒ 最初来源仍可查，见 was_corrected()）
                 "source_kind": basis.source_kind,
                 "source_ref": basis.source_ref,
                 "participant_id": basis.participant_id,
                 "participation_basis": basis.participation_basis,
                 "basis_ref": basis.basis_ref,
+                # 内部标记：告诉 revise 这次来源改动是纠正流程的一部分
+                "_via_correct": True,
             },
             reason="correction: " + reason)
 
@@ -591,21 +644,33 @@ class RecoveryStore:
         # asserted 侧 = participation_basis（写入方声称「多近」）
         # observed 侧 = observed_origin（系统看到它从哪来）
         #
-        # 判定表（保守优先：宁可判 unresolved，不轻易判 none）：
+        # 判定表（与下方实现逐格对应；改动须两处同步）：
         #
         #   asserted \ observed | system_dispatch | model_generation | human_input
         #   first_person_report |  【冲突】        |    【冲突】      |  none
         #   third_person_report |  none            |    【冲突】      |  none
-        #   record_only         |  none            |  【冲突】        |  none
+        #   record_only         |  none            |    none          |  none
         #
         # ⇒ 「声称第一人称亲历，但系统看到是派发/模型生成」= 冲突。
-        #   这不是「判不出」——声称与观测直接矛盾。
+        #   这不是「判不出」——断言与观测直接相反。
         #
         # ⇒ 「声称第三人称转述，但系统看到是模型生成」也判冲突：
-        #   因为模型生成的内容没有第三方来源可言。
+        #   断言是「我被某人告知」，观测说「没有被告知的痕迹」
+        #   ⇒ 断言与观测相反。
+        #   ⚠ 不要写成「模型生成的内容没有第三方来源可言」——
+        #     那要求先定义「什么叫有来源」，判定不可终止。
+        #     用「相反」而不是「不存在」，是把哲学问题降成字段比较。
         #
-        # ⚠ 这是我按下表实现的判定，已在设计中列出并标为【待 Mion 复核】。
-        #   若她认为某一格应改判，改这一处即可。
+        # ⇒ record_only 全程判 none：
+        #   它的断言是「不指向任何陈述者」，模型生成不违反这个断言。
+        #   弱断言不容易被违反，这是它的性质，不是缺陷；
+        #   把「弱断言 + 不利观测」一律判冲突，是在惩罚诚实地不声称。
+        #   ⚠ 但这会让 record_only 成为「洗白档」⇒
+        #     用 record_only_ratio 单独度量（见 afrecover.summarize_conflicts）。
+        #
+        # ⚠ 2026-11-24 修正（Mion 指出）：本表此前把 record_only×model_generation
+        #   写作【冲突】，而实现已改判 none —— 表与代码不一致。
+        #   备注：这张表是下一个人读代码的第一入口；表错了，他就不会去读实现。
         observed = observed_origin
         asserted = cur.participation_basis
 
@@ -621,8 +686,20 @@ class RecoveryStore:
             # 判冲突的根据是【断言与观测相反】，不是「模型生成的内容
             # 没有第三方来源可言」。后者要求先定义「什么叫有来源」，
             # 判定不可终止；前者只需看 observed 有没有 human_input 痕迹。
-            conflict = ("none" if observed == "human_input"
-                        else "asserted_contradicts_observed")
+            #
+            # ⚠ 2026-11-24 二次修正（Mion 指出注释表与代码不一致后逐格重核）：
+            #   原代码写作
+            #       conflict = ("none" if observed == "human_input"
+            #                   else "asserted_contradicts_observed")
+            #   这会把 system_dispatch 也判成冲突 —— 但按「相反」判据：
+            #     断言「我被某人告知」
+            #     观测 system_dispatch「系统派发的」
+            #     ⇒ 派发的内容【可能】是别人说的话 ⇒ 不违反断言 ⇒ 应判 none
+            #   Mion 原文只指定了 model_generation 那一格判冲突，
+            #   没有说 system_dispatch 要判冲突。
+            #   ⇒ 按「相反」判据：只有 model_generation 与断言相反。
+            conflict = ("asserted_contradicts_observed"
+                        if observed == "model_generation" else "none")
         elif asserted == "record_only":
             # Mion 2026-11-24 回复4 §4.2：
             # record_only 的断言是「不指向任何陈述者」，
@@ -736,6 +813,46 @@ class RecoveryStore:
             if e.get("record_id") == record_id and e.get("op") == "revise":
                 return True
         return len(self._history.get(record_id, [])) > 1
+
+    def was_corrected(self, record_id: str) -> bool:
+        """该记录是否【被纠正过】—— 不是「被改过」。
+
+        Mion 2026-11-24 §二 第 ③ 条：
+          「分层之后，『被纠正过』的判据必须是 origin ≠ current，
+            不能是 revision > 1。
+
+            revision > 1 只说明『被改过』，不说明『被谁依据什么改过』。
+            origin ≠ current 才是那件事。」
+        """
+        rec = self._live.get(record_id)
+        if rec is None:
+            return False
+        return any([
+            rec.origin_source_kind != rec.source_kind,
+            rec.origin_source_ref != rec.source_ref,
+            rec.origin_participant_id != rec.participant_id,
+            rec.origin_participation_basis != rec.participation_basis,
+            rec.origin_basis_ref != rec.basis_ref,
+        ])
+
+    def origin_of(self, record_id: str) -> Dict[str, Any]:
+        """该记录【最初】的来源（origin_* 五字段），与当前来源并列给出。"""
+        rec = self._live.get(record_id)
+        if rec is None:
+            return {}
+        return {
+            "origin_source_kind": rec.origin_source_kind,
+            "origin_source_ref": rec.origin_source_ref,
+            "origin_participant_id": rec.origin_participant_id,
+            "origin_participation_basis": rec.origin_participation_basis,
+            "origin_basis_ref": rec.origin_basis_ref,
+            "current_source_kind": rec.source_kind,
+            "current_source_ref": rec.source_ref,
+            "current_participant_id": rec.participant_id,
+            "current_participation_basis": rec.participation_basis,
+            "current_basis_ref": rec.basis_ref,
+            "was_corrected": self.was_corrected(record_id),
+        }
 
     # ---- 链校验
     def verify_chain(self, record_id: str) -> Tuple[bool, List[str]]:

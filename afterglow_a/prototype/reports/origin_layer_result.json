@@ -1,0 +1,80 @@
+{
+  "baseline": "Mion 2026-11-24 §二 第 4 项",
+  "total": 12,
+  "passed": 12,
+  "failed": 0,
+  "results": [
+    {
+      "id": "OL-1a",
+      "name": "insert 时自动写入 origin_* 五字段",
+      "ok": true,
+      "detail": "五字段与建时 source 一致"
+    },
+    {
+      "id": "OL-1b",
+      "name": "origin_* 不在 revise 白名单",
+      "ok": true,
+      "detail": "白名单无 origin_*"
+    },
+    {
+      "id": "OL-1c",
+      "name": "revise 改 origin_* 必须被拒",
+      "ok": true,
+      "detail": "五个字段全部被拒"
+    },
+    {
+      "id": "OL-2a",
+      "name": "revise 不得直接改来源字段（否则被纠正过这件事会消失）",
+      "ok": true,
+      "detail": "五个来源字段全部被拒"
+    },
+    {
+      "id": "OL-2b",
+      "name": "correct() 可以改来源（它是唯一合法路径）",
+      "ok": true,
+      "detail": "current 已改为纠正依据"
+    },
+    {
+      "id": "OL-2c",
+      "name": "correct() 之后 origin_* 保持原值不动",
+      "ok": true,
+      "detail": "origin 仍是 utt/A / A / user_utterance"
+    },
+    {
+      "id": "OL-3a",
+      "name": "只 revise 不改来源 ⇒ was_corrected = False",
+      "ok": true,
+      "detail": "revision=2 但 was_corrected=False"
+    },
+    {
+      "id": "OL-3b",
+      "name": "correct 之后 ⇒ was_corrected = True",
+      "ok": true,
+      "detail": "True"
+    },
+    {
+      "id": "OL-3c",
+      "name": "was_corrected 是 origin ≠ current，不是 revision > 1",
+      "ok": true,
+      "detail": "同 revision，was_corrected 不同 ⇒ 判据确实是 origin≠current"
+    },
+    {
+      "id": "OL-4a",
+      "name": "origin_of 并列给出原始与当前",
+      "ok": true,
+      "detail": "11 键齐全，origin/current 并列"
+    },
+    {
+      "id": "OL-4b",
+      "name": "C 被污染时，回退的路还在（Mion 说原设计下无解）",
+      "ok": true,
+      "detail": "origin=utt/A 仍在，current=doc/C ⇒ 可回退"
+    },
+    {
+      "id": "OL-4c",
+      "name": "origin 层在链内（第 1 版摘要覆盖它）",
+      "ok": true,
+      "detail": "origin 被第 1 版摘要覆盖，篡改会断链"
+    }
+  ]
+}

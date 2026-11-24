@@ -31,7 +31,7 @@ PROTO_FILES = ("afcore.py", "afrecover.py")
 # 之前只列了 test_recovery_gate / test_p1_p5，导致 Z61 新门禁的变异
 # 全部 MISSED —— 不是门禁没守住，是守护它的测试没被跑。
 TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py",
-              "test_observed_channel.py")
+              "test_observed_channel.py", "test_origin_layer.py")
 
 
 def _harden_stdio():
@@ -311,6 +311,27 @@ MUTATIONS = [
         "afcore.py",
         '            if observed_rev != cur.revision:',
         '            if False:  # MUTANT: 不检查版本是否当前',
+    ),
+    # ---- Mion 2026-11-24 §二 第 4 项：原始来源层
+    (
+        "M34", "insert 不写 origin_*（Mion 第 4 项 ①）",
+        "afcore.py",
+        '        if rec.origin_source_kind is None:',
+        '        if False:  # MUTANT: 不记录原始来源',
+    ),
+    (
+        "M35", "revise 允许直接改来源（Mion 第 4 项 ②）",
+        "afcore.py",
+        '        if touching_source and not via_correct:',
+        '        if False:  # MUTANT: 允许绕过 correct 改来源',
+    ),
+    (
+        "M36", "was_corrected 用 revision>1 而非 origin≠current（Mion 第 4 项 ③）",
+        "afcore.py",
+        '        return any([\n'
+        '            rec.origin_source_kind != rec.source_kind,',
+        '        return rec.revision > 1 or any([\n'
+        '            rec.origin_source_kind != rec.source_kind,',
     ),
 ]
 

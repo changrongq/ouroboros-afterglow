@@ -1170,7 +1170,150 @@ check_registry.py           [OK]
 
 ---
 
-## 十四 · 固定提交身份
+## 十四 · 判定表注释同步 + 第 4 项来源层（据 Mion 2026-11-24「一句话」）
+
+### 14.1 判定表注释是旧的（Mion 指出）
+
+```text
+她的原话：
+  「代码是对的，注释是错的。
+    afcore.py 的注释表仍写 record_only | none | 【冲突】 | none，
+    而实现是 conflict = \"none\"。
+    ⇒ 表说冲突，代码判 none。二者现在不一致。」
+
+  「我为什么专门提这一条：上一轮我差点因为『只读注释、不读实现』
+    给你一条错批评（correct() 的『不删除原件』）。
+    这次方向反过来：注释旧了，实现新了。同一个坑，另一头。」
+
+  「理由不只是整齐：这张表是下一个人读代码的第一入口。
+    表错了，他就不会去读实现。」
+```
+
+**已改。并且加了一条机器检查（`test_judgement_table_sync.py`）：**
+从注释表解析出期望矩阵，逐格跑实现比对。**表与实现不许再漂。**
+
+```text
+⚠ 这次检查立刻抓出我的第二处错误：
+   注释表 third_person_report × system_dispatch = none
+   实测                  = asserted_contradicts_observed
+
+   —— 【表没错，实现错了】。
+   我把 Mion 回复4 §4.1 的「断言与观测相反」只改进注释，没改判定逻辑：
+       conflict = ("none" if observed == "human_input"
+                   else "asserted_contradicts_observed")
+   这会把 system_dispatch 也判成冲突。
+   但按「相反」判据：断言「我被某人告知」，观测「系统派发的」
+   ⇒ 派发的内容可能正是别人的话 ⇒ 不违反断言 ⇒ 应判 none。
+   Mion 原文也【只指定了 model_generation 那一格】判冲突。
+
+⇒ 已改为只有 model_generation 判冲突。
+```
+
+### 14.2 第 4 项：原始来源层（Mion 明确「可以开始」）
+
+```text
+问题：correct() 会把 5 个来源字段改指向纠正依据
+     ⇒ live 上「这句话最初是谁说的」查不到
+     ⇒ C 的污染被静默继承，且继承后无任何不一致可查
+```
+
+```text
+修法：分两层
+  origin_*        建记录时写入，终身不变
+  current_basis_* 纠正时改（即现有的 source_* 那 5 个字段）
+```
+
+```text
+Mion 三条硬约束，逐条落实：
+
+① origin_* 不进 revise 白名单（否则成了第二个自报）
+   ⇒ 白名单无 origin_*；revise 改它报错（OL-1b/OL-1c）
+
+② current_basis_* 只能由 correct() 写
+   Mion 原话：「否则用户可以直接 revise 掉来源，而不留下 correction_of 边。
+               那样『被纠正过』这个事实本身就会消失。」
+   ⇒ revise 触及任一来源字段且非 correct() 内部调用 ⇒ 报错（OL-2a）
+   ⇒ correct() 带内部标记 _via_correct=True（OL-2b）
+
+③ 「被纠正过」判据是 origin ≠ current，不是 revision > 1
+   Mion 原话：「revision > 1 只说明『被改过』，
+               不说明『被谁依据什么改过』。origin ≠ current 才是那件事。」
+   ⇒ was_corrected()（OL-3a/OL-3b/OL-3c）
+```
+
+```text
+Mion 的一条好消息，我核过，成立：
+
+  「origin_* 建时写入 ⇒ 被第 1 版 this_digest 覆盖
+    current_basis_* 由 correct() 触发 revise ⇒ 被后续版本摘要覆盖
+    ⇒ 与 observed_origin（当初在链外）不同，这一项不会重犯同一个错。」
+
+⇒ OL-4c 实测：篡改历史里的 origin_source_ref ⇒ 链断。
+```
+
+```text
+⇒ Mion 上一封说的那个「无解」问题，现在有解了：
+   C 被污染时，origin 仍在（utt/A），回退的路还在。（OL-4b）
+```
+
+### 14.3 第 5 项：仍不立项为实现
+
+```text
+Mion：「仍然不立项为实现；但可以立项为『判据设计』。
+       ①（observed 通道）已满足 ⇒ 你可以开始 ②：给『重要』一个可被反证的判据。
+       仍然不能开始的是：权重字段、排序、任何数值。」
+```
+
+```text
+② 判据必须包含三条（Mion）：
+  (a) 一个能被推翻的预测
+  (b) 硬条款：observed_origin = model_generation 的记录，
+      无论被生成/召回多少次，都不参与「重要」的统计
+  (c) 结论必须带覆盖比例，与结论同一段返回
+      （unverifiable_ratio + record_only_ratio）
+
+红线：「在 unverifiable_ratio 与 record_only_ratio 都还没有基线之前，
+       任何关于『重要性』的结论不得写入 reports/。」
+
+IMPORTANCE_LEARNING = MAY_DESIGN_CRITERIA_ONLY（不得实现权重）
+IMPORTANCE_RED_LINE = 无基线前不得写入 reports/
+```
+
+### 14.4 一处顺带发现的、一直存在的测试弱点
+
+```text
+第四项改动后 test_mutations_v4 从 PASS 变 FAIL（M1/M8 MISSED）。
+
+查明原因，【不是我改坏了代码】：
+  P1 用例的断言是
+      any("source_kind" in p for p in probs)
+  而 ZA-03 之后，validate 还会因「source_ref 为空」报一条
+  形如 "source_kind=user 但 source_ref 为空…" 的消息 ——
+  那条也含 "source_kind" ⇒ 【闭集被放宽也照样通过】。
+
+⇒ 这个弱点一直存在，只是 M1 变异此前被它掩盖。
+⇒ 已改为精确断言：
+    any("不在闭集内" in p and "source_kind" in p for p in probs)
+  并补一条反证：把 source_ref 补成非空后，闭集违规仍必须被拒。
+```
+
+### 14.5 验收
+
+```text
+test_p1_p5.py               17/17   （P1 断言已收紧）
+test_recovery_gate.py       10/10
+test_z61_gaps.py            13/13
+test_observed_channel.py    34/34
+test_origin_layer.py        12/12   （新增）
+test_judgement_table_sync.py  PASS  （新增，机器守表）
+test_mutations_gate.py      CAUGHT 35 / MISSED 0（新增 M34/M35/M36）
+test_mutations_v4.py        CAUGHT 7 / REDUNDANT 2 / MISSED 0
+check_registry.py           [OK]
+```
+
+---
+
+## 十五 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 
