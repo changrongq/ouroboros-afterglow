@@ -340,7 +340,18 @@ NOT_DONE    : 原型本身（见 §八）
 
 ## 八 · 原型实施状态
 
-**截至本文件定稿：P1–P5 五条命题全部实现并通过（14/14）。**
+**截至 2026-11-24：P1–P5 五条命题的测试全部通过（当前 17/17）。**
+
+```text
+⚠ 但「测试全过」不等于「本文件描述的能力全部实现」。
+  知微 2026-11-24（r2/26）指出两处设计已改、实现未同步：
+    · §1.8 已把 not_run 移出 match_kind 并新增 expected_ids_registration，
+      而 afrecover.py 仍是旧字节：ran=False 时报告里仍有 match_kind="not_run"，
+      exact 报告里也没有 expected_ids_registration。
+    · 因此应记「设计已接受、实现待同步」，
+      不得再称「新设计所述能力已全部实现」。
+  ⇒ 本条按指出处如实降级。
+```
 
 ```text
 P1  来源五值闭集，缺省 unknown .................... 已实现
@@ -373,9 +384,9 @@ python afterglow_a/evidence/probe_source_role.py
 
 # 2. P1–P5 验收
 python afterglow_a/prototype/test_p1_p5.py
-#    预期：合计 14  通过 14  失败 0
+#    预期：合计 17  通过 17  失败 0（含 ZA-01/02/03 三条回归）
 
-# 3. 变异测试（证明上面 14 条不是空转）
+# 3. 变异测试（证明上面 17 条不是空转）
 python afterglow_a/prototype/test_mutations_v4.py
 #    预期：变异 9：CAUGHT 7 / REDUNDANT 2 / MISSED 0 / INVALID 0
 #         VERDICT: PASS
@@ -399,7 +410,7 @@ python afterglow_a/prototype/test_mutations_v4.py
 ```text
 ⇒ 【变异测试为什么必须跑】
   第 2 条全绿不能说明检查有效。
-  我第一次跑变异测试时，14/14 全绿，但 9 个变异里有 3 个没被捕获。
+  我第一次跑变异测试时（2026-11-22，当时套件为 14 条），14/14 全绿，但 9 个变异里有 3 个没被捕获。
   ⇒ 全绿可能只是断言写得太松。
   ⇒ 变异测试是唯一能区分「真的守住了」和「看起来守住了」的手段。
   ⇒ 这一轮的详细经过写在 prototype/STATUS.md §三，包括我自己的三次误判。
