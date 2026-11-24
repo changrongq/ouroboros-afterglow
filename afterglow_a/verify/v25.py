@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """核验睫成文三项待办的落实情况。"""
-import sys, os, re, subprocess, hashlib, glob
+import sys, os, re, subprocess, glob, hashlib, glob
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
@@ -70,11 +70,23 @@ R = open(os.path.join(RD, "README.md"), encoding="utf-8").read()
 chk("| **25** | **睫** |" in R, "索引含 25")
 chk("已被 25 号替代" in R, "23 号标被替代")
 chk("   25 睫（成文）   LF" in R, "行尾表含 25")
-chk("26 份 + 本 README" in R and "00–25" in R, "计数 26 份")
+# 不写死份数：改为检查「README 里声明的份数」是否等于实际文件数。
+# ⇒ 这样以后新增落盘件时，本脚本不需要跟着改数字；
+#   若两者不一致，才是真的错（声明与实际脱节）。
+import re as _re
+_m = _re.search(r"共 \*\*(\d+) 份 \+ 本 README\*\*（00–(\d+)）", R)
+if _m:
+    _declared = int(_m.group(1))
+    _last = int(_m.group(2))
+    _actual = len(glob.glob(os.path.join(RD, "*.md"))) - 1   # 减去 README 自己
+    chk(_declared == _actual, "README 声明 %d 份，实际 %d 份" % (_declared, _actual))
+    chk(_last == _actual - 1, "末号 00–%02d 与实际 %d 份一致" % (_last, _actual))
+else:
+    chk(False, "README 里找不到份数声明")
 
 print("\n=== 6. r2 实际文件数 ===")
 n = len(glob.glob(os.path.join(RD, "*.md")))
-chk(n == 27, "r2 共 %d 个（26 份 + README）" % n)
+chk(n == _actual + 1, "r2 共 %d 个（%d 份 + README）" % (n, _actual))
 
 print("\n=== 7. 功能未被影响 ===")
 r = subprocess.run([sys.executable, "afterglow_a/prototype/test_p1_p5.py"],
