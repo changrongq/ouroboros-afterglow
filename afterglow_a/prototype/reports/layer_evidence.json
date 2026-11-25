@@ -91,27 +91,68 @@
     "D1_FLAG_LEAK": {
       "primary": "L1_KEY_REJECT",
       "solo_guards": [
-        "L1_KEY_REJECT",
-        "L2_WHITELIST"
-      ]
+        "MECH_STRING_FILTER"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_STRING_FILTER"
+      ],
+      "solo_guards_attributable": [
+        "MECH_STRING_FILTER"
+      ],
+      "attribution_loss": 0,
+      "composite_mechanisms": [],
+      "unmeasurable_mechanisms": []
     },
     "D2_DIRECT_SOURCE_EDIT": {
       "primary": "L3_SOURCE_GUARD",
       "solo_guards": [
-        "L3_SOURCE_GUARD"
-      ]
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_attributable": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "attribution_loss": "UNMEASURABLE",
+      "composite_mechanisms": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "unmeasurable_mechanisms": []
     },
     "D3_SOURCE_VIA_SOURCE_KIND": {
       "primary": "L3_SOURCE_GUARD",
       "solo_guards": [
-        "L3_SOURCE_GUARD"
-      ]
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_attributable": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "attribution_loss": "UNMEASURABLE",
+      "composite_mechanisms": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "unmeasurable_mechanisms": []
     },
     "D4_SOURCE_VIA_REF": {
       "primary": "L3_SOURCE_GUARD",
       "solo_guards": [
-        "L3_SOURCE_GUARD"
-      ]
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_attributable": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "attribution_loss": "UNMEASURABLE",
+      "composite_mechanisms": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "unmeasurable_mechanisms": []
     }
   },
   "accidents": [

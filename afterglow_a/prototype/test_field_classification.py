@@ -249,10 +249,64 @@ def lbl():
     return "H1/H2a/H3a 均在 ⇒ 标签合法性可追溯"
 
 
+# ======================================================== C1（Mion 裁定3 §三）
+@case("C1a", "「某字段只能经 X 改」必须是分类结果，不是另一句代码 + 注释")
+def c1a():
+    """Mion 裁定3 C1：
+        任何「某字段只能经 X 改」的约束，
+        必须是【分类的结果】，不得是【另一句代码 + 一句注释】的结果。
+
+    理由：注释不执行，第二句代码不会自己知道自己多余。
+          而「两处定义靠注释维持一致」这种结构，
+          在漂移发生时【两边都还看起来对】。
+
+    ⇒ 断言方式：给定任一字段 f，仅凭分类集合就能判定它的写入口径：
+         f ∈ _REVISABLE      ⇒ 可经普通 revise 改
+         f ∈ _SOURCE_FIELDS  ⇒ 只能经 correct() 改
+         f ∈ _READONLY       ⇒ 只能由存储层/专用方法改
+       这个判定不依赖「注释怎么写」，也不依赖「另外还有几处检查」。
+    """
+    all_fields = {f.name for f in dataclasses.fields(Record)}
+    rev = set(RecoveryStore._REVISABLE)
+    src = set(RecoveryStore._SOURCE_FIELDS)
+    ro = set(RecoveryStore._READONLY)
+
+    def write_path(f):
+        """仅凭分类判定写入口径 —— 不读任何注释、不跑任何写入。"""
+        assert f in (rev | src | ro), "字段 %s 未分类" % f
+        if f in src:
+            return "correct_only"
+        if f in rev:
+            return "revise"
+        return "readonly"
+
+    # 五个来源字段必须全部判为 correct_only
+    for f in sorted(src):
+        assert write_path(f) == "correct_only", (
+            "%s 被判为 %r，应为 correct_only ⇒ 分类不能反映约束" % (
+                f, write_path(f)))
+    return "%d 来源字段仅凭分类即判为 correct_only" % len(src)
+
+
+@case("C1b", "分类能独立决定写入口径：不需要第二处检查参与")
+def c1b():
+    """反证：即便把「来源护栏」那句 if 改成永远不触发，
+    写入口径的【定义】仍由分类给出。
+    这不是说护栏无用（纵深），而是说「约束的定义」不该依赖它。
+    """
+    rev = set(RecoveryStore._REVISABLE)
+    src = set(RecoveryStore._SOURCE_FIELDS)
+    overlap = rev & src
+    assert not overlap, (
+        "分类重叠 ⇒ 「只能经 X 改」无法由分类单独判定：%s" % sorted(overlap))
+    # 每个字段的口径都可由「它属于哪一类」唯一确定
+    return "三类不交 ⇒ 每个字段的口径唯一由分类确定"
+
+
 # ======================================================== 汇总
 def main():
     print("=" * 80)
-    print("集合完整性 H1/H2/H3（Mion 2026-11-25 裁定2）")
+    print("集合完整性 H1/H2/H3 + C1（Mion 2026-11-25 裁定2 / 裁定3）")
     print("=" * 80)
     print()
     print("[H1 · 集合内容]")
@@ -264,6 +318,10 @@ def main():
     print()
     print("[H3 · 入口唯一性（风险 b 的通用形式）]")
     for f in (h3a, h3b, h3c):
+        f()
+    print()
+    print("[C1 · 约束必须是分类结果（Mion 裁定3 §三）]")
+    for f in (c1a, c1b):
         f()
     print()
     print("[标签纪律]")

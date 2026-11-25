@@ -118,6 +118,19 @@ LAYERS = [
       "D4_SOURCE_VIA_REF"],
      '        if touching_source and not via_correct:',
      '        if False:  # MUTANT: 拆掉 L3'),
+    # ⚠ Mion 裁定3 §一 要求「按机制数」。来源维度可能有两个【机制不同】的守卫：
+    #     ① 白名单：非 correct 时 allowed 不含来源字段
+    #     ② 来源护栏：touching_source and not via_correct
+    #   但实测（diag_mech.py）发现：
+    #     这两句【共用同一个锚点行】，无法分别拆除 ——
+    #     任何「拆白名单保留护栏」的变异体，都必须改同一行，
+    #     于是护栏读到的 `allowed` 也随之改变，两者无法独立观测。
+    #   ⇒ 这本身就是 ATTRIBUTION_LOSS 的实例：
+    #     结构上有两层判断，但【观测手段无法把它们分开】。
+    #   ⇒ 因此本台账**不强行给出 BY_MECHANISM 的精确值**，
+    #     而是登记 ATTRIBUTION_LOSS = UNMEASURABLE，并说明原因。
+    #   ⏳ 若需精确值，需要改实现（把两句拆进不同函数），
+    #     那是实现变更，须先经 Mion 裁定。
     # ⚠ L3 单独拆掉时 D2 仍被白名单拦（纵深，非冗余）。
     #   要观测「来源维度的真实纵深」，必须同时拆 L2+L3 ——
     #   这在 main() 的「只留这一层」矩阵里已经覆盖（D2 的 solo_guards
@@ -131,6 +144,57 @@ LAYERS = [
      '                                 via_correct=bool(\n'
      '                                     changes.get("_via_correct")))  # MUTANT'),
 ]
+
+# ---------------------------------------------------------------- 机制分类（Mion 裁定3 §一）
+#
+# 「按机制数独力守卫」的定义是：
+#     拆掉【其他所有机制】、只保留这一条机制 ⇒ 这一维度还能不能挡住。
+#
+# ⚠ 不是「只留这一条【语句】」。
+#   因为同一条机制可能由多条语句共同实现（例如白名单 + 来源护栏
+#   其实各是一套机制，但它们都发生在 _revise_impl 里），
+#   而拆掉其他语句时，这一条机制可能仍被它自己的另一半保着。
+#
+# ⇒ 所以先把语句分组到【机制】，再按机制做「只留一组」。
+
+MECHANISMS = {
+    # 字符串过滤机制：任何形式的「某键不在允许集合里」
+    "MECH_STRING_FILTER": ["L1_KEY_REJECT", "L2_WHITELIST"],
+    # ⚠ 这里在结构上【其实是两个机制】，但无法分别观测：
+    #     ① 字段集：非 correct 时 allowed 不含来源字段
+    #     ② 流程判断：touching_source and not via_correct
+    #   两句相邻、共用同一处调用顺序，任何「拆 ① 留 ②」的变异体
+    #   都必须改同一段代码的语义，而改完之后 ② 读到的状态也随之改变。
+    #   ⇒ 这不是合并计数，是【观测手段的限制】，必须登记而不是隐藏。
+    #   ⇒ 登记为 ATTRIBUTION_LOSS = UNMEASURABLE（见 main 的打印）。
+    "MECH_FLOW_OR_FIELDSET": ["L3_SOURCE_GUARD"],
+    # 入口硬编码机制：公开入口不读调用方给的标志
+    "MECH_ENTRY": ["L4_ENTRY_HARDCODE"],
+}
+
+# 哪些机制是「复合机制」（结构上不止一套判断，但无法拆开观测）
+COMPOSITE_MECHANISMS = {
+    "MECH_FLOW_OR_FIELDSET": {
+        "components": ["字段集：allowed 不含来源字段",
+                       "流程判断：touching_source and not via_correct"],
+        "why_unmeasurable": "两句共用锚点，拆任一句都会改变另一句读到的状态",
+    },
+}
+
+# 由上述语句组反查：某条语句属于哪个机制
+LAYER_TO_MECH = {lid: mech for mech, lids in MECHANISMS.items()
+                 for lid in lids}
+
+
+def layers_of_other_mechanisms(mech_name):
+    """返回：属于【其它机制】的全部层标识（用于「只留这一机制」）。"""
+    out = []
+    for mech, lids in MECHANISMS.items():
+        if mech == mech_name:
+            continue
+        out.extend(lids)
+    return out
+
 
 PROBE = r'''# -*- coding: utf-8 -*-
 import sys, os, json
@@ -347,24 +411,103 @@ def main():
         # ⚠ 不是「只保留这一层时 OPENED」——那是反的。
         #   第一版写反了，得出「D1 没有独力守卫」的错误结论。
         all_ids = [l[0] for l in LAYERS]
-        solo_guards = []
-        for keep in all_ids:
-            removals = [x for x in all_ids if x != keep]
+
+        # ---- 按【机制】数（Mion 裁定3 §一）
+        #
+        # 定义：拆掉【其他所有机制】、只保留这一条机制 ⇒ 该维度还能不能挡住。
+        #
+        # ⚠ 这一轮的实现史（都留档，因为这是「判据本身没验」的第三次）：
+        #   v1  held = (BLOCKED_BY_* or ACCIDENT)
+        #       ⇒ 把「只留 L1 时 D2 被拦住」算成 L1 能独力守 D2，
+        #         但消息其实是 L3 报的（L3 没拆掉）。
+        #   v2  blocker == keep
+        #       ⇒ 太严：同机制的两条语句互为备份。
+        #   v3  按机制分组
+        #       ⇒ 撞上真问题：来源维度的「白名单句」与「来源护栏句」
+        #         【共用同一锚点行】，无法分别拆除 —— 见下方 UNMEASURABLE。
+        by_mechanism = []
+        unmeasurable = []
+        for mech_name, mech_layers in MECHANISMS.items():
+            removals = layers_of_other_mechanisms(mech_name)
             obs = observe(removals)
             if "error" in obs:
+                unmeasurable.append((mech_name, obs["error"][:60]))
                 continue
-            c = classify(obs["results"].get(d_id, {}), obs.get("base", {}))
-            if (c["verdict"].startswith("BLOCKED_BY_")
-                    and c.get("blocker") == keep):
-                solo_guards.append(keep)
-        ref[d_id] = {"primary": who, "solo_guards": solo_guards}
-        kind = "冗余 REDUNDANCY" if len(solo_guards) >= 2 else (
-            "纵深 COVERAGE" if len(solo_guards) == 1 else "无独力守卫")
-        print("  %-26s 基准拦住者=%-20s 独力守卫=%s" % (
-            d_id, who or "（无）",
-            ", ".join(solo_guards) or "（无）"))
-        print("      ⇒ %s（可独力拦住的层数=%d）"
-              % (kind, len(solo_guards)))
+            cell = obs["results"].get(d_id, {})
+            c = classify(cell, obs.get("base", {}))
+            v = c["verdict"]
+            if not v.startswith("BLOCKED_BY_"):
+                continue            # OPENED 或 ACCIDENT ⇒ 这一机制没守住
+            blocker = c.get("blocker")
+            if blocker in mech_layers:
+                by_mechanism.append(mech_name)
+
+        # ---- 按【可归因】数（Mion 裁定3 §一）
+        #
+        # 定义：在【基准配置（一层都不拆）】下，
+        #       拦截这条攻击的消息能唯一指向几个不同的机制。
+        #
+        # 差别在这里：
+        #   by_mechanism  逐机制单独试 ⇒ 问「这一机制【有没有】守住」
+        #   attributable  基准配置下只看消息 ⇒ 问「消息【能说出】是哪一机制守住的」
+        #
+        # ⇒ 当只有一层机制能守住时，两者相等（消息一定指向它）。
+        #   当两层都能守住时，消息只报先触发的那条 ⇒ attributable < by_mechanism。
+        #   这个差值就是 Mion 说的 ATTRIBUTION_LOSS：
+        #   「防御里有 2 层，但出错时你只能看到 1 层」。
+        base_cell = base_row["cells"].get(d_id, {})
+        attr_mech = None
+        if base_cell.get("verdict", "").startswith("BLOCKED_BY_"):
+            b = base_cell.get("blocker")
+            attr_mech = LAYER_TO_MECH.get(b)
+        attributable = [attr_mech] if attr_mech else []
+
+        loss = len(by_mechanism) - len(attributable)
+        # 若该维度涉及复合机制，且复合机制在其中 ⇒ 标 UNMEASURABLE
+        composite_hit = [m for m in by_mechanism
+                         if m in COMPOSITE_MECHANISMS]
+        ref[d_id] = {
+            "primary": who,
+            "solo_guards": attributable,          # 兼容旧字段：可归因口径
+            "solo_guards_by_mechanism": by_mechanism,
+            "solo_guards_attributable": attributable,
+            "attribution_loss": (loss if not composite_hit
+                                 else "UNMEASURABLE"),
+            "composite_mechanisms": composite_hit,
+            "unmeasurable_mechanisms": [m for m, _ in unmeasurable],
+        }
+        if unmeasurable:
+            kind = "UNDETERMINED（含不可测机制）"
+        elif len(by_mechanism) >= 2:
+            kind = "冗余 REDUNDANCY"
+        elif len(by_mechanism) == 1:
+            kind = "纵深 COVERAGE"
+        else:
+            kind = "无独力守卫"
+        print("  %-26s 基准拦住者=%-20s" % (d_id, who or "（无）"))
+        print("      SOLO_GUARDS_BY_MECHANISM  = %d  (%s)"
+              % (len(by_mechanism), ", ".join(by_mechanism) or "无"))
+        print("      SOLO_GUARDS_ATTRIBUTABLE  = %d  (%s)"
+              % (len(attributable), ", ".join(attributable) or "无"))
+        if composite_hit:
+            print("      ATTRIBUTION_LOSS = UNMEASURABLE ⇒ 涉及复合机制：")
+            for m in composite_hit:
+                info = COMPOSITE_MECHANISMS[m]
+                print("          %s 结构上有 %d 套判断："
+                      % (m, len(info["components"])))
+                for comp in info["components"]:
+                    print("             - %s" % comp)
+                print("          为什么测不出：%s" % info["why_unmeasurable"])
+            print("          ⇒ 只能报「至少 1 套机制能守住」，")
+            print("            不能报精确层数。不许把 1 当成「只有一层」。")
+        elif unmeasurable:
+            print("      ATTRIBUTION_LOSS = UNMEASURABLE（拆层失败）")
+            for m, err in unmeasurable:
+                print("          %s: %s" % (m, err))
+        elif loss > 0:
+            print("      ATTRIBUTION_LOSS = %d  ⇒ 拦截路径不可区分，" % loss)
+            print("         不能用消息归因来做纵深判断。")
+        print("      ⇒ %s" % kind)
     print()
     print("  ⚠ 术语（Mion §二）：")
     print("     纵深 = 每层拦【不同的】输入维度 ⇒ 覆盖率相加")

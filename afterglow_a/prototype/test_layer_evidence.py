@@ -304,13 +304,65 @@ def lay7a():
 
 
 # ---------------------------------------------------------------- 汇总
+@case("DUAL-1", "两个计数必须并列报出（Mion 裁定3 §一）")
+def dual1():
+    """只报一个数是错的：
+      只报 BY_MECHANISM ⇒ 有人以为消息能区分两条路，按消息删层
+      只报 ATTRIBUTABLE ⇒ 有人以为只有一层在守，去加一层
+    ⇒ 两个并列，且差值本身说明「这里看不清」。
+    """
+    p = os.path.join(HERE, "reports", "layer_evidence.json")
+    if not os.path.exists(p):
+        LE.main()
+    d = json.load(open(p, encoding="utf-8"))
+    bad = []
+    for dim, info in d["dimension_reference"].items():
+        for key in ("solo_guards_by_mechanism",
+                    "solo_guards_attributable",
+                    "attribution_loss"):
+            if key not in info:
+                bad.append((dim, key))
+    assert not bad, "台账缺双计数字段：%s" % bad
+    return "%d 个维度均带 by_mechanism / attributable / loss" % len(
+        d["dimension_reference"])
+
+
+@case("DUAL-2", "复合机制必须登记为 UNMEASURABLE，不得报成精确值")
+def dual2():
+    """来源维度的「字段集」与「流程判断」两句共用锚点，无法分别拆除。
+    ⇒ 只能报「至少 1 套机制能守住」。
+    ⇒ 若台账把它报成一个确定的整数，就是把「我看不到」写成了「不存在」。
+    """
+    assert LE.COMPOSITE_MECHANISMS, "复合机制清单为空 ⇒ 前提变了"
+    p = os.path.join(HERE, "reports", "layer_evidence.json")
+    if not os.path.exists(p):
+        LE.main()
+    d = json.load(open(p, encoding="utf-8"))
+    hits = 0
+    for dim, info in d["dimension_reference"].items():
+        comp = info.get("composite_mechanisms") or []
+        if not comp:
+            continue
+        hits += 1
+        assert info.get("attribution_loss") == "UNMEASURABLE", (
+            "%s 涉及复合机制 %s，但 attribution_loss=%r ⇒ 被报成了精确值"
+            % (dim, comp, info.get("attribution_loss")))
+        for m in comp:
+            assert m in LE.COMPOSITE_MECHANISMS
+            assert LE.COMPOSITE_MECHANISMS[m].get("why_unmeasurable"), (
+                "复合机制 %s 没写「为什么测不出」" % m)
+    assert hits > 0, "没有任何维度涉及复合机制 ⇒ 本断言失去意义，需重写"
+    return "%d 个维度涉及复合机制，均标 UNMEASURABLE 并附原因" % hits
+
+
+# ---------------------------------------------------------------- 汇总
 def main():
     print("=" * 86)
     print("分层证据台账自检（Mion 2026-11-25 裁定：F1/F2 + G1/G2/G3）")
     print("=" * 86)
     print()
     for fn in (lay1a, lay1b, lay2a, lay3a, lay4a, lay4b,
-               lay5a, lay5b, lay6a, lay7a):
+               lay5a, lay5b, lay6a, lay7a, dual1, dual2):
         fn()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)

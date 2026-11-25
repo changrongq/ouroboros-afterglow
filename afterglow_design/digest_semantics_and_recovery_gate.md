@@ -2043,7 +2043,187 @@ test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
 
 ---
 
-## 十九 · 固定提交身份
+## 十九 · 两个裁定 + C1：约束必须是分类的结果（据 Mion 2026-11-25 裁定3）
+
+### 19.1 裁定一：独力守卫按机制数，但两个数并列
+
+```text
+SOLO_GUARDS_BY_MECHANISM  = 拆掉其他所有机制，这一层还能不能挡住
+                            （这定义本身就是机制级的）
+SOLO_GUARDS_ATTRIBUTABLE  = 出错时消息能归给几层
+ATTRIBUTION_LOSS          = 前者 − 后者
+```
+
+Mion 的理由：
+
+```text
+按消息数报，是把【观测手段的限制】写进了【被观测对象的属性】。
+这正是我们一路在治的那件事：把「我看不到」写成「不存在」。
+```
+
+**两个数的差值必须报，因为只报一个会引出两种相反的错：**
+
+```text
+只报 1 ⇒ 后来的人看到「只有一层在守」，可能去加一层。
+只报 2 ⇒ 后来的人以为消息能区分两条路，去按消息删层。
+```
+
+### 19.2 我照做后的实测，得出的是 UNMEASURABLE
+
+第一次实现，我按「只留这一层语句」测，得到 `BY_MECHANISM = 4`——
+荒谬：L1/L4 根本不针对来源字段。
+
+原因是：`allowed = ... else set(self._REVISABLE)` 在来源字段移出
+`_REVISABLE` 之后，**自身就成了一道来源护栏**。
+拆掉 `L3_SOURCE_GUARD` 那句，白名单那句仍然拦得住。
+
+第二版改成按「机制组」测，又发现一个更硬的事实：
+
+```text
+「字段集：allowed 不含来源字段」与「流程判断：touching_source and not via_correct」
+这两句【相邻且共用同一处调用顺序】。
+任何「拆 ① 留 ②」的变异体都必须改同一段代码的语义，
+而改完之后 ② 读到的状态也随之改变。
+⇒ 无法分别观测。
+```
+
+**这就是 ATTRIBUTION_LOSS 的一个真实实例：**
+结构上有 2 套判断，但观测手段无法把它们分开。
+
+所以我登记为：
+
+```text
+MECH_FLOW_OR_FIELDSET  = 复合机制（结构上 2 套判断，不可分拆观测）
+ATTRIBUTION_LOSS       = UNMEASURABLE
+```
+
+并在台账里明确写：
+
+```text
+⇒ 只能报「至少 1 套机制能守住」，不能报精确层数。
+  不许把 1 当成「只有一层」。
+```
+
+**如果我按原计划报 `BY_MECHANISM = 1`，读者会得到与我错判时一样的结论。**
+这次的正确做法是不给数，而不是给一个看起来精确的数。
+
+### 19.3 裁定二：MUTANT_EFFECT_MUST_BE_OBSERVED（不是 A3 的镜像，是它的前提）
+
+我上一封写「变异体必须改变可观测行为」是 A3 的镜像。Mion 更正：
+
+```text
+A3 的句子是：「把机制关掉，断言必须红。」
+
+⇒ 但「关掉」这个动作本身，必须先被验证真的关掉了。
+   否则 A3 是在跑一个【没关掉的机制】，然后说「断言没红，所以断言弱」。
+⇒ 那句错判会指向断言，而真正出错的是变异体。
+
+⇒ 顺序上：M1 在前，A3 在后。A3 依赖 M1 成立，才能开始它的判断。
+```
+
+**并与 E1 合成一条：**
+
+```text
+MUTANT_EFFECT_MUST_BE_OBSERVED
+
+变异体对机制的作用，必须由探针直接观测，不得由目标测试的红绿反推。
+
+  观测到行为未变 ⇒ 该变异无效（E1）
+  观测到行为已变 ⇒ 该变异有效，此时才可用 A3 判断断言强弱（M1）
+```
+
+### 19.4 C1：约束必须是分类的结果
+
+Mion 新立的规矩，位置与 A3/M1 同级：
+
+```text
+C1  任何「某字段只能经 X 改」的约束，
+    必须是【分类的结果】，不得是【另一句代码 + 一句注释】的结果。
+
+理由：注释不执行，第二句代码不会自己知道自己多余。
+      而「两处定义靠注释维持一致」这种结构，
+      在漂移发生时【两边都还看起来对】。
+```
+
+**这条比我做的 H2 更重要。**
+
+```text
+H2 是一次检查（发现重叠）。
+C1 是让这类结构【不再出现】。
+```
+
+落地方式：`test_field_classification.py` 新增 `C1a`：
+
+```python
+def write_path(f):
+    """仅凭分类判定写入口径 —— 不读任何注释、不跑任何写入。"""
+    if f in _SOURCE_FIELDS:  return "correct_only"
+    if f in _REVISABLE:      return "revise"
+    return "readonly"
+
+# 五个来源字段必须全部判为 correct_only
+```
+
+⇒ 这个判定完全不依赖「另外还有几处检查」，也不依赖注释怎么写。
+
+### 19.5 关于我上一封「往回收的那一格」，Mion 给我补了一层
+
+我写：「认出症状，和写出堵住它的断言，是两件事。我做到前一件，做到了也没用。」
+
+Mion 的更正：
+
+```text
+认出症状之后要做什么，需要有【一条可执行的替代方案】。
+你当时没有。
+⇒ 所以你不是「明知故犯」，是【没有别的做法可用】。
+⇒ 那条替代方案（H2）是我给的，而它需要先有 H1 的集合概念才写得出来。
+```
+
+```text
+⇒ 当有人说「我知道不对但我还是这么做」时，
+   先问「有没有一条他做得到的别的做法」，
+   不要先问「他为什么不改」。
+```
+
+**这个区分是可操作的不是安慰：**
+
+```text
+「他为什么不改」  ⇒ 指向意志，没有下一步动作。
+「有没有别的做法」⇒ 指向缺口，下一步就是去补那一条。
+```
+
+我不把这条写进规矩（那是她的判断），只记在这里作为我自己的检查清单。
+
+### 19.6 状态行
+
+```text
+SOLO_GUARDS_BY_MECHANISM       = UNMEASURABLE（来源维度，含复合机制）
+SOLO_GUARDS_ATTRIBUTABLE       = 1（来源维度）
+ATTRIBUTION_LOSS               = UNMEASURABLE（须说明原因，不得报精确值）
+COMPOSITE_MECHANISM_RECORDED   = YES（MECH_FLOW_OR_FIELDSET，注明为何测不出）
+MUTANT_EFFECT_MUST_BE_OBSERVED = ENFORCED（E1 + M1 合成）
+CLASSIFICATION_AS_RULE         = C1（已落地为 C1a/C1b）
+MY_V3_MEASUREMENT_ATTEMPT      = 2 次失败后改为登记 UNMEASURABLE
+```
+
+### 19.7 验收
+
+```text
+test_p1_p5.py                17/17
+test_recovery_gate.py        10/10
+test_z61_gaps.py             13/13
+test_observed_channel.py     34/34
+test_origin_layer.py         16/16
+test_judgement_table_sync.py PASS
+test_field_classification.py 10/10   （新增 C1a/C1b）
+test_layer_evidence.py       12/12   （新增 DUAL-1/DUAL-2）
+test_mutations_gate.py       CAUGHT 40 / MISSED 0
+test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
+```
+
+---
+
+## 二十 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 
