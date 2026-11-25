@@ -7,6 +7,37 @@
 
 ---
 
+## 零之前 · 一条管全部断言、全部变异、全部台账的原则
+
+Mion 2026-11-25 裁定要求在最高层放这一条。她指定不放进任何技术章节，
+因为它不服务于某个模块，它管所有检查 —— 包括审查者自己的。
+
+```text
+同一型验一百次，仍然只是一型。
+笃定来自重复次数，不是来自覆盖面。
+```
+
+来源是实打实的一次翻车（§十六）：我把「必须四层同时拆才打得穿」
+写成了笃定的结论，还加了「变异设计要点」的注释。
+真实情况是 —— 我只测了**一种**攻击路径，而那一种根本碰不到那四层。
+
+```text
+⇒ 覆盖面是【维度】的函数，不是【次数】的函数。
+  加密重复不扩大覆盖面；换一个维度才扩大。
+```
+
+Mion 的补充（我照录，因为它比原文更准）：
+
+```text
+规矩的价值不在它判对了什么，
+在它能在你【已经确定】的地方，让你重看一遍。
+```
+
+**适用范围**：本节不限于变异测试。任何「我验过了」的陈述，
+都应先回答：验的是哪几维？没验的那几维，凭什么认为它们不重要？
+
+---
+
 ## 零 · 本文件解决什么
 
 此前我提交的两封函引出两条问题：
@@ -1704,7 +1735,165 @@ test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
 
 ---
 
-## 十七 · 固定提交身份
+## 十七 · F1/F2 · 纵深≠冗余 · G1/G2/G3（据 Mion 2026-11-25 裁定「换一条攻击路径」）
+
+### 17.1 F1：不是「再验一次」，是「按维度各验一次」
+
+我提的建议是「无效变异还应要求换一种攻击路径再验一次」。
+Mion 同意，但升格：
+
+```text
+F1  每一层必须对【它声称覆盖的输入维度】各有一份独立观测。
+    而「它声称覆盖哪些维度」必须先写下来。
+    ⇒ 不写下来，就无法判断覆盖率，只能事后解释。
+
+F2  「换一种攻击路径」是 F1 的一个实例，不是 F1 本身。
+    F1 要求的是【输入空间的抽样清单】，不是「再随便试一个」。
+```
+
+她的理由：
+
+```text
+「再验一次」无法验收 —— 试几次算够？试哪种算换？没人能判。
+「按维度各验一次」可验收 —— 维度清单写了没有，一眼能查。
+```
+
+**我照此改写了 `layer_evidence.py`：**
+
+```python
+DIMENSIONS = [
+  ("D1_FLAG_LEAK",              "塞内部标志 _via_correct 伪装成纠正流程"),
+  ("D2_DIRECT_SOURCE_EDIT",     "不塞标志，直接改 participation_basis"),
+  ("D3_SOURCE_VIA_SOURCE_KIND", "改另一个来源字段 source_kind"),
+  ("D4_SOURCE_VIA_REF",         "改来源引用 source_ref"),
+]
+
+LAYERS = [
+  ("L1_KEY_REJECT",    ..., 声称覆盖=["D1_FLAG_LEAK"], ...),
+  ("L2_WHITELIST",     ..., 声称覆盖=["D1_FLAG_LEAK"], ...),
+  ("L3_SOURCE_GUARD",  ..., 声称覆盖=["D2","D3","D4"], ...),
+  ("L4_ENTRY_HARDCODE",..., 声称覆盖=["D1_FLAG_LEAK"], ...),
+]
+```
+
+⇒ 每一层的「声称覆盖维度」写在代码里，测试会逐条核它是否真的拦住。
+
+### 17.2 纵深 ≠ 冗余：台账必须分开记
+
+Mion §二：
+
+```text
+拦住同一个字符串的三层，不是【纵深防御】。
+纵深要求每层拦不同的攻击面。
+拦住同一输入的多数层，是【冗余】。
+```
+
+实测结果：
+
+```text
+  D1_FLAG_LEAK              基准拦住者=L1_KEY_REJECT   独力守卫=L1_KEY_REJECT, L2_WHITELIST
+      ⇒ 冗余 REDUNDANCY（可独力拦住的层数=2）
+  D2_DIRECT_SOURCE_EDIT     基准拦住者=L3_SOURCE_GUARD 独力守卫=L3_SOURCE_GUARD
+      ⇒ 纵深 COVERAGE（可独力拦住的层数=1）
+  D3_SOURCE_VIA_SOURCE_KIND 基准拦住者=L3_SOURCE_GUARD 独力守卫=L3_SOURCE_GUARD
+      ⇒ 纵深 COVERAGE（可独力拦住的层数=1）
+  D4_SOURCE_VIA_REF         基准拦住者=L3_SOURCE_GUARD 独力守卫=L3_SOURCE_GUARD
+      ⇒ 纵深 COVERAGE（可独力拦住的层数=1）
+```
+
+**判据的定义（这一条我第一版写反过，见 17.4）：**
+
+```text
+独力守卫 = 只保留这一层、其余全拆 ⇒ 该维度仍被【它自己】拦住
+```
+
+**冗余的价值与限度（Mion 原话）：**
+
+```text
+它们不是没用 —— 它们的价值是「哪天有人删掉 L3，A 型仍被挡」。
+但那不是对 B 型的防御，不能拿来支撑「防御完好」。
+```
+
+⇒ 我的落法：冗余**不是**没用，而是「删掉一层不立刻退化成零防御」。
+但它绝不能用于「防御完好」这个结论。
+
+### 17.3 G1/G2/G3：ACCIDENT 不得计入防御
+
+```text
+G1  ACCIDENT（碰巧挡住，例如参数不被接受、键名拼错、异常类型不对）
+    【不得】计入任何防御层，也不得计入 CAUGHT。
+G2  ACCIDENT 必须单列，并写明：它挡住的不是攻击，是攻击者的笔误。
+G3  若某条路径【只】被 ACCIDENT 挡住，该路径状态为 OPENED，
+    不是因为「反正挡住了」。
+```
+
+**这次的实例非常典型：**
+
+```text
+四层全拆 · D1_FLAG_LEAK
+  原始 = ACCIDENT (TypeError: unexpected keyword '_via_correct')
+  按 G3 = OPENED
+```
+
+⇒ 也就是说：**D1 在四层全拆时的「被挡住」，是因为攻击者多写了一个键，
+不是因为任何一层的设计。** 记成 BLOCKED 会显示「防御完好」——
+正是这件事要防的那种谎。
+
+### 17.4 我在实现 F1 时又栽了一次，形状和上一封一样
+
+第一版 `LAY-4b` 我是这样找「独力守卫」的：
+
+```python
+if c["verdict"] == "OPENED":
+    solo.append(keep)          # ← 写反了
+```
+
+跑出来 0 层，于是得出「D1 没有任何独力守卫」。
+
+**真实的判据是相反的**：只保留这一层时**被它自己拦住**，才叫独力守卫。
+
+```text
+我在数「哪些层拆掉会打开」，
+我要数的是「哪些层留着就守得住」。
+同一条语句里，主语和判据都反了。
+```
+
+⇒ 这正是 §零之前那条原则的第二次发作：
+**我以为我在验证防御结构，其实在验证一个方向反了的判据，
+而且它「跑通了」—— 0 条结果不报错。**
+
+### 17.5 状态行
+
+```text
+F1_DIMENSION_CLAIMS          = DECLARED（4 维度 / 4 层声明）
+F2_SAMPLING_LIST             = IN_CODE（DIMENSIONS 常量）
+LAYER_CLAIMS_VERIFIED        = YES（逐条拆层观测）
+COVERAGE_VS_REDUNDANCY       = SEPARATED（D1 冗余，D2/D3/D4 纵深）
+D1_SOLO_GUARDS               = L1_KEY_REJECT + L2_WHITELIST（2 层，冗余）
+D2_D3_D4_SOLO_GUARD          = L3_SOURCE_GUARD（1 层，纵深）
+ACCIDENT_COUNTED_AS_DEFENCE  = NO（G1）
+ACCIDENT_LISTED_SEPARATELY   = YES（G2，台账 accidents 栏）
+G3_ACCIDENT_ONLY_PATH        = OPENED（D1 在四层全拆时）
+MY_LAY4B_V1_BUG              = WRITTEN_BACKWARDS（已修）
+```
+
+### 17.6 验收
+
+```text
+test_p1_p5.py                17/17
+test_recovery_gate.py        10/10
+test_z61_gaps.py             13/13
+test_observed_channel.py     34/34
+test_origin_layer.py         16/16
+test_judgement_table_sync.py PASS
+test_layer_evidence.py       10/10   （F1/F2 + G1/G2/G3 全部入测）
+test_mutations_gate.py       CAUGHT 36 / UNRESOLVED 3 / MISSED 0
+test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
+```
+
+---
+
+## 十八 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

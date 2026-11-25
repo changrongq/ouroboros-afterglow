@@ -1,40 +1,31 @@
 # -*- coding: utf-8 -*-
-"""分层证据台账 v2（Mion 2026-11-25 回复7 E1/E2/E3）
+"""分层证据台账 v3（Mion 2026-11-25 裁定：F1/F2 + 纵深≠冗余 + G1/G2/G3）
 
-为什么有 v2
------------
-v1 的探针只测【一种攻击】：往 changes 里塞 "_via_correct": True。
-于是台账里出现了三个假象：
+修订史
+------
+v1  只测 A 型攻击 ⇒ 把 TypeError 误当成「拦住」⇒ 得出「必须四层同时拆」（错）
+v2  分 A/B 两型 ⇒ 发现只有 L3 是真实防线
+v3（本版）Mion 裁定后加三条：
 
-  1. 「四层全拆 → BLOCKED」——
-     其实是 `_via_correct` 被放行后进到 `Record(**merged)`，
-     撞上 `TypeError: __init__() got an unexpected keyword argument`。
-     **这是构造函数不接受多余键的副产品，不是设计上的护栏。**
+    F1  每一层必须对【它声称覆盖的输入维度】各有一份独立观测，
+        而「它声称覆盖哪些维度」必须先写下来。
+        ⇒ 不写下来，就无法判断覆盖率，只能事后解释。
 
-  2. 「只留 L3 → BLOCKED」—— 同样是 TypeError，不是 L3 拦下的。
+    F2  「换一种攻击路径」是 F1 的一个实例，不是 F1 本身。
+        F1 要求的是【输入空间的抽样清单】，不是「再随便试一个」。
 
-  3. 由此得出「必须四层同时拆才打得穿」——**这个结论是错的。**
+    G1  ACCIDENT（碰巧挡住）不得计入任何防御层，也不得计入 CAUGHT。
+    G2  ACCIDENT 必须单列，并写明：它挡住的不是攻击，是攻击者的笔误。
+    G3  若某条路径【只】被 ACCIDENT 挡住，该路径状态为 OPENED。
 
-真因：v1 只测了「塞那个字符串」这一条路。
-换一条路（不塞该字符串，直接改来源）就能看出，
-真正在守「改来源必须走 correct()」的，只有 L3_SOURCE_GUARD 一层。
+纵深 ≠ 冗余（Mion §二）
+---------------------
+    拦住【同一个输入】的多数层 = 冗余（REDUNDANCY）
+    拦住【不同输入维度】的多层   = 纵深（COVERAGE）
 
-Mion 回复7 E1 的要求正是这个：
-    必须独立打出【被变异点的实际结果】，不能来自目标测试的红绿。
-
-被变异点是「护栏」，不是「某个特定攻击字符串」。
-所以本文件用两种攻击分别观测：
-
-    A 型  往 changes 里塞 "_via_correct": True
-          —— 只对 L1/L2/L4 的字符串检查有效
-    B 型  不塞，直接改 participation_basis
-          —— 只对 L3 的来源字段护栏有效
-
-判据不写成「测试是否红」，写成【外部状态是否被改变】：
-    SUCCEEDED                → 漏洞真被打开
-    BLOCKED_BY_Lx            → 被第 x 层拦住（归因明确，满足 E3）
-    BLOCKED_BY_ACCIDENT      → 被非设计因素挡住（TypeError 等）⇒ 不算防御
-    UNRESOLVED               → 归不了因（E2：不许判「无效」）
+    台账必须分开记：
+        纵深主力        → BLOCKED_BY_Lx
+        冗余覆盖        → COVERED_REDUNDANTLY_BY_Lx,Ly
 
 用法：
     python layer_evidence.py
@@ -50,10 +41,41 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# ---------------------------------------------------------------- 层定义
+# ---------------------------------------------------------------- 输入维度（F1）
+#
+# Mion F1：「它声称覆盖哪些维度」必须先写下来。
+# ⇒ 这里就是那份清单。新增层必须先在此处声明它打算覆盖哪些维度。
+#
+# 每个维度 = (维度标识, 说明, 构造的 changes)
+#   changes 就是攻击载荷。dimension 是「攻击面」，不是「攻击字符串」。
+
+DIMENSIONS = [
+    ("D1_FLAG_LEAK",
+     "调用方在 changes 里塞内部标志 _via_correct，企图伪装成纠正流程",
+     {"participation_basis": "third_person_report", "_via_correct": True}),
+    ("D2_DIRECT_SOURCE_EDIT",
+     "调用方不塞任何标志，直接要求改来源字段（participation_basis）",
+     {"participation_basis": "third_person_report"}),
+    ("D3_SOURCE_VIA_SOURCE_KIND",
+     "绕开 participation_basis，改另一个来源字段 source_kind",
+     {"source_kind": "third_party"}),
+    ("D4_SOURCE_VIA_REF",
+     "改来源引用 source_ref（同样的护栏应当覆盖）",
+     {"source_ref": "doc/X"}),
+]
+
+# ---------------------------------------------------------------- 层定义（含声明维度）
+#
+# 每层 = (层标识, 说明, 声明覆盖的维度列表, 锚点原文, 替换为)
+#
+# ⚠ 声明维度 = 这一层【声称】自己拦哪些维度。
+#   F1 要求：对它声称的每一条，都必须有一份独立观测。
+#   若实测发现它其实拦不了某条 ⇒ 声明不实，必须显式标出。
+
 LAYERS = [
     ("L1_KEY_REJECT",
      "显式拒收 changes 里的 _via_correct 键",
+     ["D1_FLAG_LEAK"],
      '        if "_via_correct" in changes:\n'
      '            raise SchemaError(\n'
      '                "changes 不得包含保留键 _via_correct。"\n'
@@ -61,14 +83,18 @@ LAYERS = [
      '        # MUTANT: 拆掉 L1'),
     ("L2_WHITELIST",
      "白名单 _REVISABLE 不含 _via_correct",
+     ["D1_FLAG_LEAK"],
      '        illegal = set(changes) - self._REVISABLE',
      '        illegal = set(changes) - self._REVISABLE - {"_via_correct"}  # MUTANT'),
     ("L3_SOURCE_GUARD",
      "来源字段护栏：非 correct 流程不得改来源",
+     ["D2_DIRECT_SOURCE_EDIT", "D3_SOURCE_VIA_SOURCE_KIND",
+      "D4_SOURCE_VIA_REF"],
      '        if touching_source and not via_correct:',
      '        if False:  # MUTANT: 拆掉 L3'),
     ("L4_ENTRY_HARDCODE",
      "公开入口硬编码 via_correct=False",
+     ["D1_FLAG_LEAK"],
      '        return self._revise_impl(record_id, changes, reason, authority,\n'
      '                                 via_correct=False)',
      '        return self._revise_impl(record_id, changes, reason, authority,\n'
@@ -91,32 +117,38 @@ def mk():
         changed_at=PIN, change_authority="synthetic"))
     return s
 
-def run_case(changes):
+BASE = {"source_kind": "user_utterance", "source_ref": "utt/A",
+        "participant_id": "A", "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"}
+
+def run_case(payload):
     s = mk()
     try:
-        s.revise("r1", dict(changes))
+        s.revise("r1", dict(payload))
     except Exception as e:
+        g = s.get("r1")
         return {"result": "BLOCKED", "exc": type(e).__name__,
-                "msg": str(e)[:110],
-                "basis_after": s.get("r1")["participation_basis"],
-                "rev_after": s.get("r1")["revision"]}
+                "msg": str(e)[:140],
+                "state": {k: g[k] for k in BASE},
+                "rev_after": g["revision"]}
     g = s.get("r1")
     return {"result": "SUCCEEDED", "exc": None, "msg": "",
-            "basis_after": g["participation_basis"],
+            "state": {k: g[k] for k in BASE},
             "rev_after": g["revision"],
             "correction_of": any(r.get("relation_type") == "correction_of"
                                  for r in g["relation"])}
 
-out = {
-    "A_with_flag": run_case({"participation_basis": "third_person_report",
-                             "_via_correct": True}),
-    "B_without_flag": run_case({"participation_basis": "third_person_report"}),
-}
-print("PROBE_JSON " + json.dumps(out, ensure_ascii=False))
+payloads = json.loads(sys.argv[1])
+out = {}
+for name, pl in payloads.items():
+    out[name] = run_case(pl)
+print("PROBE_JSON " + json.dumps({"results": out, "base": BASE},
+                                ensure_ascii=False))
 '''
 
 
 def observe(removals):
+    """拆掉指定层，对【全部维度】各跑一次探针。"""
     td = tempfile.mkdtemp()
     try:
         shutil.copy2(os.path.join(HERE, "afcore.py"),
@@ -125,114 +157,240 @@ def observe(removals):
         s = open(p, encoding="utf-8").read()
         for lid in removals:
             layer = next(l for l in LAYERS if l[0] == lid)
-            if s.count(layer[2]) != 1:
-                return {"error": "%s 锚点出现 %d 次" % (lid, s.count(layer[2]))}
-            s = s.replace(layer[2], layer[3], 1)
+            anchor = layer[3] if len(layer) == 5 else layer[2]
+            if s.count(anchor) != 1:
+                return {"error": "%s 锚点出现 %d 次" % (
+                    lid, s.count(anchor))}
+            s = s.replace(anchor, layer[4] if len(layer) == 5 else layer[3], 1)
         open(p, "w", encoding="utf-8", newline="\n").write(s)
         open(os.path.join(td, "probe.py"), "w", encoding="utf-8").write(PROBE)
+        payloads = {d[0]: d[2] for d in DIMENSIONS}
         env = dict(os.environ)
         env["PYTHONIOENCODING"] = "utf-8"
-        r = subprocess.run([sys.executable, os.path.join(td, "probe.py")],
-                           capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", cwd=td, env=env, timeout=120)
+        r = subprocess.run(
+            [sys.executable, os.path.join(td, "probe.py"),
+             json.dumps(payloads, ensure_ascii=False)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", cwd=td, env=env, timeout=180)
         out = (r.stdout or "") + (r.stderr or "")
         for line in out.splitlines():
             if line.startswith("PROBE_JSON "):
-                return json.loads(line[len("PROBE_JSON "):])
-        return {"error": out[-300:]}
+                data = json.loads(line[len("PROBE_JSON "):])
+                return data
+        return {"error": out[-400:]}
     finally:
         shutil.rmtree(td, ignore_errors=True)
 
 
-def verdict(cell):
-    """把一条观测定性。看的是【外部状态】，不是测试红绿。"""
+def classify(cell, base):
+    """把一条观测定性。G1/G2/G3：ACCIDENT 不算任何防御。"""
     if cell.get("result") == "SUCCEEDED":
-        return "OPENED"
+        return {"verdict": "OPENED", "blocker": None, "accident": False}
     exc = cell.get("exc") or ""
     msg = cell.get("msg", "")
     if "不得包含保留键" in msg:
-        return "BLOCKED_BY_L1"
+        return {"verdict": "BLOCKED_BY_L1", "blocker": "L1_KEY_REJECT",
+                "accident": False}
     if "不允许变更字段" in msg and "_via_correct" in msg:
-        return "BLOCKED_BY_L2"
+        return {"verdict": "BLOCKED_BY_L2", "blocker": "L2_WHITELIST",
+                "accident": False}
     if "不允许直接改来源字段" in msg:
-        return "BLOCKED_BY_L3"
+        return {"verdict": "BLOCKED_BY_L3", "blocker": "L3_SOURCE_GUARD",
+                "accident": False}
     if exc == "TypeError":
-        return "BLOCKED_BY_ACCIDENT"
-    return "UNRESOLVED"
+        return {"verdict": "ACCIDENT", "blocker": None, "accident": True}
+    return {"verdict": "UNRESOLVED", "blocker": None, "accident": False}
 
 
-def main():
+def build_rows():
     all_ids = [l[0] for l in LAYERS]
-
-    combos = [("（不拆）", [])]
-    for lid, desc, _, _ in LAYERS:
-        combos.append(("只拆 " + lid, [lid]))
-    combos.append(("只留 L3_SOURCE_GUARD",
-                   [x for x in all_ids if x != "L3_SOURCE_GUARD"]))
-    combos.append(("只留 L3 + L1",
-                   [x for x in all_ids
-                    if x not in ("L3_SOURCE_GUARD", "L1_KEY_REJECT")]))
-    combos.append(("四层全拆", all_ids))
+    configs = [("（不拆）", [])]
+    for lid in all_ids:
+        configs.append(("只拆 " + lid, [lid]))
+    configs.append(("四层全拆", all_ids))
 
     rows = []
-    for label, removals in combos:
+    for label, removals in configs:
         obs = observe(removals)
         if "error" in obs:
             rows.append({"label": label, "removed": removals,
                          "error": obs["error"]})
             continue
-        a = dict(obs["A_with_flag"])
-        b = dict(obs["B_without_flag"])
-        a["verdict"] = verdict(a)
-        b["verdict"] = verdict(b)
-        rows.append({"label": label, "removed": removals,
-                     "A_with_flag": a, "B_without_flag": b})
+        base = obs.get("base", {})
+        cells = {}
+        for dim in DIMENSIONS:
+            d_id = dim[0]
+            raw = obs["results"].get(d_id, {})
+            if not raw:
+                cells[d_id] = {"verdict": "UNRESOLVED", "blocker": None,
+                               "accident": False, "state": {}}
+                continue
+            c = classify(raw, base)
+            c["state"] = raw.get("state", {})
+            c["msg"] = (raw.get("msg") or "")[:100]
+            c["exc"] = raw.get("exc")
+            cells[d_id] = c
+        rows.append({"label": label, "removed": removals, "cells": cells,
+                     "base": base})
+    return rows
 
-    print("=" * 106)
-    print("分层证据台账 v2（Mion 2026-11-25 回复7 E1/E2/E3）")
-    print("  A 型 = 塞 _via_correct（针对 L1/L2/L4 的字符串检查）")
-    print("  B 型 = 只改来源、不塞（只针对 L3 的来源护栏）")
-    print("=" * 106)
+
+def dim_reference_class(row, dim_id):
+    """在「不拆」基准下，这个维度实际由哪一层拦住（G3 的关键）。"""
+    c = row["cells"].get(dim_id, {})
+    v = c.get("verdict")
+    if v == "OPENED":
+        return None                 # 基准下就没拦住 ⇒ 该维度无防线
+    if v == "ACCIDENT":
+        return "ACCIDENT"           # 只被巧合挡住 ⇒ G3 视为 OPENED
+    if v.startswith("BLOCKED_BY_"):
+        return c.get("blocker")
+    return None
+
+
+def main():
+    rows = build_rows()
+    base_row = rows[0]
+
+    # ---- F1：每层对它声称的维度，必须有独立观测
+    print("=" * 108)
+    print("F1 · 每层对其【声称覆盖】的维度，逐条观测")
+    print("  台账不只看「有没有拦住」，看【声称的维度是否真的拦住】")
+    print("=" * 108)
     print()
-    print("  %-24s | %-24s | %-24s"
-          % ("拆掉的层", "A 塞 _via_correct", "B 只改来源"))
-    print("  " + "-" * 102)
+
+    claims = []
+    for lid, desc, dims, anchor, repl in LAYERS:
+        print("  %s — %s" % (lid, desc))
+        print("    声称覆盖维度: %s" % (", ".join(dims) or "（无声明）"))
+        for d_id in dims:
+            # 拆掉本层，看该维度是否变成 OPENED
+            removals = [lid]
+            obs = observe(removals)
+            if "error" in obs:
+                claims.append((lid, d_id, "ERROR", obs["error"][:50]))
+                print("      %-26s ERROR %s" % (d_id, obs["error"][:40]))
+                continue
+            raw = obs["results"].get(d_id, {})
+            c = classify(raw, obs.get("base", {}))
+            v = c["verdict"]
+            if v == "OPENED":
+                note = "拆掉本层即打开 ⇒ 本层是该维度的主力（纵深）"
+                claims.append((lid, d_id, "PRIMARY", note))
+            elif v == "ACCIDENT":
+                note = "拆掉本层后仅剩 ACCIDENT ⇒ G3：该维度实为 OPENED"
+                claims.append((lid, d_id, "ACCIDENT_ONLY", note))
+            elif v.startswith("BLOCKED_BY_"):
+                other = c.get("blocker")
+                note = "拆掉本层仍被 %s 拦住 ⇒ 冗余（非纵深）" % other
+                claims.append((lid, d_id, "REDUNDANT", note))
+            else:
+                note = "归不了因（E2）"
+                claims.append((lid, d_id, "UNRESOLVED", note))
+            print("      %-26s %-16s %s" % (d_id, v, note))
+        print()
+
+    # ---- 纵深 vs 冗余（Mion §二）
+    print("=" * 108)
+    print("纵深 ≠ 冗余 · 每个维度实际由谁拦住（基准「不拆」配置）")
+    print("=" * 108)
+    print()
+    ref = {}
+    for dim in DIMENSIONS:
+        d_id, d_desc, _ = dim
+        who = dim_reference_class(base_row, d_id)
+        # 「独力拦住」的正确判据（Mion §二 纵深 vs 冗余）：
+        #   只保留这一层、其余全拆 ⇒ 该维度仍被【它自己】拦住。
+        # ⚠ 不是「只保留这一层时 OPENED」——那是反的。
+        #   第一版写反了，得出「D1 没有独力守卫」的错误结论。
+        all_ids = [l[0] for l in LAYERS]
+        solo_guards = []
+        for keep in all_ids:
+            removals = [x for x in all_ids if x != keep]
+            obs = observe(removals)
+            if "error" in obs:
+                continue
+            c = classify(obs["results"].get(d_id, {}), obs.get("base", {}))
+            if (c["verdict"].startswith("BLOCKED_BY_")
+                    and c.get("blocker") == keep):
+                solo_guards.append(keep)
+        ref[d_id] = {"primary": who, "solo_guards": solo_guards}
+        kind = "冗余 REDUNDANCY" if len(solo_guards) >= 2 else (
+            "纵深 COVERAGE" if len(solo_guards) == 1 else "无独力守卫")
+        print("  %-26s 基准拦住者=%-20s 独力守卫=%s" % (
+            d_id, who or "（无）",
+            ", ".join(solo_guards) or "（无）"))
+        print("      ⇒ %s（可独力拦住的层数=%d）"
+              % (kind, len(solo_guards)))
+    print()
+    print("  ⚠ 术语（Mion §二）：")
+    print("     纵深 = 每层拦【不同的】输入维度 ⇒ 覆盖率相加")
+    print("     冗余 = 多层拦【同一个】输入维度 ⇒ 少一层覆盖率不减")
+    print("     冗余不是没用：它让「删掉一层」不立刻退化成「零防御」。")
+    print("     但冗余不能拿来支撑「防御完好」。")
+    print()
+    print("  注：基准下 D1 的拦住者是 %s，但 L1 与 L2 互为冗余；"
+          % (dim_reference_class(base_row, "D1_FLAG_LEAK") or "（无）"))
+    print("      若两者都被拆（四层全拆），D1 只剩 ACCIDENT ⇒ 按 G3 记 OPENED。")
+    print()
+
+    # ---- G1/G2/G3
+    print("=" * 108)
+    print("G1/G2/G3 · ACCIDENT 不得计入防御")
+    print("=" * 108)
+    print()
+    accidents = []
     for r in rows:
         if "error" in r:
-            print("  %-24s | ERROR %s" % (r["label"], r["error"]))
             continue
-        print("  %-24s | %-24s | %-24s"
-              % (r["label"], r["A_with_flag"]["verdict"],
-                 r["B_without_flag"]["verdict"]))
+        for d_id, c in r["cells"].items():
+            if c.get("verdict") == "ACCIDENT":
+                accidents.append((r["label"], d_id, c.get("exc")))
+    if accidents:
+        print("  观测到 ACCIDENT 的位置：")
+        for label, d_id, exc in accidents:
+            print("    %-24s %-26s %s" % (label, d_id, exc))
+        print()
+        print("  G2：ACCIDENT 挡住的不是攻击，是攻击者的笔误。")
+        print("  G1：上述位置【不计入】任何防御层，也不计入 CAUGHT。")
+        print("  G3：若某维度【只】被 ACCIDENT 挡住 ⇒ 该维度状态记为 OPENED。")
+    else:
+        print("  本配置组合下未观测到 ACCIDENT。")
+        print("  ⚠ 但 G1/G2/G3 仍需由测试守住（构造一条只有 ACCIDENT 的路径）。")
     print()
 
-    print("=" * 106)
-    print("结论（这是 v1 说错的地方，以本次实测为准）")
-    print("=" * 106)
+    # ---- 四层全拆的最终判定（G3 口径）
+    full = rows[-1]
+    print("=" * 108)
+    print("四层全拆 · 按 G3 口径的最终状态（ACCIDENT 视同 OPENED）")
+    print("=" * 108)
     print()
-
-    b_open = [r for r in rows
-              if r.get("B_without_flag", {}).get("result") == "SUCCEEDED"]
-    print("  B 型被打开的配置：")
-    for r in b_open:
-        print("    ! %s" % r["label"])
+    for dim in DIMENSIONS:
+        d_id = dim[0]
+        c = full["cells"].get(d_id, {})
+        v = c.get("verdict")
+        eff = "OPENED" if v == "ACCIDENT" else v
+        print("  %-26s 原始=%-16s 按 G3=%s" % (d_id, v, eff))
     print()
-    print("  ⇒ 真正守住「改来源必须走 correct()」的只有 L3_SOURCE_GUARD。")
-    print("  ⇒ L1/L2/L4 只对 `_via_correct` 这个【特定字符串】设防；")
-    print("     攻击者不写这个字符串，三层全部不起作用。")
+    print("  ⇒ 凡是按 G3 变成 OPENED 的维度，说明它【没有真正的防线】。")
     print()
-    print("  ⇒ 四层全拆时出现 TypeError，是 `Record(**merged)` 不接受")
-    print("     多余键的副产品 —— 不是设计上的护栏。")
-    print("     把它记成「拦住」会高估防御，记成「无效变异」会低估缺口。")
-    print()
-    print("  ⇒ v1 那句「必须四层同时拆才打得穿」是错的：")
-    print("     只拆 L3 就打得穿（B 型）。我当时只测了 A 型，看不出来。")
-    print("=" * 106)
 
     out = os.path.join(HERE, "reports", "layer_evidence.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
+    payload = {
+        "dimensions": [{"id": d[0], "desc": d[1]} for d in DIMENSIONS],
+        "layer_claims": [{"id": l[0], "desc": l[1], "claims": l[2]}
+                         for l in LAYERS],
+        "claims_verified": [
+            {"layer": a, "dimension": b, "kind": c, "note": d}
+            for a, b, c, d in claims],
+        "dimension_reference": ref,
+        "accidents": [{"config": a, "dimension": b, "exc": c}
+                      for a, b, c in accidents],
+        "rows": rows,
+    }
     with open(out, "w", encoding="utf-8", newline="\n") as f:
-        json.dump({"rows": rows}, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     print("  台账已写入 reports/layer_evidence.json")
     return 0
 
