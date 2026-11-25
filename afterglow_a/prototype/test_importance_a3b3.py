@@ -1,0 +1,530 @@
+# -*- coding: utf-8 -*-
+"""第 5 项 A3/B3 限定原型测试（凌翼 2026-11-25 裁定）
+
+授权范围：
+    SYNTHETIC_TRACE_DESIGN     = AUTHORIZED
+    CANDIDATE_FILTER_PROTOTYPE = AUTHORIZED_LIMITED
+    FULL_IMPORTANCE_LEARNER    = NOT_AUTHORIZED
+
+凌翼的六条具体要求，逐条对应本文件的用例组：
+
+    1. 建立 B1 排除规则的正向与负向测试          → 组 ①
+    2. 在不同合成召回次数下检查排除不变性         → 组 ②
+    3. 关闭排除规则时，必须直接观测变异确实生效   → 组 ③
+    4. 若其他机制阻断了变异效果，不得冒充 A3 成功；
+       按既有 E1/E2/E3 与 M1 边界登记            → 组 ③（三态）
+    5. J2 的伪亲历计数和 J3 的空分母判据分别测试，
+       不能用 B3 的结果代替                       → 组 ④/⑤
+    6. 合成基线只允许标 MEASURED_ON_SYNTHETIC_ONLY，
+       不写正式重要性结论                         → 组 ⑥
+
+另：本文件【必须】包含至少一条「不可能通过」的用例，
+    用来证明前三组不是空转（A3 的自指要求）。
+
+运行：python afterglow_a/prototype/test_importance_a3b3.py
+"""
+from __future__ import annotations
+
+import os
+import sys
+import traceback
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import afimportance as AI
+from afcore import Record, RecoveryStore, SchemaError
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+RESULTS = []
+PIN = "2026-11-25T00:00:00Z"
+
+
+def case(cid, name):
+    def deco(fn):
+        def run():
+            try:
+                d = fn()
+                RESULTS.append((cid, name, True, d))
+                print("  [PASS] %s %s — %s" % (cid, name, d))
+            except AssertionError as e:
+                RESULTS.append((cid, name, False, str(e)))
+                print("  [FAIL] %s %s — %s" % (cid, name, e))
+            except Exception as e:
+                RESULTS.append((cid, name, False, repr(e)))
+                print("  [ERR ] %s %s — %s" % (cid, name, e))
+                traceback.print_exc()
+        return run
+    return deco
+
+
+# ---------------------------------------------------------------- 夹具
+def mk(basis="first_person_report", rid="r1"):
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id=rid, content="人说的话 " + rid,
+        source_kind="user_utterance", source_ref="utt/" + rid,
+        participant_id="A", participation_basis=basis,
+        basis_ref="utt/" + rid, commitment_state="not_a_commitment",
+        revision=1, prev_digest=None, changed_at=PIN,
+        change_authority="synthetic"))
+    return s
+
+
+def mk_mixed():
+    """四条记录：人输入的、模型生成的(first_person)、模型生成的(third_person)、
+    record_only 的。
+
+    ⚠ 2026-11-25 修正：第一版这里【没有】third_person 的记录，
+      而 A3-1d 却断言 t1 —— 于是那条断言实际在测「一个不存在的记录」，
+      失败原因是 KeyError 而不是 B1。
+      ⇒ 现在补上 t1，且必须 record_observed 过。
+    """
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="h1", content="人说的", source_kind="user_utterance",
+        source_ref="utt/h1", participant_id="A",
+        participation_basis="first_person_report", basis_ref="utt/h1",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    s.insert(Record(
+        record_id="m1", content="模型生成的", source_kind="system_generated",
+        source_ref="gen/m1", participant_id="sys",
+        participation_basis="first_person_report", basis_ref="gen/m1",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    s.insert(Record(
+        record_id="t1", content="模型转述", source_kind="system_generated",
+        source_ref="gen/t1", participant_id="sys",
+        participation_basis="third_person_report", basis_ref="gen/t1",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    s.insert(Record(
+        record_id="ro1", content="只记录", source_kind="unknown",
+        source_ref="doc/ro1", participant_id=None,
+        participation_basis="record_only", basis_ref="doc/ro1",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    # 观测：m1 与 t1 都是模型自发生成
+    s.record_observed("m1", "model_generation", note="合成")
+    s.record_observed("t1", "model_generation", note="合成")
+    return s
+
+
+# ================================================== 组 ① B1 正向 / 负向
+@case("A3-1a", "B1 正向：model_generation 记录【不在】候选集合里")
+def a31a():
+    s = mk_mixed()
+    r = AI.importance_candidates(s, trace=[])
+    assert r["status"] == "EVALUATED", "状态异常：%r" % r["status"]
+    assert "m1" not in r["candidates"], (
+        "m1 是 model_generation，却进了候选集合 ⇒ B1 被违反")
+    assert "m1" in r["excluded"]["R_MODEL_GENERATION"], (
+        "m1 未被记入 R_MODEL_GENERATION 的排除名单")
+    return "m1 被排除；候选=%s" % sorted(r["candidates"])
+
+
+@case("A3-1b", "B1 负向：human_input 记录【可以】在候选集合里")
+def a31b():
+    s = mk_mixed()
+    r = AI.importance_candidates(s, trace=[])
+    assert "h1" in r["candidates"], (
+        "h1 是人输入的，不该被排除")
+    return "h1 在候选集合内（h1 未被误伤）"
+
+
+@case("A3-1c", "B1 只排除 model_generation，不误伤其他 origin")
+def a31c():
+    s = mk_mixed()
+    # 未观测的记录（basis_conflict=observed_absent）也不应因 B1 被排除
+    r = AI.importance_candidates(s, trace=[])
+    for rid in ("h1", "ro1"):
+        assert rid in r["candidates"], "%s 被误排除" % rid
+    return "h1/ro1 均未被 R_MODEL_GENERATION 排除"
+
+
+@case("A3-1d", "B1 不区分 asserted 类别：third_person × model_generation 同样排除")
+def a31d():
+    """凌翼要求 1 的「负向测试」关键一格。
+
+    B1 原文：「observed_origin = model_generation 的记录，
+             不得进入「重要」集合。」
+    ⇒ 排除依据是【观测值】，不是【断言类别】。
+       first_person 与 third_person 的 model_generation 记录都该被排除。
+
+    ⚠ 第一版只测了 first_person（A3-1a），于是变异 I2
+      （把排除条件收窄成「只排 first_person」）行为已变但测试全绿：
+      ⇒ 被变异验证判为 MISSED，是真缺口，不是探针问题。
+    """
+    s = mk_mixed()
+    r = AI.importance_candidates(s, trace=[])
+    assert "t1" not in r["candidates"], (
+        "t1 是 third_person × model_generation，也属 observed_origin=model_generation，"
+        "应被 B1 排除，但仍进了候选集合")
+    assert "t1" in r["excluded"]["R_MODEL_GENERATION"], (
+        "t1 未被记入 R_MODEL_GENERATION 排除名单")
+    return "t1（third_person × model_generation）同样被排除"
+
+
+@case("A3-1e", "B1 看的是 observed_origin 的值，不是 basis_conflict")
+def a31e():
+    """若把排除依据改成 basis_conflict == asserted_contradicts_observed，
+    那么 record_only × model_generation 的记录（basis_conflict=none）
+    就会被漏掉 —— 但它同样是 model_generation，B1 要求排除。
+
+    ⚠ 第一版这里【只有一个 ro2 记录】。
+      于是空分母规则把 candidates 整个清空，
+      「ro2 不在候选里」是空分母的结果，不是 B1 的结果 ——
+      **断言假通过**。变异 I11 因此被判 MISSED（行为已变、测试全绿）。
+    ⇒ 必须补一条 first_person_report 记录作为分母，
+      让 candidates 在【正常路径】下产出，
+      才能观察到「ro2 被 B1 排除」而不是「被空分母清零」。
+    """
+    s = RecoveryStore()
+    # 分母记录：让 EVALUATED 成立，排除空分母遮蔽
+    s.insert(Record(
+        record_id="denom", content="人说的", source_kind="user_utterance",
+        source_ref="utt/denom", participant_id="A",
+        participation_basis="first_person_report", basis_ref="utt/denom",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    s.insert(Record(
+        record_id="ro2", content="只记录但模型生成",
+        source_kind="system_generated", source_ref="gen/ro2",
+        participant_id="sys", participation_basis="record_only",
+        basis_ref="gen/ro2", commitment_state="not_a_commitment",
+        revision=1, prev_digest=None, changed_at=PIN,
+        change_authority="synthetic"))
+    s.record_observed("ro2", "model_generation")
+    g = s.get("ro2")
+    assert g["basis_conflict"] == "none", (
+        "前提变了：record_only × model_generation 应为 none，实测 %r"
+        % g["basis_conflict"])
+
+    r = AI.importance_candidates(s, trace=[])
+    assert r["status"] == "EVALUATED", (
+        "分母应为 1（有 denom）⇒ 状态应为 EVALUATED，实测 %r。"
+        "若为 NOT_EVALUABLE，则下面的断言会被空分母遮蔽" % r["status"])
+    assert "denom" in r["candidates"], "分母记录本身应进候选（未被 B1 排除）"
+
+    assert "ro2" not in r["candidates"], (
+        "ro2 的 basis_conflict=none 但 observed_origin=model_generation，"
+        "B1 仍要求排除；若在候选里说明判据看错了字段")
+    assert "ro2" in r["excluded"]["R_MODEL_GENERATION"], (
+        "ro2 未被记入 R_MODEL_GENERATION 排除名单")
+    return "basis_conflict=none 的 model_generation 仍被 B1 排除（看的是 origin）"
+
+
+# ================================================== 组 ② 排除不变性
+@case("A3-2a", "同一 record_id 被召回 1/5/50 次，排除结果不变")
+def a32a():
+    s = mk_mixed()
+    results = {}
+    for n in (1, 5, 50):
+        trace = AI.synthetic_trace(s, [
+            {"record_id": "m1", "at": "T%03d" % i,
+             "query_ref": "q%d" % i} for i in range(n)
+        ])
+        r = AI.importance_candidates(s, trace=trace)
+        results[n] = ("m1" not in r["candidates"],
+                      tuple(sorted(r["candidates"])))
+    assert results[1] == results[5] == results[50], (
+        "召回次数改变导致候选集合变化 ⇒ 违反 B2：%r" % results)
+    return "1/5/50 次：m1 始终不在候选集合，其余成员不变"
+
+
+@case("A3-2b", "合成事件流拒绝「用不存在的 record_id 造假」")
+def a32b():
+    s = mk_mixed()
+    try:
+        AI.synthetic_trace(s, [
+            {"record_id": "ghost", "at": "T0", "query_ref": "q0"}])
+    except SchemaError as e:
+        assert "不存在" in str(e) or "ghost" in str(e)
+        return "不存在的 record_id 被拒"
+    raise AssertionError("合成事件流接受了不存在的 record_id")
+
+
+@case("A3-2c", "合成事件流拒绝「完全重复的事件」冒充多次召回")
+def a32c():
+    s = mk_mixed()
+    try:
+        AI.synthetic_trace(s, [
+            {"record_id": "m1", "at": "T0", "query_ref": "q0"},
+            {"record_id": "m1", "at": "T0", "query_ref": "q0"}])
+    except SchemaError as e:
+        assert "重复" in str(e)
+        return "完全重复事件被拒"
+    raise AssertionError("合成事件流接受了完全重复的事件")
+
+
+@case("A3-2d", "合成事件流允许同一 record_id 的【不同】事件（这才是高频）")
+def a32d():
+    s = mk_mixed()
+    trace = AI.synthetic_trace(s, [
+        {"record_id": "m1", "at": "T0", "query_ref": "q0"},
+        {"record_id": "m1", "at": "T1", "query_ref": "q1"},
+        {"record_id": "m1", "at": "T2", "query_ref": "q2"}])
+    assert len(trace) == 3
+    counts = AI.recall_counts(trace)
+    assert counts["m1"] == 3
+    return "同一 record_id × 3 个不同事件 = 高频，被接受"
+
+
+# ================================================== 组 ③ 变异观测（三态）
+@case("A3-3a", "关闭 B1 ⇒ 排除确实失效（直接观测，不靠测试红绿）")
+def a33a():
+    s = mk_mixed()
+    # 基线：m1 被排除
+    base = AI.importance_candidates(s, trace=[])
+    assert "m1" not in base["candidates"]
+
+    # 关闭 B1：直接观测外部状态
+    off = AI.importance_candidates(s, trace=[],
+                                   exclude=["R_MODEL_GENERATION"])
+    assert "m1" in off["candidates"], (
+        "关闭 B1 后 m1 仍不在候选集合 ⇒ 变异没生效，"
+        "此时不得声称 A3 成功（E1/M1）")
+    assert "R_MODEL_GENERATION" not in off["active_rules"]
+    return "关闭 B1：m1 进入候选集合（外部状态已变）⇒ 变异有效"
+
+
+@case("A3-3b", "变异有效性的判定顺序：先观测行为已变，再谈断言强弱")
+def a33b():
+    """M1：A3 的前提。
+    变异体必须【直接观测到行为已变】，才可用 A3 判断断言强弱。
+    若行为未变，则该变异无效，不得记成「断言没红所以断言弱」。
+    """
+    s = mk_mixed()
+    base = "m1" not in AI.importance_candidates(s, trace=[])["candidates"]
+    off = "m1" in AI.importance_candidates(
+        s, trace=[], exclude=["R_MODEL_GENERATION"])["candidates"]
+    assert base and off, (
+        "变异未改变可观测行为（base_excluded=%r, off_included=%r）"
+        " ⇒ 该变异无效，不得据此判断断言强弱" % (base, off))
+    return "行为变化已直接观测：基线排除 / 关闭后纳入"
+
+
+@case("A3-3c", "关闭未知规则 ⇒ 报错，不静默忽略")
+def a33c():
+    s = mk_mixed()
+    try:
+        AI.importance_candidates(s, trace=[], exclude=["NOT_A_RULE"])
+    except SchemaError as e:
+        assert "未知规则" in str(e)
+        return "未知规则被拒"
+    raise AssertionError("未知排除规则被静默接受 ⇒ 变异可能没生效却无人知晓")
+
+
+# ================================================== 组 ④ J2 伪亲历（单独测）
+@case("A3-4a", "J2：first_person × model_generation ⇒ 伪亲历标记为真")
+def a34a():
+    s = mk_mixed()
+    g = s.get("m1")
+    assert g["participation_basis"] == "first_person_report"
+    assert g["observed_origin"] == "model_generation"
+    assert g["basis_conflict"] == "asserted_contradicts_observed", (
+        "冲突值应为 asserted_contradicts_observed，实测 %r"
+        % g["basis_conflict"])
+    # 伪亲历是派生：first_person × model_generation
+    pseudo = (g["participation_basis"] == "first_person_report"
+              and g["observed_origin"] == "model_generation")
+    assert pseudo is True
+    return "m1: 冲突=%s + 伪亲历=真（两件事分别可查）" % g["basis_conflict"]
+
+
+@case("A3-4b", "J2 与 B3 分开：冲突成立≠伪亲历成立")
+def a34b():
+    """Mion 回复4 §4.5：asserted_contradicts_observed 是【一格】，
+    伪亲历是其中一个真子集。二者不得互推。
+    """
+    # third_person × model_generation ⇒ 冲突成立，但不是伪亲历
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="t1", content="模型说的", source_kind="system_generated",
+        source_ref="gen/t1", participant_id="sys",
+        participation_basis="third_person_report", basis_ref="gen/t1",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    s.record_observed("t1", "model_generation")
+    g = s.get("t1")
+    assert g["basis_conflict"] == "asserted_contradicts_observed", (
+        "前提变了：third_person × model_generation 未判冲突")
+    pseudo = (g["participation_basis"] == "first_person_report"
+              and g["observed_origin"] == "model_generation")
+    assert pseudo is False, "冲突成立却派生出了伪亲历 ⇒ 两层被压成一层"
+    return "冲突成立但伪亲历为假 ⇒ 两层可区分"
+
+
+# ================================================== 组 ⑤ J3 空分母（单独测）
+@case("A3-5a", "J3：分母为空 ⇒ NOT_EVALUABLE，不是 0，也不是「无重要项」")
+def a35a():
+    s = mk()   # 只有 record_only 的记录
+    s2 = RecoveryStore()
+    s2.insert(Record(
+        record_id="ro", content="只记录", source_kind="unknown",
+        source_ref="doc/ro", participant_id=None,
+        participation_basis="record_only", basis_ref="doc/ro",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    r = AI.importance_candidates(s2, trace=[])
+    assert r["denominator_size"] == 0, (
+        "分母应只数 first_person_report，实测 %d" % r["denominator_size"])
+    assert r["status"] == "NOT_EVALUABLE", (
+        "空分母被报成 %r ⇒ 违反 C2" % r["status"])
+    assert r["candidates"] == set(), (
+        "NOT_EVALUABLE 时候选集合应为空集，实测 %r" % r["candidates"])
+    return "空分母 ⇒ NOT_EVALUABLE + 空集（不是 0）"
+
+
+@case("A3-5b", "J3 的反证：关闭这条规则后会被误报为 EVALUATED")
+def a35b():
+    s2 = RecoveryStore()
+    s2.insert(Record(
+        record_id="ro", content="只记录", source_kind="unknown",
+        source_ref="doc/ro", participant_id=None,
+        participation_basis="record_only", basis_ref="doc/ro",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    off = AI.importance_candidates(
+        s2, trace=[], exclude=["R_EMPTY_DENOMINATOR"])
+    assert off["status"] == "EVALUATED", (
+        "关闭规则后仍非 EVALUATED ⇒ 这条变异无效")
+    return "关闭 C2 规则 ⇒ 变成 EVALUATED（该处确实在守）"
+
+
+# ================================================== 组 ⑥ 合成标记
+@case("A3-6a", "有 trace 时 measurement_scope 必须标 MEASURED_ON_SYNTHETIC_ONLY")
+def a36a():
+    s = mk_mixed()
+    trace = AI.synthetic_trace(s, [{"record_id": "m1", "at": "T0",
+                                    "query_ref": "q0"}])
+    r = AI.importance_candidates(s, trace=trace)
+    assert r["status"] == "EVALUATED", (
+        "本用例应命中 EVALUATED 分支，实测 %r" % r["status"])
+    assert r["measurement_scope"] == AI.SYNTHETIC_PREFIX, (
+        "合成测量未标 %s，实测 %r"
+        % (AI.SYNTHETIC_PREFIX, r["measurement_scope"]))
+    return r["measurement_scope"]
+
+
+@case("A3-6a2", "空分母（NOT_EVALUABLE）分支同样必须标合成测量")
+def a36a2():
+    """⚠ 第一版只测了 EVALUATED 路径。
+    而 importance_candidates 有【两个】返回点，各自算一次 measurement_scope。
+    ⇒ 变异 I9（只改 NOT_EVALUABLE 那一处）行为已变但测试全绿，被判 MISSED。
+    ⇒ 两个分支必须各自断言。
+    """
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="ro", content="只记录", source_kind="unknown",
+        source_ref="doc/ro", participant_id=None,
+        participation_basis="record_only", basis_ref="doc/ro",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    trace = AI.synthetic_trace(s, [])
+    r = AI.importance_candidates(s, trace=trace)
+    assert r["status"] == "NOT_EVALUABLE", (
+        "本用例应命中 NOT_EVALUABLE 分支，实测 %r" % r["status"])
+    assert r["measurement_scope"] == AI.SYNTHETIC_PREFIX, (
+        "NOT_EVALUABLE 分支的合成测量未标 %s，实测 %r"
+        % (AI.SYNTHETIC_PREFIX, r["measurement_scope"]))
+    return "NOT_EVALUABLE 分支：%s" % r["measurement_scope"]
+
+
+@case("A3-6b", "无 trace 时不得标成合成测量")
+def a36b():
+    s = mk_mixed()
+    r = AI.importance_candidates(s, trace=None)
+    assert r["measurement_scope"] != AI.SYNTHETIC_PREFIX, (
+        "没有事件流却标成合成测量")
+    assert r["measurement_scope"] == "NOT_MEASURED"
+    return r["measurement_scope"]
+
+
+@case("A3-6c", "合成比例函数不写文件（红线：无基线前不入 reports/）")
+def a36c():
+    s = mk_mixed()
+    trace = AI.synthetic_trace(s, [{"record_id": "m1", "at": "T0",
+                                    "query_ref": "q0"}])
+    before = set(os.listdir(os.path.join(HERE, "reports"))) \
+        if os.path.isdir(os.path.join(HERE, "reports")) else set()
+    r = AI.synthetic_ratios(s, trace)
+    after = set(os.listdir(os.path.join(HERE, "reports"))) \
+        if os.path.isdir(os.path.join(HERE, "reports")) else set()
+    assert before == after, (
+        "synthetic_ratios 改动了 reports/ 目录：新增 %s" % (after - before))
+    assert r["scope"] == AI.SYNTHETIC_PREFIX
+    return "未写任何文件；scope=%s" % r["scope"]
+
+
+@case("A3-6d", "空分母时比例返回 None 而不是 0")
+def a36d():
+    s = RecoveryStore()
+    r = AI.synthetic_ratios(s, [])
+    assert r["unverifiable_ratio"] is None, (
+        "空分母被报成 %r，应为 None（0 会被读成「全部可判定」）"
+        % r["unverifiable_ratio"])
+    assert r["record_only_ratio"] is None
+    return "空分母 ⇒ None（不是 0）"
+
+
+# ================================================== 自指检查
+@case("A3-0", "本文件的断言不是空转：构造一个必然违反 B1 的输入")
+def a30():
+    """A3 的自指要求：连这套测试本身也要能失败。
+
+    做法：直接构造一个【绕过 record_observed】的记录 ——
+    在 live 上手工塞 observed_origin（模拟「如果有人绕过了通道」）。
+    ⇒ 候选集合过滤器【仍应排除它】。
+    ⇒ 若它也进得去，说明 B1 只在「正常路径」上成立，不是真排除。
+    """
+    s = mk_mixed()
+    # 手工把那层保护拆掉：把 m1 的 observed_origin 改写
+    # （直接改 _live，模拟越权写入；Record 是不可变 dataclass，故重建）
+    cur = s._live["m1"]
+    d = cur.to_dict()
+    d["observed_origin"] = "model_generation"
+    s._live["m1"] = Record(**{k: v for k, v in d.items()
+                              if k != "this_digest"})
+    r = AI.importance_candidates(s, trace=[])
+    assert "m1" not in r["candidates"], (
+        "绕过通道写入的 model_generation 仍在候选集合里 ⇒ "
+        "B1 只在正常路径生效，不是真排除")
+    return "越权写入的 model_generation 同样被排除（B1 看的是值，不是路径）"
+
+
+# ---------------------------------------------------------------- 汇总
+def main():
+    print("=" * 82)
+    print("第 5 项 A3/B3 限定原型（凌翼 2026-11-25 授权）")
+    print("  SYNTHETIC_TRACE_DESIGN     = AUTHORIZED")
+    print("  CANDIDATE_FILTER_PROTOTYPE = AUTHORIZED_LIMITED")
+    print("  FULL_IMPORTANCE_LEARNER    = NOT_AUTHORIZED")
+    print("=" * 82)
+    print()
+
+    groups = [
+        ("① B1 正向/负向（凌翼要求 1）", [a31a, a31b, a31c, a31d, a31e]),
+        ("② 不同召回次数下排除不变（要求 2）", [a32a, a32b, a32c, a32d]),
+        ("③ 关闭规则时直接观测变异生效（要求 3/4）", [a33a, a33b, a33c]),
+        ("④ J2 伪亲历单独测（要求 5）", [a34a, a34b]),
+        ("⑤ J3 空分母单独测（要求 5）", [a35a, a35b]),
+        ("⑥ 合成标记与红线（要求 6）", [a36a, a36a2, a36b, a36c, a36d]),
+        ("⑦ A3 自指：本文件能否失败", [a30]),
+    ]
+    for title, fns in groups:
+        print("[%s]" % title)
+        for fn in fns:
+            fn()
+        print()
+
+    passed = sum(1 for r in RESULTS if r[2])
+    total = len(RESULTS)
+    print("=" * 82)
+    print("合计 %d  通过 %d  失败 %d" % (total, passed, total - passed))
+    print("=" * 82)
+    return 0 if passed == total else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2223,7 +2223,199 @@ test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
 
 ---
 
-## 二十 · 固定提交身份
+## 二十 · 第 5 项 A3/B3 限定原型（据凌翼 2026-11-25 裁定）
+
+### 20.1 授权边界
+
+```text
+问题一 → 甲（修订版）：允许用【合成召回事件流】表达高频，
+         要求多次事件指向同一 record_id，
+         不得用复制多条独立记录冒充同一记录被多次召回。
+
+问题二 → 授权：实现一个【不计算分数、不训练、不排序】的
+         候选资格集合函数，仅用于 A3/B3 合成工程测试。
+         该集合不代表「重要记忆已经选出」。
+```
+
+```text
+SYNTHETIC_TRACE_DESIGN     = AUTHORIZED
+CANDIDATE_FILTER_PROTOTYPE = AUTHORIZED_LIMITED
+FULL_IMPORTANCE_LEARNER    = NOT_AUTHORIZED
+IMPORTANCE_IMPLEMENTATION  = NOT_AUTHORIZED（A/B 裁定不自动构成第 5 项授权）
+```
+
+### 20.2 为什么用集合而不是分数
+
+```text
+B1 要求 model_generation 的记录【不得进入「重要」集合】。
+「不得进入集合」可以用 membership 断言；
+「分数要低」只能用阈值断言，而阈值是 B2 明文禁止的。
+⇒ 用集合，B1 可以 100% 按文字实现，不需要任何阈值。
+```
+
+```python
+importance_candidates(store, trace=None, exclude=None) -> dict
+    # 返回 {status, candidates: set, denominator_size,
+    #       excluded: {rule: [...]}, active_rules,
+    #       measurement_scope, note}
+```
+
+**它不返回分数、不返回排序、不训练。**
+
+### 20.3 合成召回事件流（问题一 甲）
+
+```text
+召回事件 = {"record_id", "at", "query_ref"}
+「高频」= 同一 record_id 出现多次【不同】事件。
+```
+
+**两条硬校验（直接对应凌翼的「不得用复制多条独立记录冒充」）：**
+
+```text
+① record_id 必须【真实存在】于 store
+   ⇒ 用不存在的 ID 复制造不出高频
+② 完全相同的事件（同 record_id + at + query_ref）被拒绝
+   ⇒ 完全重复不是「多次召回」，是重复提交
+```
+
+```text
+⚠ 但允许同一 record_id 的【不同】事件重复出现 —— 那才是高频。
+```
+
+### 20.4 两条排除规则，各自可单独关闭
+
+```text
+R_MODEL_GENERATION      B1：observed_origin == model_generation ⇒ 排除
+R_EMPTY_DENOMINATOR     C2：分母为 0 ⇒ 整批结论 NOT_EVALUABLE
+
+⚠ 这两条【不是同一条】：
+   B1 排除的是【某条记录】；C2 排除的是【整批结论的可评估性】。
+   凌翼裁定第 5 条：「J2 的伪亲历计数和 J3 的空分母判据分别测试，
+                     不能用 B3 的结果代替。」
+   ⇒ 因此拆成两条规则，各自有独立用例。
+```
+
+### 20.5 我在实现这一项时踩的四个坑（全部留档）
+
+**坑一：测试夹具里少了一条记录**
+
+```text
+A3-1d 断言 t1 被排除，但 mk_mixed() 里根本没有 t1。
+⇒ 断言实际在测「一个不存在的记录」，失败原因是 KeyError 而不是 B1。
+⇒ 修：夹具补上 t1，且必须 record_observed 过。
+```
+
+**坑二：分母口径与 C1 不一致（真 bug）**
+
+```text
+第一版 synthetic_ratios 的分母用 len(live)（全体记录）。
+但 C1 明文：分母 = |asserted == first_person_report 的记录数|。
+⇒ 两者不同：record_only / third_person 不属于重要性判断的分母。
+⇒ 后果：只要库里有任意一条记录，分母就永不为空，
+  于是「空分母 ⇒ None」这条判据【从未被触发过】。
+
+⚠ 这个 bug 是被变异 I10 抓出来的，不是我自己看出来的。
+```
+
+**坑三：空分母规则遮蔽了 B1 的行为差异**
+
+```text
+A3-1e 第一版只有一个 record_only×model_generation 记录。
+⇒ 空分母规则把 candidates 整个清空，
+  「ro2 不在候选里」是空分母的结果，不是 B1 的结果。
+⇒ 断言假通过；变异 I11 因此被判 MISSED（行为已变、测试全绿）。
+⇒ 修：补一条 first_person_report 记录作为分母。
+```
+
+```text
+⇒ 这正是凌翼裁定第 4 条说的：
+   「若其他机制阻断了变异效果，不得冒充 A3 成功；
+     按既有 E1/E2/E3 与 M1 边界登记。」
+```
+
+**坑四：探针只覆盖一个分支**
+
+```text
+measurement_scope 在【两个】返回点各算一次
+（EVALUATED 路径 / NOT_EVALUABLE 路径）。
+第一版只测了 EVALUATED；变异 I9（只改 NOT_EVALUABLE 那处）
+行为已变但测试全绿 ⇒ MISSED。
+⇒ 修：两个分支各自断言（A3-6a / A3-6a2）。
+```
+
+### 20.6 变异验证结果
+
+```text
+test_mutations_importance.py
+    CAUGHT       12
+    UNRESOLVED    0
+    MISSED        0
+```
+
+**每条变异都走两步（凌翼要求 3/4）：**
+
+```text
+① 先【直接观测】候选集合/返回结构是否真的变化（E1/M1）
+② 再看目标测试是否红（A3）
+③ 行为未变 ⇒ 记 UNRESOLVED，不记 MISSED，也不记 CAUGHT
+```
+
+```text
+⚠ 过程中 CAUGHT 从 4 → 7 → 8 → 9 → 10 → 11 → 12，
+   其中 5 次是因为【探针覆盖面不足】而不是变异无效。
+   ⇒ 每次都要先问「是变异无效，还是我看不见？」，
+     不能直接判 UNRESOLVED 了事。
+```
+
+### 20.7 边界声明（写进每一份返回）
+
+```text
+measurement_scope = MEASURED_ON_SYNTHETIC_ONLY   （有 trace 时）
+                  = NOT_MEASURED                  （无 trace 时）
+
+note = "候选资格集合 = 未被已声明规则排除的记录。
+        它不代表「重要记忆已经选出」。"
+```
+
+```text
+红线（C）：无基线前，任何重要性结论不得写入 reports/。
+⇒ synthetic_ratios() 不写任何文件；测试 A3-6c 守着这一点。
+```
+
+### 20.8 状态行
+
+```text
+A3_B3_RULES                = DOCUMENTED
+SYNTHETIC_TRACE_DESIGN     = AUTHORIZED（已实现）
+CANDIDATE_FILTER_PROTOTYPE = AUTHORIZED_LIMITED（已实现）
+IMPORTANCE_A3_B3_EVIDENCE  = PARTIAL（合成范围内已交付，待知微/睫检查）
+FULL_IMPORTANCE_LEARNER    = NOT_AUTHORIZED
+IMPORTANCE_RED_LINE        = 未写入 reports/（A3-6c 守着）
+
+MY_BUGS_FOUND_THIS_ROUND  = 4（夹具缺失 / 分母口径 / 空分母遮蔽 / 探针分支）
+MY_BUGS_FOUND_BY_MUTATION  = 2（分母口径 I10 / 两个分支 I9）
+```
+
+### 20.9 验收
+
+```text
+test_importance_a3b3.py      22/22   （新增）
+test_mutations_importance.py CAUGHT 12 / UNRESOLVED 0 / MISSED 0（新增）
+test_p1_p5.py                17/17
+test_recovery_gate.py        10/10
+test_z61_gaps.py             13/13
+test_observed_channel.py     34/34
+test_origin_layer.py         16/16
+test_judgement_table_sync.py PASS
+test_field_classification.py 10/10
+test_layer_evidence.py       12/12
+test_mutations_gate.py       CAUGHT 40 / MISSED 0
+test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
+```
+
+---
+
+## 二十一 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 
