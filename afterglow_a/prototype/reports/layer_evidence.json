@@ -1,0 +1,186 @@
+{
+  "rows": [
+    {
+      "label": "（不拆）",
+      "removed": [],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L1"
+      },
+      "B_without_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L3"
+      }
+    },
+    {
+      "label": "只拆 L1_KEY_REJECT",
+      "removed": [
+        "L1_KEY_REJECT"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许变更字段 ['_via_correct']（允许：['basis_ref', 'commitment_ref', 'commitment_state', 'committed_by', 'commit",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L2"
+      },
+      "B_without_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L3"
+      }
+    },
+    {
+      "label": "只拆 L2_WHITELIST",
+      "removed": [
+        "L2_WHITELIST"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L1"
+      },
+      "B_without_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L3"
+      }
+    },
+    {
+      "label": "只拆 L3_SOURCE_GUARD",
+      "removed": [
+        "L3_SOURCE_GUARD"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L1"
+      },
+      "B_without_flag": {
+        "result": "SUCCEEDED",
+        "exc": null,
+        "msg": "",
+        "basis_after": "third_person_report",
+        "rev_after": 2,
+        "correction_of": false,
+        "verdict": "OPENED"
+      }
+    },
+    {
+      "label": "只拆 L4_ENTRY_HARDCODE",
+      "removed": [
+        "L4_ENTRY_HARDCODE"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L1"
+      },
+      "B_without_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L3"
+      }
+    },
+    {
+      "label": "只留 L3_SOURCE_GUARD",
+      "removed": [
+        "L1_KEY_REJECT",
+        "L2_WHITELIST",
+        "L4_ENTRY_HARDCODE"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "TypeError",
+        "msg": "__init__() got an unexpected keyword argument '_via_correct'",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_ACCIDENT"
+      },
+      "B_without_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L3"
+      }
+    },
+    {
+      "label": "只留 L3 + L1",
+      "removed": [
+        "L2_WHITELIST",
+        "L4_ENTRY_HARDCODE"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L1"
+      },
+      "B_without_flag": {
+        "result": "BLOCKED",
+        "exc": "SchemaError",
+        "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_L3"
+      }
+    },
+    {
+      "label": "四层全拆",
+      "removed": [
+        "L1_KEY_REJECT",
+        "L2_WHITELIST",
+        "L3_SOURCE_GUARD",
+        "L4_ENTRY_HARDCODE"
+      ],
+      "A_with_flag": {
+        "result": "BLOCKED",
+        "exc": "TypeError",
+        "msg": "__init__() got an unexpected keyword argument '_via_correct'",
+        "basis_after": "first_person_report",
+        "rev_after": 1,
+        "verdict": "BLOCKED_BY_ACCIDENT"
+      },
+      "B_without_flag": {
+        "result": "SUCCEEDED",
+        "exc": null,
+        "msg": "",
+        "basis_after": "third_person_report",
+        "rev_after": 2,
+        "correction_of": false,
+        "verdict": "OPENED"
+      }
+    }
+  ]
+}

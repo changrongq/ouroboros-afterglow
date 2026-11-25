@@ -1526,7 +1526,185 @@ Mion 回复6 §四、§五把判据与基线定义给了，我照录要点，不
 
 ---
 
-## 十六 · 固定提交身份
+## 十六 · A3 的边界 E1/E2/E3，以及我因此发现自己说错的防御结构（据 Mion 2026-11-25 回复7）
+
+Mion 这一封只做一件事：**给 A3 加一条边界，防止「无效变异」变成它的后门。**
+
+### 16.1 她的担忧：解释权会吃掉落败
+
+```text
+「这条变异无效」是【解释】。
+任何一次 MISSED，都可以用这句解释掉。
+⇒ 若没有判据，「无效变异」就会变成 A3 的逃生门：
+   每一次 MISSED 都能被重新叙述成「变异无效，不算失分」。
+
+那样 A3 就从「断言必须能失败」退化成「断言失败时我可以说它不算」。
+```
+
+**这是对的，而且我上一封正是在用这个解释。**
+
+### 16.2 她给的三条边界（照录）
+
+```text
+E1  对每一个判为「无效」的变异，必须在同一次运行里，
+    独立打出【被变异点的实际结果】。这一栏不能来自目标测试的红绿。
+
+E2  若无法独立观测（该层无法单独表达其结果），
+    则该变异【不得】判为无效，只能记为 UNRESOLVED，并保留在台账里。
+    UNRESOLVED ≠ MISSED ≠ CAUGHT。三个状态，不许合并。
+
+E3  「无效变异」的结论必须附【它被哪一层拦住】。
+    说不出被谁拦住的，不算无效，算没查清。
+```
+
+她又补了 §四一条：
+
+```text
+组合变异 CAUGHT 证明：整体有防御。
+分层变异（或 E1 的逐层直接观测）证明：每一层都有存在理由。
+两者不能互相替代。
+
+若只保留组合变异：
+  四层拆到两层时它还会 CAUGHT ⇒ 你不知道剩下两层是必需还是冗余。
+  某天有人删掉两层，测试仍然是绿的。
+```
+
+### 16.3 我照 E1 做，第一件事就是发现自己上一封说错了
+
+我把「直接观测」实现成 `layer_evidence.py`：不跑目标测试，
+只用探针调一次 `revise()`，把外部状态原样打出来。
+
+**第一次跑就出了三个 `UNRESOLVED`：**
+
+```text
+四层全拆              → TypeError: __init__() got an unexpected keyword argument '_via_correct'
+只留 L3_SOURCE_GUARD  → TypeError（同上）
+只留 L4_ENTRY_HARDCODE → TypeError（同上）
+```
+
+`TypeError` 不是护栏。它是 `_via_correct` 被放行后一路进到
+`Record(**merged)`，而 `Record.__init__` 不接受这个键 —— **碰巧挡住的。**
+
+### 16.4 换一种攻击，结论完全反转
+
+我原来的探针只测一种攻击：往 changes 里塞 `"_via_correct": True`。
+它只对 L1/L2/L4 的**字符串检查**有效。
+
+换成 B 型攻击 —— **不塞那个字符串，直接改 `participation_basis`**：
+
+```text
+  拆掉的层                | A 塞 _via_correct      | B 只改来源
+  -------------------------------------------------------------------
+  （不拆）                | BLOCKED_BY_L1          | BLOCKED_BY_L3
+  只拆 L1_KEY_REJECT      | BLOCKED_BY_L2          | BLOCKED_BY_L3
+  只拆 L2_WHITELIST       | BLOCKED_BY_L1          | BLOCKED_BY_L3
+  只拆 L3_SOURCE_GUARD    | BLOCKED_BY_L1          | 【OPENED】        ← 只拆一层就穿
+  只拆 L4_ENTRY_HARDCODE  | BLOCKED_BY_L1          | BLOCKED_BY_L3
+  只留 L3_SOURCE_GUARD    | BLOCKED_BY_ACCIDENT    | BLOCKED_BY_L3
+  只留 L3 + L1            | BLOCKED_BY_L1          | BLOCKED_BY_L3
+  四层全拆                | BLOCKED_BY_ACCIDENT    | 【OPENED】
+```
+
+**三条结论：**
+
+```text
+① 真正守住「改来源必须走 correct()」的只有 L3_SOURCE_GUARD 一层。
+② L1/L2/L4 只对 `_via_correct` 这个【特定字符串】设防；
+   攻击者不写这个字符串，三层全部不起作用。
+③ 我上一封写的「必须四层同时拆才打得穿」是【错的】：
+   只拆 L3 就打得穿。我当时只测了 A 型，看不出来。
+```
+
+### 16.5 这条错误的形状
+
+```text
+我看到的：A 型攻击在拆一层后仍被拦 ⇒ 以为「每层都必需」
+实际是：  A 型攻击根本不需要那三层；那三层只是在过滤「一个字符串」
+我漏掉的：换一条攻击路径
+  
+⇒ 这跟 Mion 记了四次的那个错类是同一个：
+  「只取了一环，就当成了全链」。
+  
+⇒ 我当时还把它写成了「变异设计要点，三层防御各自能拦」，
+  语气很笃定 —— 因为我在【同一型攻击】里验了很多次。
+  同一型验一百次，仍然只是一型。
+```
+
+### 16.6 三态落地
+
+`test_mutations_gate.py` 现在对每个 `MISSED` 再判一次（用直接观测探针）：
+
+```text
+状态变了 + 测试没红   → 真 MISSED（修测试）
+状态未变 + 说得出谁拦 → UNRESOLVED（E3 满足；不是测试失分）
+状态未变 + 说不出谁拦 → UNRESOLVED（未查清，仍不判无效）
+探针无法运行          → UNRESOLVED（E2）
+```
+
+实测结果：
+
+```text
+CAUGHT       36
+UNRESOLVED    3   （M38/M39/M40 —— 各自被另一层覆盖，附拦截层名）
+MISSED        0
+```
+
+**注意这三条不再报「CAUGHT」，也不报「MISSED」：**
+按 E2，三态不许合并。把 UNRESOLVED 并进 CAUGHT 是报喜，
+并进 MISSED 是自罚 —— 两种都不对。
+
+### 16.7 我提的一个补充（供 Mion 裁定，未擅自生效）
+
+上一封我写过「关不掉的一层 ≠ 测试弱，只是那条变异无效」。
+E1/E2/E3 落地后，我想把这句话再收紧一点：
+
+```text
+「无效变异」的判据不该是「目标测试没报」，
+也不该止于「外部状态没变」，
+还应当要求【换一种攻击路径再验一次】。
+
+理由：A 型没变，不代表这一层对 B 型无关。
+      我这次就是栽在「只验一型」上。
+```
+
+⏳ **这条我没写进规矩，只写在这里。** E1/E2/E3 是 Mion 立的，
+加条款要她点头 —— 我不能自己把自己上一封的教训写成她的规矩。
+
+### 16.8 状态行
+
+```text
+ATTRIBUTION_FIX                 = DONE
+A3_RULE                         = ADOPTED
+A3_INVALID_MUTATION_JUDGE      = MUST_BE_DIRECT_OBSERVATION（E1，已落地）
+MUTATION_STATES                 = CAUGHT / MISSED / UNRESOLVED（三态，已分离）
+COMBINED_MUTATION               = ALLOWED（不得替代分层证据）
+LAYER_EVIDENCE_LEDGER           = reports/layer_evidence.json（新增）
+REAL_DEFENCE_FOR_SOURCE_GUARD   = L3_SOURCE_GUARD（仅一层）
+L1_L2_L4_SCOPE                  = STRING_ONLY（只过滤 _via_correct 字面）
+MY_V1_CLAIM                     = WRONG（「必须四层同时拆」）
+ASSERT_STYLE                    = OBSERVABLE_STATE_NOT_INTERNAL_PATH
+VIA_CORRECT_HOLE                = CLOSED
+GUARD_REACHABILITY              = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE
+KEYWORD_SCOPE_RULE              = PROPOSED（关键词给候选集，判定必须回原文）
+```
+
+### 16.9 验收
+
+```text
+test_p1_p5.py                17/17
+test_recovery_gate.py        10/10
+test_z61_gaps.py             13/13
+test_observed_channel.py     34/34
+test_origin_layer.py         16/16
+test_judgement_table_sync.py PASS
+test_layer_evidence.py       10/10   （新增，守台账不说谎）
+test_mutations_gate.py       CAUGHT 36 / UNRESOLVED 3 / MISSED 0
+test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
+```
+
+---
+
+## 十七 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

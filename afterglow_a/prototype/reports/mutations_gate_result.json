@@ -1,7 +1,8 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 36
+    "CAUGHT": 36,
+    "UNRESOLVED": 3
   },
   "rows": [
     {
@@ -216,9 +217,27 @@
     },
     {
       "id": "M37",
-      "desc": "三层同时拆掉：调用方可塞 _via_correct 改来源（Mion 回复6 §三）",
+      "desc": "拆掉来源字段护栏 ⇒ 可直接改来源且不留 correction_of（Mion 回复6 §三；回复7 E1 实测口径）",
       "status": "CAUGHT",
       "evidence": "失败用例：OL-2a revise 不得直接改来源字段（否则被纠正过这件事会消失） —"
+    },
+    {
+      "id": "M38",
+      "desc": "拆掉显式拒收保留键 ⇒ 只剩白名单拦（L1 单独证据）",
+      "status": "UNRESOLVED",
+      "evidence": "全部通过 —— 该变异没被任何测试拦住；直接观测：外部状态【未变】，被 L2_WHITELIST 拦住 ⇒ 该变异对此攻击无效（E3）"
+    },
+    {
+      "id": "M39",
+      "desc": "白名单放行 _via_correct ⇒ 只剩 L1 拦（L2 单独证据）",
+      "status": "UNRESOLVED",
+      "evidence": "全部通过 —— 该变异没被任何测试拦住；直接观测：外部状态【未变】，被 L1_KEY_REJECT 拦住 ⇒ 该变异对此攻击无效（E3）"
+    },
+    {
+      "id": "M40",
+      "desc": "公开入口读 dict 里的标志 ⇒ 只剩 L1 拦（L4 单独证据）",
+      "status": "UNRESOLVED",
+      "evidence": "全部通过 —— 该变异没被任何测试拦住；直接观测：外部状态【未变】，被 L1_KEY_REJECT 拦住 ⇒ 该变异对此攻击无效（E3）"
     }
   ]
 }
