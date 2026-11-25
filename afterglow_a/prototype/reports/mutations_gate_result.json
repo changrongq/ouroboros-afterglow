@@ -1,7 +1,7 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 35
+    "CAUGHT": 36
   },
   "rows": [
     {
@@ -213,6 +213,12 @@
       "desc": "was_corrected 用 revision>1 而非 origin≠current（Mion 第 4 项 ③）",
       "status": "CAUGHT",
       "evidence": "失败用例：OL-3a 只 revise 不改来源 ⇒ was_corrected = ; OL-3c was_corrected 是 origin ≠ current"
+    },
+    {
+      "id": "M37",
+      "desc": "三层同时拆掉：调用方可塞 _via_correct 改来源（Mion 回复6 §三）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OL-2a revise 不得直接改来源字段（否则被纠正过这件事会消失） —"
     }
   ]
 }

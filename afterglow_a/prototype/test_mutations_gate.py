@@ -333,6 +333,43 @@ MUTATIONS = [
         '        return rec.revision > 1 or any([\n'
         '            rec.origin_source_kind != rec.source_kind,',
     ),
+    # ---- Mion 2026-11-25 回复6 §三：_via_correct 曾是调用方可自塞的键
+    #
+    # ⚠ 变异设计要点（A3：变异必须真的打穿机制）：
+    #   单独关掉任一处【打不穿】这个洞 —— 三层防御各自能拦：
+    #     ① _revise_impl 里显式拒收 _via_correct 键
+    #     ② 白名单 _REVISABLE 不含 _via_correct
+    #     ③ 来源字段护栏 touching_source and not via_correct
+    #   实测（.local_scratch/diag_m37b.py）：
+    #     M37 单独 / M38 单独 / 仅放宽白名单 / 仅关来源护栏 → 全部仍被别的层拦住。
+    #   ⇒ 想验证「测试确实守住了这个洞」，必须三层同时关掉。
+    #      一次只关一层的变异是【无效变异】，它 MISSED 不说明测试弱。
+    #   ⇒ 因此这里把三层拆解写成一条【组合变异】：
+    #      用 target + "\n---\n" 分隔多个(文件, 原文, 替换)三元组。
+    (
+        "M37", "三层同时拆掉：调用方可塞 _via_correct 改来源（Mion 回复6 §三）",
+        "afcore.py",
+        '        if "_via_correct" in changes:\n'
+        '            raise SchemaError(\n'
+        '                "changes 不得包含保留键 _via_correct。"\n'
+        '                "「是否纠正流程」由调用哪个方法来决定，不由调用方传入。")'
+        '\n---\n'
+        '        illegal = set(changes) - self._REVISABLE'
+        '\n---\n'
+        '        if touching_source and not via_correct:'
+        '\n---\n'
+        '        return self._revise_impl(record_id, changes, reason, authority,\n'
+        '                                 via_correct=False)',
+        '        # MUTANT: 拆第 ① 层（显式拒收保留键）'
+        '\n---\n'
+        '        illegal = set(changes) - self._REVISABLE - {"_via_correct"}  # MUTANT ②'
+        '\n---\n'
+        '        if False:  # MUTANT ③: 来源字段护栏失效'
+        '\n---\n'
+        '        return self._revise_impl(record_id, changes, reason, authority,\n'
+        '                                 via_correct=bool(\n'
+        '                                     changes.get("_via_correct")))  # MUTANT ④',
+    ),
 ]
 
 
@@ -379,13 +416,36 @@ def copy_proto(tmpdir):
 
 
 def apply_mutation(tmpdir, target, old, new):
+    """应用一处或一组变异。
+
+    组合变异写法（用于「多层防御必须同时拆掉才打得穿」的场景）：
+        old = "锚A\n---\n锚B", new = "替换A\n---\n替换B"
+    ⇒ 三个锚各自必须在文件里恰好出现 1 次；任一不满足即 INVALID。
+    """
+    mult = (old.count("\n---\n") > 0) or (new.count("\n---\n") > 0)
+    if mult:
+        olds = old.split("\n---\n")
+        news = new.split("\n---\n")
+        if len(olds) != len(news):
+            return False, "组合变异段数不齐：%d 锚 vs %d 替换" % (
+                len(olds), len(news))
+    else:
+        olds, news = [old], [new]
+
     path = os.path.join(tmpdir, target)
     src = open(path, encoding="utf-8").read()
-    n = src.count(old)
-    if n != 1:
-        return False, "锚点出现 %d 次（应为 1）" % n
-    open(path, "w", encoding="utf-8", newline="\n").write(src.replace(old, new, 1))
-    return True, "ok"
+
+    # 先全部检查，任一不满足就不写（避免半应用）
+    for i, o in enumerate(olds):
+        n = src.count(o)
+        if n != 1:
+            return False, "第 %d 段锚点出现 %d 次（应为 1）" % (i + 1, n)
+
+    for o, nw in zip(olds, news):
+        src = src.replace(o, nw, 1)
+
+    open(path, "w", encoding="utf-8", newline="\n").write(src)
+    return True, "ok（%d 段）" % len(olds) if mult else "ok"
 
 
 def main():

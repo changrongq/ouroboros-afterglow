@@ -1,7 +1,7 @@
 {
   "baseline": "Mion 2026-11-24 §二 第 4 项",
-  "total": 12,
-  "passed": 12,
+  "total": 16,
+  "passed": 16,
   "failed": 0,
   "results": [
     {
@@ -75,6 +75,30 @@
       "name": "origin 层在链内（第 1 版摘要覆盖它）",
       "ok": true,
       "detail": "origin 被第 1 版摘要覆盖，篡改会断链"
+    },
+    {
+      "id": "OL-5a",
+      "name": "revise 无法借 _via_correct 改掉来源字段",
+      "ok": true,
+      "detail": "来源未变（first_person_report），revision=1，无 correction_of"
+    },
+    {
+      "id": "OL-5b",
+      "name": "即便直调 _revise_impl，也改不了来源字段",
+      "ok": true,
+      "detail": "私有入口亦改不了来源（first_person_report）"
+    },
+    {
+      "id": "OL-5c",
+      "name": "correct() 仍能改来源（护栏未误伤正路）",
+      "ok": true,
+      "detail": "correct() 正路通畅，且留下 correction_of"
+    },
+    {
+      "id": "OL-5d",
+      "name": "反证：绕过尝试后记录逐字段未变",
+      "ok": true,
+      "detail": "零差异（24 字段全等）"
     }
   ]
 }

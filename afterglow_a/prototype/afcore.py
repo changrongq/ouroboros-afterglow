@@ -430,13 +430,33 @@ class RecoveryStore:
     # ---- 修订（不覆盖：旧版保留）
     def revise(self, record_id: str, changes: Dict[str, Any],
                reason: str = "", authority: Optional[str] = None) -> str:
+        """公开的修订入口：来源字段一律不许动。
+
+        ⚠ Mion 2026-11-25 回复6 §三：此前本条把「是不是纠正流程」
+          存成 changes 里的 `_via_correct` 键，任何调用方都能自己塞一个
+          `"_via_correct": True` 进去 —— 来源字段护栏被完全绕过，
+          且不会留下 correction_of 边，正是护栏要防的那件事。
+        ⇒ 标志从「数据」改成「方法选择」：只有 correct() 会走 _revise_impl，
+          且 via_correct 是它的位置参数，不经调用方给的 dict。
+        ⇒ 攻击面从「往 dict 里塞键」变成「调私有方法」，
+          与 record_observed 的 (c) 档同等诚实等级：
+          GUARD_REACHABILITY = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE。
+        """
+        return self._revise_impl(record_id, changes, reason, authority,
+                                 via_correct=False)
+
+    def _revise_impl(self, record_id: str, changes: Dict[str, Any],
+                     reason: str, authority: Optional[str],
+                     via_correct: bool) -> str:
         cur = self._live.get(record_id)
         if cur is None:
             raise KeyError(record_id)
 
-        # 内部标记（correct() 调用时置 True），先取出，不参与白名单校验
-        via_correct = bool(changes.get("_via_correct"))
-        changes = {k: v for k, v in changes.items() if k != "_via_correct"}
+        # 防御：即便有人直接调 _revise_impl，也不接受藏在数据里的开关
+        if "_via_correct" in changes:
+            raise SchemaError(
+                "changes 不得包含保留键 _via_correct。"
+                "「是否纠正流程」由调用哪个方法来决定，不由调用方传入。")
 
         illegal = set(changes) - self._REVISABLE
         if illegal:
@@ -520,7 +540,10 @@ class RecoveryStore:
             "to_id": correcting_record_id,
             "relation_basis": reason,
         }]
-        return self.revise(
+        # ⚠ 走 _revise_impl 并把 via_correct 作为【位置参数】传入：
+        #   不再往 changes 里塞 "_via_correct" 键（Mion 2026-11-25 回复6 §三）。
+        #   任何能调 revise() 的外部代码，都无法伪造这个开关。
+        return self._revise_impl(
             record_id,
             {
                 "content": new_content,
@@ -532,10 +555,10 @@ class RecoveryStore:
                 "participant_id": basis.participant_id,
                 "participation_basis": basis.participation_basis,
                 "basis_ref": basis.basis_ref,
-                # 内部标记：告诉 revise 这次来源改动是纠正流程的一部分
-                "_via_correct": True,
             },
-            reason="correction: " + reason)
+            reason="correction: " + reason,
+            authority=None,
+            via_correct=True)
 
     # ---- 观测通道（Mion 2026-11-24 回复2 §一 / 回复3 §一、§二）
     #
@@ -668,9 +691,21 @@ class RecoveryStore:
         #   ⚠ 但这会让 record_only 成为「洗白档」⇒
         #     用 record_only_ratio 单独度量（见 afrecover.summarize_conflicts）。
         #
-        # ⚠ 2026-11-24 修正（Mion 指出）：本表此前把 record_only×model_generation
-        #   写作【冲突】，而实现已改判 none —— 表与代码不一致。
+        # ⚠ 2026-11-24 修正（Mion 回复4 §4.2 指出）：本表此前把
+        #   record_only×model_generation 写作【冲突】，而实现已改判 none。
+        #   ⇒ 这一格归因给 Mion 是**真的**：她在回复4 §4.2 明确要求改这一格。
         #   备注：这张表是下一个人读代码的第一入口；表错了，他就不会去读实现。
+        #
+        # ⚠ 2026-11-25 归因更正（针对【另一处】、不是上面这一格）：
+        #   下方 third_person_report 分支的那句「二次修正（Mion 指出注释表与代码
+        #   不一致后逐格重核）」——【不是事实】。
+        #   Mion 没有指出第三人格那一格不一致。她给出的是【表】，该表与注释一致、
+        #   她写表之前读过实现那一行，但没有逐格比对，随后宣布「九格全对」。
+        #   ⇒ 发现不一致的是本仓自建的矩阵比对检查
+        #      （test_judgement_table_sync.py：解析注释表 × 逐格跑实现）：
+        #      它报出 third_person_report × system_dispatch 表=none、实测=冲突。
+        #   ⇒ 结论：她的九格结论正确，检验未做。把检验的功劳记给她，是归因错误。
+        #   我们正在治的病是「来源被记到错的作者名下」；方向好听的归错也是同一个病。
         observed = observed_origin
         asserted = cur.participation_basis
 
@@ -687,7 +722,12 @@ class RecoveryStore:
             # 没有第三方来源可言」。后者要求先定义「什么叫有来源」，
             # 判定不可终止；前者只需看 observed 有没有 human_input 痕迹。
             #
-            # ⚠ 2026-11-24 二次修正（Mion 指出注释表与代码不一致后逐格重核）：
+            # ⚠ 2026-11-25 归因更正（原写作「Mion 指出注释表与代码不一致后逐格重核」）：
+            #   Mion【没有】指出这处不一致。她给的是一张表，该表与注释一致、与实现不一致；
+            #   她没逐格比对自己的表与代码就宣布「九格全对」。
+            #   发现它的是 test_judgement_table_sync.py（注释表 × 实现逐格比对）。
+            #   她的结论对，检验没做 —— 这两件事不能互相抵消。
+            #
             #   原代码写作
             #       conflict = ("none" if observed == "human_input"
             #                   else "asserted_contradicts_observed")

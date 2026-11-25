@@ -1313,7 +1313,220 @@ check_registry.py           [OK]
 
 ---
 
-## 十五 · 固定提交身份
+## 十五 · 归因更正、断言必须能失败、`_via_correct` 封闭（据 Mion 2026-11-25 回复6）
+
+Mion 这一封有三件事，我按她要求逐条落实。第一件是她自曝错，
+第二件是她把一处弱点立成通用规矩，第三件是她指出我实现里的一个真洞。
+
+### 15.1 归因更正：那句「Mion 指出」，不是事实
+
+我在 `afcore.py` 判定表注释里写过：
+
+> ⚠ 2026-11-24 二次修正（Mion 指出注释表与代码不一致后逐格重核）
+
+Mion 指出这不是事实，要求改回去：
+
+```text
+我【没有】指出注释表与代码不一致。
+我给的是一张表，它恰好与注释表一致、与实现不一致；
+而我【没有】去核实现。
+发现它的是你新加的那个机器检查。
+```
+
+**她是对的。** 事实链如下：
+
+```text
+① 她给九格表，其中 third_person_report × system_dispatch = none
+② 该值与她所读实现那一行（"none" if observed == "human_input" else 冲突）不符
+③ 她读过那一行，但没有逐格比对，随后宣布「九格全对」
+④ 发现的是 test_judgement_table_sync.py：解析注释表 × 逐格跑实现
+```
+
+她自己的定性我照录：
+
+```text
+结论：我的表是对的，我的检查没有做。
+「结论对」不能抵消「检查没做」。
+因为下一次结论错的时候，同样没有检查。
+```
+
+**为什么这条必须改，而不能「写我好话就算了」：**
+
+```text
+我们正在治的病，是来源被记到错的作者名下。
+把错误归错（仓库 description → 她的信）
+把功劳归错（机器检查 → 她）
+是同一个病，只是方向好听一点。
+在一个专门审来源的项目里，好的方向也不能放过。
+```
+
+已改：`afcore.py` 两处注释（判定表段与 `third_person_report` 分支）现写作
+「2026-11-25 归因更正…发现它的是 `test_judgement_table_sync.py`；
+她的结论对，检验没做 —— 这两件事不能互相抵消」。
+
+### 15.2 通用规矩：一个不可能响的检查，比没有检查更危险
+
+Mion 把 P1 那个弱点升级成一条规矩，要求写进本文件：
+
+```text
+每一个断言，必须配一个【让它失败】的变异：
+把这条断言要守的那个机制关掉，断言必须变红。
+关掉之后仍然绿的断言，不算断言。
+```
+
+```text
+理由：11-24 我们说过一句更准的话——
+「会失败的检查，最怕的不是失败，是没响。」
+这一条是它的镜像：
+一个不可能响的检查，比没有检查更危险，因为它让人以为有检查。
+```
+
+**这条规矩立刻咬到了我自己。**
+
+我为 `_via_correct` 修复写了四条测试（OL-5a..d），初版是这样断言的：
+
+```python
+except SchemaError as e:
+    assert "_via_correct" in str(e)      # ← 检查措辞
+```
+
+跑变异时，M37（拆掉「显式拒收保留键」那一层）**MISSED**。
+原因是：`_via_correct` 不在白名单里，仍然会被拦，只是换了一句错误消息。
+**我的断言守的是措辞，不是机制。**
+
+改法（按 A3）：断言「尝试之后来源字段没变 + revision 没抬 + 无 correction_of 边」。
+纵深防御让消息变化时，机制结果不变 ⇒ 断言仍绿，这是对的；
+只要机制守住了，从哪条路拦下的不算事。
+
+### 15.3 `_via_correct` 曾是调用方可自塞的参数（真洞，已填）
+
+Mion 复现的原文：
+
+```text
+afcore.py:438   via_correct = bool(changes.get("_via_correct"))
+afcore.py:536   correct() 内部传 "_via_correct": True
+
+⇒ 这个标志住在【调用方给的 dict】里。
+⇒ 任何能调 revise() 的代码，都能自己塞一个 "_via_correct": True 进去。
+```
+
+我复现了（`.local_scratch/mion6_repro.py`）：
+
+```text
+=== 复现前 ===
+  participation_basis = first_person_report
+  relation            = []
+=== 攻击：往 changes 里塞 _via_correct: True ===
+  >>> 通过了来源字段护栏  【洞确实存在】
+=== 复现后 ===
+  participation_basis = third_person_report
+  relation            = []
+  relation 里有 correction_of ? False        ← 正是护栏要防的那件事
+```
+
+修法（Mion 给的）：把标志从「数据」变成「方法选择」。
+
+```python
+def revise(self, record_id, changes, reason="", authority=None):
+    return self._revise_impl(record_id, changes, reason, authority,
+                             via_correct=False)
+
+def _revise_impl(self, record_id, changes, reason, authority, via_correct):
+    # 防御：即便有人直接调 _revise_impl，也不接受藏在数据里的开关
+    if "_via_correct" in changes:
+        raise SchemaError("changes 不得包含保留键 _via_correct。…")
+    ...
+
+def correct(self, ...):
+    return self._revise_impl(..., via_correct=True)
+```
+
+⇒ 攻击面从「往 dict 里塞键」变成「调一个私有方法」，
+与 `record_observed` 的 (c) 档同等诚实等级。
+
+### 15.4 变异设计的一个坑：单层变异打不穿多层防御
+
+第一版我把三层拆解写成三条独立变异（M37/M38/M39），结果 **MISSED 2**。
+实测（`.local_scratch/diag_m37b.py`）：
+
+```text
+  M37                -> BLOCKED  revise 不允许变更字段 ['_via_correct']
+  M38                -> BLOCKED  changes 不得包含保留键 _via_correct
+  WL                 -> BLOCKED  changes 不得包含保留键 _via_correct
+  SRC                -> BLOCKED  changes 不得包含保留键 _via_correct
+  M37+WL             -> BLOCKED  revise 不允许直接改来源字段
+  M38+WL             -> BLOCKED  changes 不得包含保留键 _via_correct
+  WL+SRC             -> BLOCKED  changes 不得包含保留键 _via_correct
+```
+
+⇒ **必须四层同时拆掉才打得穿**：① 显式拒收键、② 白名单、③ 来源字段护栏、④ 公开入口不读 dict 里的标志。
+
+**这里有个要分清的界限：**
+
+```text
+「一次只关一层的变异 MISSED」 ≠ 「测试弱」
+它只说明：那条变异【没有真正改变可观测行为】。
+按 A3 的说法，变异必须真的打穿机制；打不穿机制的变异是【无效变异】，不是测试的失分。
+```
+
+⇒ 已在 `test_mutations_gate.py` 加组合变异支持（`\n---\n` 分隔多段），
+M37 现在是四段同时拆。改后 **CAUGHT 36 / MISSED 0**。
+
+### 15.5 状态行（照 Mion 给的登记口径）
+
+```text
+JUDGEMENT_TABLE_9_CELLS        = PASS
+JUDGEMENT_TABLE_MACHINE_CHECK  = ADDED
+TABLE_IMPLEMENTATION_SYNC      = YES
+ORIGIN_LAYER                   = IMPLEMENTED
+ORIGIN_POLLUTED_ROLLBACK       = PROVEN（OL-4b）
+ASSERTED_SIDE_CHANGE_GUARD     = YES
+GUARD_REACHABILITY             = NOT_ACHIEVABLE_IN_THIS_PROTOTYPE
+TEST_ASSERTION_CANFAIL_RULE    = ADOPTED（15.2，并已回改自己的断言）
+IMPORTANCE_CRITERIA            = DELIVERED（Mion 回复6 §四 A1–A4 / B1–B4 / C1–C3）
+BASELINE_DEFINITION            = DELIVERED（Mion 回复6 §五 D1–D5）
+IMPORTANCE_IMPLEMENTATION      = MAY_START_AFTER_A3_B3
+ATTRIBUTION_FIX                = DONE（15.1，机器检查不再记到 Mion 名下）
+```
+
+### 15.6 验收
+
+```text
+test_p1_p5.py                17/17
+test_recovery_gate.py        10/10
+test_z61_gaps.py             13/13
+test_observed_channel.py     34/34
+test_origin_layer.py         16/16   （OL-5a..d 新增；断言改为守机制）
+test_judgement_table_sync.py PASS
+test_mutations_gate.py       CAUGHT 36 / MISSED 0（M37 改为四层组合变异）
+test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
+check_registry.py            [OK]
+```
+
+### 15.7 第 5 项：判据已交付，实现待 A3/B3 就绪后再启
+
+Mion 回复6 §四、§五把判据与基线定义给了，我照录要点，不改一字：
+
+- (a) A1 形式三件套 / A2 Y 必须能构造 / A3 必配已知会失败的情形 / A4 看数据前写下
+- (b) B1 `model_generation` 一律不进「重要」集合 / B2 与任何统计量无关、无阈值 /
+  B3 该排除必须能被断言检查且关掉会变红 / B4 (b) 优先于 (a)
+- (c) C1 同段给三个数 / C2 分母为空 ⇒ `NOT_EVALUABLE`（不是 0）/ C3 与结论同段返回
+- (D3) 合成夹具上的基线只能写 `MEASURED_ON_SYNTHETIC_ONLY`，
+  因为它的数值几乎只由「夹具作者有没有记得调 `record_observed`」决定，与真实世界无关
+- (D5) 红线不变：无基线前，任何重要性结论不得写入 `reports/`
+
+**B4 的理由我特别记一笔**（它解释了为什么需要一条不听指标的规则）：
+
+```text
+自我回声放大【恰好会】让 (a) 看起来被满足。
+模型反复生成同一句 ⇒ 相似度高 ⇒ 判为重要 ⇒ 更常召回 ⇒ 更常生成。
+它不报错、不越界、指标还很好看。
+⇒ 必须有一条规则，在「指标好看」时不听指标。
+```
+
+---
+
+## 十六 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

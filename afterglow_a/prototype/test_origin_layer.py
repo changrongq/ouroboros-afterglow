@@ -230,6 +230,85 @@ def ol4c():
     return "origin 被第 1 版摘要覆盖，篡改会断链"
 
 
+# ======================================================== ⑤
+# Mion 2026-11-25 回复6 §三：_via_correct 曾是调用方可自塞的 changes 键
+#
+# ⚠ 设计要点（A3：断言必须能失败）：
+#   这里断言的不是「错误消息里有没有 _via_correct 这个词」——
+#   那是措辞检查，实现改一句话就会误报/漏报。
+#   要守的机制是：**调用方无法借 revise 改掉来源字段**。
+#   所以正确断言 = 尝试之后【来源字段没变】，且【没有任何 correction_of 边】。
+#   纵深防御（不在白名单也会拦）会让消息变化，但机制结果不变 ⇒ 断言仍绿，
+#   这是对的：只要机制守住了，从哪条路拦下的不算事。
+@case("OL-5a", "revise 无法借 _via_correct 改掉来源字段")
+def ol5a():
+    s = mk()
+    before = dict(s.get("r1"))
+    try:
+        s.revise("r1", {"participation_basis": "third_person_report",
+                        "_via_correct": True})
+    except SchemaError:
+        pass
+    after = dict(s.get("r1"))
+    assert after["participation_basis"] == "first_person_report", (
+        "来源字段被改了：%r ⇒ 护栏失效"
+        % after["participation_basis"])
+    assert after["revision"] == before["revision"], (
+        "被拒之后 revision 仍被抬高 ⇒ 先写后验")
+    assert not any(r.get("relation_type") == "correction_of"
+                   for r in after["relation"]), \
+        "无 correction_of 却改了来源 ⇒「被纠正过」这一事实会消失"
+    return "来源未变（%s），revision=%d，无 correction_of" % (
+        after["participation_basis"], after["revision"])
+
+
+@case("OL-5b", "即便直调 _revise_impl，也改不了来源字段")
+def ol5b():
+    s = mk()
+    try:
+        s._revise_impl("r1",
+                       {"participation_basis": "third_person_report",
+                        "_via_correct": True},
+                       "", None, via_correct=True)
+    except SchemaError:
+        pass
+    after = dict(s.get("r1"))
+    assert after["participation_basis"] == "first_person_report", (
+        "私有入口 + via_correct=True 把来源改掉了：%r"
+        % after["participation_basis"])
+    return "私有入口亦改不了来源（%s）" % after["participation_basis"]
+
+
+@case("OL-5c", "correct() 仍能改来源（护栏未误伤正路）")
+def ol5c():
+    s = mk()
+    s.correct("r1", "更正后", "basis", reason="证据")
+    g = s.get("r1")
+    assert g["participation_basis"] == "third_person_report", (
+        "correct() 未把来源改指向纠正依据")
+    assert any(r.get("relation_type") == "correction_of"
+               for r in g["relation"]), "correct() 未加 correction_of 边"
+    assert s.was_corrected("r1") is True
+    return "correct() 正路通畅，且留下 correction_of"
+
+
+@case("OL-5d", "反证：绕过尝试后记录逐字段未变")
+def ol5d():
+    s = mk()
+    before = dict(s.get("r1"))
+    try:
+        s.revise("r1", {"participation_basis": "third_person_report",
+                        "_via_correct": True})
+    except SchemaError:
+        pass
+    after = dict(s.get("r1"))
+    diff = {k: (before.get(k), after.get(k))
+            for k in set(before) | set(after)
+            if before.get(k) != after.get(k)}
+    assert not diff, "被拒之后记录变了：%s" % diff
+    return "零差异（%d 字段全等）" % len(before)
+
+
 # ======================================================== 汇总
 def main():
     print("=" * 78)
@@ -242,6 +321,8 @@ def main():
         ("② current_basis_* 只能由 correct() 写", [ol2a, ol2b, ol2c]),
         ("③ 「被纠正过」判据 = origin ≠ current", [ol3a, ol3b, ol3c]),
         ("④ origin_of 并列与可追溯性", [ol4a, ol4b, ol4c]),
+        ("⑤ _via_correct 不可由调用方传入（Mion 回复6 §三）",
+         [ol5a, ol5b, ol5c, ol5d]),
     ]
     for g, fns in groups:
         print("[%s]" % g)
