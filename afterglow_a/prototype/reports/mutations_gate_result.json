@@ -1,8 +1,7 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 36,
-    "UNRESOLVED": 3
+    "CAUGHT": 40
   },
   "rows": [
     {
@@ -153,7 +152,7 @@
       "id": "M26",
       "desc": "允许 Record 构造器填 observed_origin（Mion 第 1 项）",
       "status": "CAUGHT",
-      "evidence": "失败用例：OC-1c 不得经 Record 构造器填写 observed_origin"
+      "evidence": "失败用例：OC-1c 不得经 Record 构造器填写 observed_origin; H3b insert 不能用构造参数直接塞来源以外的观测字段 — ins"
     },
     {
       "id": "M27",
@@ -207,7 +206,7 @@
       "id": "M35",
       "desc": "revise 允许直接改来源（Mion 第 4 项 ②）",
       "status": "CAUGHT",
-      "evidence": "失败用例：OL-2a revise 不得直接改来源字段（否则被纠正过这件事会消失） —"
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4b D1_FLAG_LEAK 是冗余不是纵深（≥2 层可独力拦住） "
     },
     {
       "id": "M36",
@@ -219,25 +218,31 @@
       "id": "M37",
       "desc": "拆掉来源字段护栏 ⇒ 可直接改来源且不留 correction_of（Mion 回复6 §三；回复7 E1 实测口径）",
       "status": "CAUGHT",
-      "evidence": "失败用例：OL-2a revise 不得直接改来源字段（否则被纠正过这件事会消失） —"
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4b D1_FLAG_LEAK 是冗余不是纵深（≥2 层可独力拦住） "
     },
     {
       "id": "M38",
       "desc": "拆掉显式拒收保留键 ⇒ 只剩白名单拦（L1 单独证据）",
-      "status": "UNRESOLVED",
-      "evidence": "全部通过 —— 该变异没被任何测试拦住；直接观测：外部状态【未变】，被 L2_WHITELIST 拦住 ⇒ 该变异对此攻击无效（E3）"
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4a D2/D3/D4 有独力守卫（不假定只有 L3） — D2_DI"
     },
     {
       "id": "M39",
       "desc": "白名单放行 _via_correct ⇒ 只剩 L1 拦（L2 单独证据）",
-      "status": "UNRESOLVED",
-      "evidence": "全部通过 —— 该变异没被任何测试拦住；直接观测：外部状态【未变】，被 L1_KEY_REJECT 拦住 ⇒ 该变异对此攻击无效（E3）"
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4a D2/D3/D4 有独力守卫（不假定只有 L3） — D2_DI"
     },
     {
       "id": "M40",
       "desc": "公开入口读 dict 里的标志 ⇒ 只剩 L1 拦（L4 单独证据）",
-      "status": "UNRESOLVED",
-      "evidence": "全部通过 —— 该变异没被任何测试拦住；直接观测：外部状态【未变】，被 L1_KEY_REJECT 拦住 ⇒ 该变异对此攻击无效（E3）"
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4a D2/D3/D4 有独力守卫（不假定只有 L3） — D2_DI"
+    },
+    {
+      "id": "M41",
+      "desc": "把某个来源字段偷偷放回可改白名单（H2b 必须红）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：H2a 每个 Record 字段恰好落在三类之一 — _REVISABL; H2b 来源字段不得同时是可改字段 — 来源字段不得在可改白名单里：['"
     }
   ]
 }

@@ -81,7 +81,7 @@
     "id": "ZA-02",
     "case": "revise 不得变更 record_id",
     "pass": true,
-    "detail": "SchemaError 拒绝身份变更：revise 不允许变更字段 ['record_id']（允许：['ba"
+    "detail": "SchemaError 拒绝身份变更：revise 不允许变更字段 ['record_id']（允许：['co"
   },
   {
     "id": "ZA-03",

@@ -110,40 +110,68 @@ def lay2a():
 @case("LAY-3a", "实测与声明不符时，必须能被识别（不得沉默）")
 def lay3a():
     """F1 的核心：声明了就必须对得上。
-    L1/L2/L4 都声称覆盖 D1_FLAG_LEAK，但拆掉任一层，D1 仍被别的层拦住
-    ⇒ 它们的声明只是「我也参与」，不是「我独力守这条」。
-    台账必须能区分这两种：
-        PRIMARY    拆掉它 ⇒ 该维度 OPENED（独力守卫）
-        REDUNDANT  拆掉它 ⇒ 仍被别的层拦住（参与但非主力）
+
+    ⚠ 「独力守卫」的正确定义（Mion §二 之后定死的）：
+        只保留这一层、其余全拆 ⇒ 该维度仍被【它自己】拦住。
+      而不是：
+        拆掉这一层 ⇒ 该维度 OPENED。
+      后者要求「该维度只有一层在守」，把冗余层全判成失败 —— 那是错的。
+
+    第一版用的是后者，LAY-4b 因此跑出 0 条并误判「D1 没有独力守卫」。
     """
-    prim = []
-    red = []
-    for lid, desc, dims, anchor, repl in LE.LAYERS:
-        for d in dims:
-            obs = LE.observe([lid])
-            cell = obs["results"][d]
-            v = LE.classify(cell, obs.get("base", {}))["verdict"]
-            if v in ("OPENED", "ACCIDENT"):
-                prim.append((lid, d, v))
-            elif v.startswith("BLOCKED_BY_"):
-                red.append((lid, d, v))
-    assert prim, "没有任何层是独力守卫 ⇒ 台账结论要重写"
-    # 必须能列出哪些是冗余
-    assert red, "实测显示 L1/L2/L4 对 D1 是冗余；若 red 为空则前提变了"
-    return "主力 %d 条，冗余 %d 条（可区分）" % (len(prim), len(red))
+    all_ids = [l[0] for l in LE.LAYERS]
+    solo = {}
+    for d in ALL_DIMS:
+        guards = []
+        for keep in all_ids:
+            removals = [x for x in all_ids if x != keep]
+            obs = LE.observe(removals)
+            if "error" in obs:
+                continue
+            c = LE.classify(obs["results"][d], obs.get("base", {}))
+            if (c["verdict"].startswith("BLOCKED_BY_")
+                    and c.get("blocker") == keep):
+                guards.append(keep)
+        solo[d] = guards
+
+    no_guard = [d for d, g in solo.items() if not g]
+    assert not no_guard, (
+        "以下维度没有任何独力守卫（要么真无防线，要么判据又反了）：%s"
+        % no_guard)
+    return "；".join("%s=%s" % (d, len(g)) for d, g in solo.items()) + " 层"
 
 
 # ---------------------------------------------------------------- LAY-4
-@case("LAY-4a", "纵深与冗余分开记：D2/D3/D4 只有 L3 能独力拦住")
+@case("LAY-4a", "D2/D3/D4 有独力守卫（不假定只有 L3）")
 def lay4a():
+    """⚠ 第一版断言「拆掉 L3 ⇒ D2/D3/D4 全部 OPENED」。
+    那是假定「来源维度只有一层在守」。
+
+    2026-11-25 重分类后，来源字段移出白名单，
+    白名单句与来源护栏句【机制不同、各能独立守住】⇒ 这是纵深。
+    因此「拆 L3 就打开」不再成立 —— 不是防线变弱，是防线多了一层。
+
+    ⇒ 断言改为「外部状态」：这三个维度都必须有至少一层能独力拦住，
+      且必须能说出是哪一层（E3）。
+    """
+    all_ids = [l[0] for l in LE.LAYERS]
+    result = {}
     for d in ("D2_DIRECT_SOURCE_EDIT", "D3_SOURCE_VIA_SOURCE_KIND",
               "D4_SOURCE_VIA_REF"):
-        obs = LE.observe(["L3_SOURCE_GUARD"])
-        cell = obs["results"][d]
-        v = LE.classify(cell, obs.get("base", {}))["verdict"]
-        assert v == "OPENED", (
-            "拆掉 L3 后 %s 应为 OPENED，实测 %s ⇒ L3 不是唯一防线" % (d, v))
-    return "拆 L3：D2/D3/D4 全部 OPENED ⇒ L3 是这三个维度的独力守卫"
+        guards = []
+        for keep in all_ids:
+            removals = [x for x in all_ids if x != keep]
+            obs = LE.observe(removals)
+            if "error" in obs:
+                continue
+            c = LE.classify(obs["results"][d], obs.get("base", {}))
+            if (c["verdict"].startswith("BLOCKED_BY_")
+                    and c.get("blocker") == keep):
+                guards.append(keep)
+        assert guards, "%s 没有任何独力守卫 ⇒ 真实缺口" % d
+        result[d] = guards
+    return "；".join("%s=%s" % (k.split("_")[0], ",".join(v))
+                      for k, v in result.items())
 
 
 @case("LAY-4b", "D1_FLAG_LEAK 是冗余不是纵深（≥2 层可独力拦住）")
@@ -177,35 +205,66 @@ def lay4b():
 
 
 # ---------------------------------------------------------------- LAY-5/6
+def _make_accident_only():
+    """构造一条「只被 ACCIDENT 挡住」的路径，用于 G1/G2/G3 的守卫测试。
+
+    做法：拆掉所有能拦 D1_FLAG_LEAK 的【设计层】
+    （显式拒收、白名单、来源护栏、入口硬编码），
+    只留下 Record(**merged) 不接受多余键这个偶然因素。
+
+    ⚠ 为什么不再用「四层全拆」：
+      2026-11-25 重分类后，L2 的变异体只放行 "_via_correct" 一个键，
+      于是「四层全拆」其实仍有白名单在拦 —— 那不是全拆。
+      直接按【能拦 D1 的层清单】来拆，才不会因为层定义改了而前提失效。
+    """
+    d1_blockers = []
+    for lid, desc, dims, anchor, repl in LE.LAYERS:
+        if "D1_FLAG_LEAK" not in dims:
+            continue
+        obs = LE.observe([lid])
+        if "error" in obs:
+            continue
+        c = LE.classify(obs["results"]["D1_FLAG_LEAK"], obs.get("base", {}))
+        if c["verdict"].startswith("BLOCKED_BY_"):
+            d1_blockers.append(lid)
+    return d1_blockers
+
+
 @case("LAY-5a", "ACCIDENT 必须与 BLOCKED_BY_Lx 区分开（G1/G2）")
 def lay5a():
-    obs = LE.observe(ALL_LAYERS)
+    blockers = _make_accident_only()
+    assert blockers, "找不到任何 D1 的拦截层 ⇒ 前提变了，需重写本用例"
+    obs = LE.observe(blockers)
+    if "error" in obs:
+        raise AssertionError("拆层失败：%s" % obs["error"])
     cell = obs["results"]["D1_FLAG_LEAK"]
     assert cell.get("exc") == "TypeError", (
-        "前提变了：四层全拆时 D1 不再撞 TypeError（实测 exc=%r）"
-        % cell.get("exc"))
+        "前提变了：拆掉 %s 后 D1 不再撞 TypeError（实测 exc=%r, msg=%r）"
+        % (blockers, cell.get("exc"), (cell.get("msg") or "")[:60]))
     c = LE.classify(cell, obs.get("base", {}))
     assert c["verdict"] == "ACCIDENT", (
         "TypeError 被归成 %s ⇒ 会被误当防御层" % c["verdict"])
     assert c["accident"] is True, "accident 标志未置位"
     assert c["blocker"] is None, "ACCIDENT 不得归到任何层（G1）"
-    return "四层全拆：D1=ACCIDENT，blocker=None（不计入任何层）"
+    return "拆 %s ⇒ D1=ACCIDENT，blocker=None（不计入任何层）" % (
+        ",".join(blockers),)
 
 
 @case("LAY-5b", "ACCIDENT 不计入 CAUGHT：台账里不是 BLOCKED_BY_Lx")
 def lay5b():
-    obs = LE.observe(ALL_LAYERS)
-    for d in ALL_DIMS:
-        c = LE.classify(obs["results"][d], obs.get("base", {}))
-        if c["verdict"].startswith("BLOCKED_BY_"):
-            raise AssertionError(
-                "四层全拆时 %s 仍被判为 %s ⇒ 拆不干净" % (d, c["verdict"]))
-    return "四层全拆：无任一维度被判 BLOCKED_BY_Lx"
+    blockers = _make_accident_only()
+    obs = LE.observe(blockers)
+    c = LE.classify(obs["results"]["D1_FLAG_LEAK"], obs.get("base", {}))
+    assert not c["verdict"].startswith("BLOCKED_BY_"), (
+        "拆掉所有设计层后 D1 仍被判为 %s ⇒ 还有层没拆掉" % c["verdict"])
+    return "拆 %s 后 D1 判 %s（非 BLOCKED_BY_Lx）" % (
+        ",".join(blockers), c["verdict"])
 
 
 @case("LAY-6a", "只被 ACCIDENT 挡住的维度，最终状态判 OPENED（G3）")
 def lay6a():
-    obs = LE.observe(ALL_LAYERS)
+    blockers = _make_accident_only()
+    obs = LE.observe(blockers)
     cell = obs["results"]["D1_FLAG_LEAK"]
     c = LE.classify(cell, obs.get("base", {}))
     assert c["verdict"] == "ACCIDENT"
@@ -223,7 +282,13 @@ def lay6a():
 # ---------------------------------------------------------------- LAY-7
 @case("LAY-7a", "台账已落盘，含维度清单、层声明、ACCIDENT 单列")
 def lay7a():
+    """⚠ 不依赖「仓库里已有旧台账」——
+    变异验证会在临时目录里跑本文件，那里没有历史台账。
+    所以这里先主动生成一次（与 main() 同一路径），再校验它。
+    """
     p = os.path.join(HERE, "reports", "layer_evidence.json")
+    if not os.path.exists(p):
+        LE.main()        # 现场生成，避免依赖外部残留
     assert os.path.exists(p), "台账缺失：%s" % p
     d = json.load(open(p, encoding="utf-8"))
     for key in ("dimensions", "layer_claims", "claims_verified",

@@ -417,15 +417,62 @@ class RecoveryStore:
     # 普通 revise 允许变更的字段白名单。
     # ZA-02（知微 r2/24）：record_id 是链身份，不得经普通 revise 偷换。
     # 若将来要支持改名/迁移，应设计显式关系，而不是复用 revise。
+    #
+    # ⚠ 2026-11-25（Mion 裁定2 H2）：来源字段【已从本集移出】。
+    #   原先它们既在 _REVISABLE 里、又受来源护栏保护，
+    #   两处定义重叠 —— H2 的「三类两两不交」断言当场红。
+    #   现在的分法：
+    #     _REVISABLE       普通 revise 可改（不含任何来源字段）
+    #     _SOURCE_FIELDS   只有 correct() 能改
+    #     _READONLY        存储层/专用方法维护
     _REVISABLE = {
-        "content", "source_kind", "source_ref", "participant_id",
-        "participation_basis", "basis_ref", "commitment_state",
+        "content", "commitment_state",
         "committed_by", "committed_to", "commitment_ref",
         "relation", "unknown_reason",
     }
     # ⚠ observed_origin / basis_conflict 不在白名单内：
     #   一旦写入，不得经 revise 修改（Mion 2026-11-24）。
     #   否则「观测」可以被事后改写，等于没有观测。
+
+    # correct() 允许改的字段集 = 来源字段 + revise 通用字段。
+    # 这是 correct() 相对 revise() 的【唯一】增量权限。
+    @classmethod
+    def _correctable(cls):
+        return set(cls._REVISABLE) | set(cls._SOURCE_FIELDS)
+
+    # ---- 来源字段（Mion 2026-11-25 裁定2 H1/H2）
+    #
+    # ⚠ 提到【类级别】而不是留在 _revise_impl 里：
+    #   H1 要求「集合内容一字不差」可被断言，
+    #   H2 要求「所有字段恰好归入三类之一」可被断言。
+    #   藏在方法体内的局部变量无法被测试读到，也就无法被守。
+    #
+    # 手改本集合时必须同步 test_field_classification.py 的 H1 期望值 ——
+    # 那条断言会红，而不是让漏加静默通过。
+    _SOURCE_FIELDS = {"source_kind", "source_ref", "participant_id",
+                      "participation_basis", "basis_ref"}
+
+    # ---- 字段三分类（Mion 2026-11-25 裁定2 H2）
+    #
+    # 每一个 Record 字段必须恰好落在一类里：
+    #   可改（_REVISABLE） / 来源（_SOURCE_FIELDS） / 只读（_READONLY）
+    # 落在三类之外 ⇒ 测试红。
+    #
+    # 为什么需要这一条（Mion §一 风险 a）：
+    #   「某字段没进 _SOURCE_FIELDS」——拼错、漏加、改名忘同步、
+    #   后来新增 origin_* 忘了归类。
+    #   把同一个集合表达式测五遍查不出这类问题，
+    #   因为问题不在表达式内部，而在【集合本身】。
+    _READONLY = {
+        # 身份与链结构：由存储层维护，不经 revise 变更
+        "record_id", "revision", "prev_digest", "changed_at",
+        "change_authority",
+        # 观测通道：只能经 record_observed() 写入
+        "observed_origin", "basis_conflict",
+        # 原始来源层：建时写入，终身不变（Mion 2026-11-24 §二 ①）
+        "origin_source_kind", "origin_source_ref", "origin_participant_id",
+        "origin_participation_basis", "origin_basis_ref",
+    }
 
     # ---- 修订（不覆盖：旧版保留）
     def revise(self, record_id: str, changes: Dict[str, Any],
@@ -458,27 +505,42 @@ class RecoveryStore:
                 "changes 不得包含保留键 _via_correct。"
                 "「是否纠正流程」由调用哪个方法来决定，不由调用方传入。")
 
-        illegal = set(changes) - self._REVISABLE
+        # ---- 白名单校验（Mion 裁定2 H2 之后是三层判断）
+        #
+        # 合法字段 = correct() 走 _correctable()，revise() 走 _REVISABLE。
+        # via_correct=True 时来自 correct()，才允许触达来源字段。
+        allowed = self._correctable() if via_correct else set(self._REVISABLE)
+        illegal = set(changes) - allowed
         if illegal:
+            # 来源字段单独给更准确的提示，方便定位
+            src_illegal = self._SOURCE_FIELDS & set(changes)
+            if src_illegal and not via_correct:
+                raise SchemaError(
+                    "revise 不允许直接改来源字段 %s。"
+                    "否则来源被改而『被纠正过』这一事实会消失。"
+                    "请改用 correct()（它会加 correction_of 边并改来源）。"
+                    % (sorted(src_illegal),))
             raise SchemaError(
                 "revise 不允许变更字段 %s（允许：%s）。"
                 "record_id 等身份字段不得经普通 revise 变更。"
-                % (sorted(illegal), sorted(self._REVISABLE)))
+                % (sorted(illegal), sorted(allowed)))
 
         # ---- 来源字段只能由 correct() 改（Mion 2026-11-24 §二 第 ② 条）
         #
         # 「否则用户可以直接 revise 掉来源，而不留下 correction_of 边。
         #   那样『被纠正过』这个事实本身就会消失。」
-        _SOURCE_FIELDS = {"source_kind", "source_ref", "participant_id",
-                          "participation_basis", "basis_ref"}
-        touching_source = _SOURCE_FIELDS & set(changes)
-
+        #
+        # ⚠ 集合定义已提到类级别（_SOURCE_FIELDS），
+        #   以便 H1（集合内容断言）/ H2（字段分类全覆盖）能读到它。
+        #   Mion 2026-11-25 裁定2：藏在方法体里的局部变量无法被守。
+        #
+        # ⚠ 这条现在与上面白名单有重叠保护（纵深），保留是为了
+        #   万一将来有人把某来源字段误加进 _REVISABLE，这里仍能拦。
+        touching_source = self._SOURCE_FIELDS & set(changes)
         if touching_source and not via_correct:
             raise SchemaError(
                 "revise 不允许直接改来源字段 %s。"
-                "否则来源被改而『被纠正过』这一事实会消失。"
-                "请改用 correct()（它会加 correction_of 边并改来源）。"
-                % (sorted(touching_source),))
+                "请改用 correct()。" % (sorted(touching_source),))
 
         cur_d = cur.to_dict()
         prev_digest = canonical_digest(cur_d)

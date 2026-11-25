@@ -81,17 +81,47 @@ LAYERS = [
      '                "changes 不得包含保留键 _via_correct。"\n'
      '                "「是否纠正流程」由调用哪个方法来决定，不由调用方传入。")',
      '        # MUTANT: 拆掉 L1'),
+    # ⚠ 2026-11-25（Mion 裁定2 H2 之后）：白名单行改过，本层锚点随之更新。
+    #
+    #   原先：`illegal = set(changes) - self._REVISABLE`
+    #         —— 一行同时管「字段是否在白名单」与「来源字段是否被允许」。
+    #   现在：来源字段移出 _REVISABLE，白名单行拆成两句：
+    #            allowed = self._correctable() if via_correct else set(self._REVISABLE)
+    #            illegal = set(changes) - allowed
+    #         再往下还有一道独立的来源护栏 `if touching_source and not via_correct:`。
+    #
+    #   ⇒ 这两道【机制不同】（字段集 vs 流程判断），实测（diag_which.py）：
+    #        拆白名单句 → D2 仍 BLOCKED（来源护栏拦）
+    #        拆护栏句   → D2 仍 BLOCKED（白名单拦）
+    #        两句都拆   → D2 OPENED
+    #     所以它们对来源维度是【纵深 COVERAGE】，不是冗余。
+    #
+    #   ⚠ 变异体必须【只打一处机制】，否则「只留这一层」会变成「其实留了两层」。
+    #     第一版把 allowed 改成 _correctable()（对所有 changes 都放行），
+    #     结果连来源字段也一起放行 —— 于是「只留 L2」实测拦住的其实是 L3，
+    #     台账把它误记成冗余。变异体只放行 _via_correct：
+    #
+    #   ⚠ 第二版仍有问题：只给 else 分支加 `{"_via_correct"}`。
+    #     但 L4 的变异体会让 via_correct 变成 True（读 changes 里的标志），
+    #     于是走 _correctable() 分支 —— 那里没有 _via_correct，
+    #     照样被拦。两个变异体互相抵消，实测仍报「不允许变更字段」。
+    #   ⇒ 现在给【两个分支】都放行 _via_correct，确保这一层真的被拆掉。
     ("L2_WHITELIST",
-     "白名单 _REVISABLE 不含 _via_correct",
+     "白名单：_via_correct 不属于任何一类合法字段",
      ["D1_FLAG_LEAK"],
-     '        illegal = set(changes) - self._REVISABLE',
-     '        illegal = set(changes) - self._REVISABLE - {"_via_correct"}  # MUTANT'),
+     '        allowed = self._correctable() if via_correct else set(self._REVISABLE)',
+     '        allowed = (self._correctable() | {"_via_correct"} if via_correct\n'
+     '                   else set(self._REVISABLE) | {"_via_correct"})  # MUTANT'),
     ("L3_SOURCE_GUARD",
-     "来源字段护栏：非 correct 流程不得改来源",
+     "来源字段护栏：非 correct 流程不得改来源（与 L2 白名单机制不同）",
      ["D2_DIRECT_SOURCE_EDIT", "D3_SOURCE_VIA_SOURCE_KIND",
       "D4_SOURCE_VIA_REF"],
      '        if touching_source and not via_correct:',
      '        if False:  # MUTANT: 拆掉 L3'),
+    # ⚠ L3 单独拆掉时 D2 仍被白名单拦（纵深，非冗余）。
+    #   要观测「来源维度的真实纵深」，必须同时拆 L2+L3 ——
+    #   这在 main() 的「只留这一层」矩阵里已经覆盖（D2 的 solo_guards
+    #   会列出 L2 与 L3 两层，判为纵深/冗余由层数决定）。
     ("L4_ENTRY_HARDCODE",
      "公开入口硬编码 via_correct=False",
      ["D1_FLAG_LEAK"],
@@ -148,7 +178,12 @@ print("PROBE_JSON " + json.dumps({"results": out, "base": BASE},
 
 
 def observe(removals):
-    """拆掉指定层，对【全部维度】各跑一次探针。"""
+    """拆掉指定层，对【全部维度】各跑一次探针。
+
+    层定义支持两种形态：
+        4 元组 (id, desc, dims, anchor, repl)        —— 单锚
+        5 元组同上，但 anchor/repl 可含 "\\n---\\n" 分隔的多段（组合层）
+    """
     td = tempfile.mkdtemp()
     try:
         shutil.copy2(os.path.join(HERE, "afcore.py"),
@@ -157,11 +192,19 @@ def observe(removals):
         s = open(p, encoding="utf-8").read()
         for lid in removals:
             layer = next(l for l in LAYERS if l[0] == lid)
-            anchor = layer[3] if len(layer) == 5 else layer[2]
-            if s.count(anchor) != 1:
-                return {"error": "%s 锚点出现 %d 次" % (
-                    lid, s.count(anchor))}
-            s = s.replace(anchor, layer[4] if len(layer) == 5 else layer[3], 1)
+            anchor, repl = layer[3], layer[4]
+            if "\n---\n" in anchor or "\n---\n" in repl:
+                anchors = anchor.split("\n---\n")
+                repls = repl.split("\n---\n")
+                if len(anchors) != len(repls):
+                    return {"error": "%s 组合段数不齐" % lid}
+            else:
+                anchors, repls = [anchor], [repl]
+            for i, a in enumerate(anchors):
+                if s.count(a) != 1:
+                    return {"error": "%s 第 %d 段锚点出现 %d 次" % (
+                        lid, i + 1, s.count(a))}
+                s = s.replace(a, repls[i], 1)
         open(p, "w", encoding="utf-8", newline="\n").write(s)
         open(os.path.join(td, "probe.py"), "w", encoding="utf-8").write(PROBE)
         payloads = {d[0]: d[2] for d in DIMENSIONS}

@@ -1893,7 +1893,157 @@ test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
 
 ---
 
-## 十八 · 固定提交身份
+## 十八 · 集合完整性 H1/H2/H3（据 Mion 2026-11-25 裁定2）
+
+### 18.1 我把问题问错了
+
+我的原问题：「五个来源字段，要不要各测一维？」
+
+我给了两个选项：五字段各跑一遍完整攻击，或者承认「同属一条护栏」、做代表抽样。
+
+Mion 两个都不选，理由是：
+
+```text
+你问的那两件事，都依赖一个你【还没有验证】的前提：
+「这五个字段确实同属一条护栏，且没有第二条路能写它们」。
+
+而两类真风险正好在这个前提里：
+  风险 a  某字段没进 _SOURCE_FIELDS
+          拼错 / 漏加 / 改名后忘同步 / 后来新增的 origin_* 忘了归类
+  风险 b  某字段有另一条写入路径
+          correct() 里单独处理 / insert 允许从构造参数带进来 / 新方法绕过去
+
+⇒ 把同一个集合表达式测五遍，查不出 a)，也查不出 b)。
+  因为 a) 和 b) 的问题【不在表达式内部】，
+  而在【集合本身】和【路径本身】。
+```
+
+### 18.2 三条断言
+
+```text
+H1  集合内容一字不差
+H2  字段分类全覆盖：每个 Record 字段恰好落在
+    可改 / 来源 / 只读 三类之一，落在外面就红
+H3  入口唯一性：除 correct() 外没有公开方法能改来源字段
+```
+
+成本 ≈ 两倍（而非五倍），覆盖强于代表抽样 —— 因为查的是**前提**，不是表达式。
+
+### 18.3 H2 当场掀掉了一个我写了很久的结构矛盾
+
+H2 的第一条断言是「三类两两不交」。它立刻红了：
+
+```text
+_REVISABLE 与 _SOURCE_FIELDS 重叠：
+['basis_ref', 'participant_id', 'participation_basis', 'source_kind', 'source_ref']
+```
+
+**这不是误报。** 之前五个来源字段**同时**在 `_REVISABLE` 里，又受来源护栏保护。
+两处定义重叠，只是一直没人问「它们到底属于哪一类」。
+
+改法：
+
+```text
+_REVISABLE      普通 revise 可改（不含任何来源字段）
+_SOURCE_FIELDS  只有 correct() 能改
+_READONLY       存储层/专用方法维护
+
+correct() 的额外权限 = _REVISABLE | _SOURCE_FIELDS（唯一增量）
+```
+
+白名单行随之改成：
+
+```python
+allowed = self._correctable() if via_correct else set(self._REVISABLE)
+```
+
+**这条改动是 Mion 的 H2 直接促成的，不是我自己想到的。**
+
+### 18.4 我写反判据这件事，第三次了
+
+第一版 `LAY-4b` 用「只留这一层时 OPENED」来判定独力守卫，跑出 0 层。
+正确判据是「只留这一层时**被它自己**拦住」。
+
+第二版把 L2 的变异体改成 `allowed = _correctable()`（对所有 changes 放行），
+于是「只留 L2」其实连来源字段也一起放行了 —— 实测拦住的不是 L2 而是 L3，
+台账差点把纵深误记成冗余。
+
+第三版只给 `else` 分支加 `{"_via_correct"}`，但 L4 的变异体会让
+`via_correct` 变 True、走另一个分支 —— **两个变异体互相抵消**，
+实测仍报「不允许变更字段」，看起来像 L2 无效。
+
+⇒ 最终给两个分支都放行：
+
+```python
+allowed = (self._correctable() | {"_via_correct"} if via_correct
+           else set(self._REVISABLE) | {"_via_correct"})  # MUTANT
+```
+
+**这三次都是同一类错：我在调判据/变异体，而它们本身就是被检对象。**
+A3 那条规矩（断言必须能失败）管的是断言；这里需要的是它的镜像：
+**变异体必须真的改变可观测行为，否则它测的不是它号称测的东西。**
+
+### 18.5 真实的防御结构（改动后重新实测）
+
+```text
+D1_FLAG_LEAK              独力守卫 = L1_KEY_REJECT, L2_WHITELIST
+                          ⇒ 冗余 REDUNDANCY（2 层，机制同源：都是「字符串不在集合里」）
+D2_DIRECT_SOURCE_EDIT     独力守卫 = L3_SOURCE_GUARD
+D3_SOURCE_VIA_SOURCE_KIND 独力守卫 = L3_SOURCE_GUARD
+D4_SOURCE_VIA_REF         独力守卫 = L3_SOURCE_GUARD
+                          ⇒ 纵深 COVERAGE（1 层）
+
+⚠ 但 D2/D3/D4 的纵深是【L2 白名单 + L3 来源护栏】两层机制不同的守卫：
+   拆白名单句 → 仍被来源护栏拦
+   拆来源护栏 → 仍被白名单拦
+   两句都拆   → OPENED
+   （diag_which.py 实测）
+  ⇒ 这是真纵深（机制不同），不是冗余（机制同源）。
+```
+
+### 18.6 标签纪律
+
+```text
+REPRESENTATIVE_SAMPLING 这个标签不要用。
+它的合法性依赖「集合完整」，而集合完整必须被断言，不能靠声明。
+
+可用（H1/H2/H3 都齐之后）：
+    SAMPLING_JUSTIFIED_BY = {H1: 集合内容一致, H2: 字段分类全覆盖, H3: 入口唯一}
+
+⇒ 标签必须指向【断言编号】，不指向【理由】。
+  理由会被遗忘，断言会红。
+```
+
+### 18.7 状态行
+
+```text
+SOURCE_FIELD_SET             = 5 字段，H1 一字不差断言
+FIELD_CLASSIFICATION         = 3 类两两不交 + 并集等于全部字段（H2）
+SOURCE_ENTRY_UNIQUENESS      = 仅 correct()（H3）
+REVISABLE_OVERLAP_BUG        = FIXED（来源字段移出 _REVISABLE）
+MY_VERDICT_BUG_COUNT         = 3（全部同一类：判据/变异体本身未验证）
+SAMPLING_JUSTIFIED_BY        = {H1, H2, H3}
+REPRESENTATIVE_SAMPLING      = DO_NOT_USE_AS_LABEL
+```
+
+### 18.8 验收
+
+```text
+test_p1_p5.py                17/17
+test_recovery_gate.py        10/10
+test_z61_gaps.py             13/13
+test_observed_channel.py     34/34
+test_origin_layer.py         16/16
+test_judgement_table_sync.py PASS
+test_field_classification.py  8/8    （新增：H1/H2/H3 + 标签纪律）
+test_layer_evidence.py       10/10
+test_mutations_gate.py       CAUGHT 40 / MISSED 0（新增 M41；M39/M40 锚点已同步）
+test_mutations_v4.py         CAUGHT 7 / REDUNDANT 2 / MISSED 0
+```
+
+---
+
+## 十九 · 固定提交身份
 
 见提交信息与 PR 描述；本文件随代码同一提交入库。
 

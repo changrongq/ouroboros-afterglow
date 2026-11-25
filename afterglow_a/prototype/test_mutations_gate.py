@@ -30,8 +30,14 @@ PROTO_FILES = ("afcore.py", "afrecover.py")
 # 变异验证必须跑【全部】守护测试。
 # 之前只列了 test_recovery_gate / test_p1_p5，导致 Z61 新门禁的变异
 # 全部 MISSED —— 不是门禁没守住，是守护它的测试没被跑。
+#
+# ⚠ test_layer_evidence.py 依赖同目录的 layer_evidence 模块，
+#   该模块必须一并复制（见 MODULE_FILES），否则基线直接 ModuleNotFoundError。
 TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py",
-              "test_observed_channel.py", "test_origin_layer.py")
+              "test_observed_channel.py", "test_origin_layer.py",
+              "test_field_classification.py", "test_layer_evidence.py")
+# 被测试 import 的同目录模块（不是测试文件本身，但必须存在）
+MODULE_FILES = ("layer_evidence.py",)
 
 
 def _harden_stdio():
@@ -371,9 +377,10 @@ MUTATIONS = [
     (
         "M39", "白名单放行 _via_correct ⇒ 只剩 L1 拦（L2 单独证据）",
         "afcore.py",
-        '        illegal = set(changes) - self._REVISABLE',
-        '        illegal = set(changes) - self._REVISABLE - {"_via_correct"}'
-        '  # MUTANT: L2 失效',
+        '        allowed = self._correctable() if via_correct else set(self._REVISABLE)',
+        '        allowed = (self._correctable() | {"_via_correct"} if via_correct\n'
+        '                   else set(self._REVISABLE) | {"_via_correct"})'
+        '  # MUTANT: L2 失效（两个分支都放行）',
     ),
     (
         "M40", "公开入口读 dict 里的标志 ⇒ 只剩 L1 拦（L4 单独证据）",
@@ -384,6 +391,14 @@ MUTATIONS = [
         '                                 via_correct=bool(\n'
         '                                     changes.get("_via_correct")))'
         '  # MUTANT: L4 失效',
+    ),
+    # ---- Mion 2026-11-25 裁定2 H1/H2：字段三分类
+    (
+        "M41", "把某个来源字段偷偷放回可改白名单（H2b 必须红）",
+        "afcore.py",
+        '    _REVISABLE = {\n        "content", "commitment_state",',
+        '    _REVISABLE = {\n        "content", "source_kind", "commitment_state",'
+        '  # MUTANT: 来源字段混回白名单',
     ),
 ]
 
@@ -415,7 +430,7 @@ def run_tests(tmpdir):
 
 
 def copy_proto(tmpdir):
-    for f in PROTO_FILES + TEST_FILES:
+    for f in PROTO_FILES + TEST_FILES + MODULE_FILES:
         src = os.path.join(HERE, f)
         shutil.copy2(src, os.path.join(tmpdir, f))
     # 测试依赖 reports 目录
