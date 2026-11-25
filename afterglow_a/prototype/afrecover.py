@@ -237,7 +237,15 @@ def verify_recovery(store, query_ref: str,
     ⚠ match_kind 与 integrity_status 是两条独立的轴：
       exact 不覆盖、也不掩盖 integrity_status 的失败。
       反过来说，integrity_status=verified 也不提升来源真实性
-      （trusted_chain_anchor 恒为 not_established）。
+      （见返回结构里的 scope_declaration：
+        trusted_chain_anchor = NOT_ESTABLISHED，
+        trusted_anchor_scope = OUT_OF_SCOPE_FOR_PROTOTYPE）。
+
+    ⚠ 本函数的验收档位（凌翼裁定 2026-11-25 事项 A）：
+      RECOVERY_GATE_IMPLEMENTED = VERIFIED_ENGINEERING_SYNTHETIC
+      含义严格限定为：合成测试范围内，门禁实现、已定义拒绝条件
+      和已执行变异验证达到当前工程验收要求。
+      ⇒ 不得表述为「全部恢复安全性已建立」。
     """
     # ---- 1. 取回
     retrieved_ids: List[str] = []
@@ -371,10 +379,40 @@ def verify_recovery(store, query_ref: str,
         "conflict_summary": conflict,
         # A §1.8：登记身份
         "expected_ids_registration": reg,
-        # 边界：门禁通过也不提升为科学结论
+        # ---- 边界声明（凌翼裁定 2026-11-25 事项 A/B）
+        #
+        # ⚠ 原先这里只有 engineering_only / is_scientific_result 两个布尔值。
+        #   凌翼裁定明确指出：
+        #     「该限制应在设计文档、状态登记和对外报告中明确，
+        #       不得仅用 is_scientific_result=False 代替完整的声明。」
+        #   ⇒ 一个 False 不携带任何信息：
+        #     读者无法从它得知「缺的是哪一类证据」。
+        #   ⇒ 现改为逐项声明，每项都回答「缺什么」。
         "engineering_only": True,
         "is_scientific_result": False,
-        "trusted_chain_anchor": "not_established",
+        "scope_declaration": {
+            # 事项 A：工程级限定验收的语义边界
+            "recovery_gate_status": "VERIFIED_ENGINEERING_SYNTHETIC",
+            "recovery_gate_evidence": "SELF_TEST_REPORTED",
+            # 事项 B：链外锚点排除在原型范围之外
+            "trusted_chain_anchor": "NOT_ESTABLISHED",
+            "trusted_anchor_scope": "OUT_OF_SCOPE_FOR_PROTOTYPE",
+            # 未解决的独立证据缺口（逐项列出，不合并）
+            "independent_recomputation": "NOT_ESTABLISHED",
+            "real_history_validation": "NOT_PERFORMED",
+            "external_source_attestation": "NOT_ESTABLISHED",
+            # 已知边界（凌翼裁定 事项 A 末段三条）
+            "known_limits": [
+                # 未提交登记身份的兼容路径，不具备独立登记证明
+                "registration_may_be_absent: 未提供登记身份时不得读作已登记",
+                # recovery_eligible 不等于 match_kind=exact
+                "eligible_neq_exact: 资格门禁通过不等于集合关系精确匹配",
+                # 读、校验、消费不是经证明的原子事务
+                "not_atomic: 读取/校验/消费不是经证明的原子事务",
+            ],
+            "note": ("本结论仅覆盖合成夹具上的工程自测；"
+                     "不构成对来源真实性或恢复安全性的证明。"),
+        },
     }
 
 

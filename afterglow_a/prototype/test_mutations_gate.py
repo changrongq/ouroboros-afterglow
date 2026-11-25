@@ -163,11 +163,18 @@ MUTATIONS = [
         '    "changed_at",\n)',
     ),
     # ---- 外部锚定
+    #
+    # ⚠ 凌翼裁定 2026-11-25 事项 B 后，顶层 trusted_chain_anchor 已移入
+    #   scope_declaration，且要如实登记「缺什么」。
+    #   本变异改成【声称锚点已建立】，同时把范围也改成原型内 ——
+    #   否则只改一个字段，另一处仍写着 OUT_OF_SCOPE，读者会被误导。
     (
-        "M13", "声称外部锚定已建立",
+        "M13", "声称外部锚定已建立（且范围改为原型内）",
         "afrecover.py",
-        '        "trusted_chain_anchor": "not_established",',
-        '        "trusted_chain_anchor": "established",',
+        '            "trusted_chain_anchor": "NOT_ESTABLISHED",\n'
+        '            "trusted_anchor_scope": "OUT_OF_SCOPE_FOR_PROTOTYPE",',
+        '            "trusted_chain_anchor": "ESTABLISHED",\n'
+        '            "trusted_anchor_scope": "IN_SCOPE_AND_DONE",',
     ),
     (
         "M14", "把工程结果标成科学结果",

@@ -38,7 +38,7 @@
       "id": "RG-6",
       "name": "链局部自洽但缺外部锚定，不得声称独立真实性",
       "ok": true,
-      "detail": "eligible=True 但 anchor=not_established，科学结果=False"
+      "detail": "eligible=True，但声明 3 项 NOT_ESTABLISHED + 3 条已知边界"
     },
     {
       "id": "RG-7",
