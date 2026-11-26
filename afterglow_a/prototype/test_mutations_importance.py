@@ -79,22 +79,24 @@ MUTATIONS = [
         "I9", "NOT_EVALUABLE 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
         '            "measurement_scope": (SYNTHETIC_PREFIX if trace is not None\n'
         '                                  else "NOT_MEASURED"),\n'
-        '            "note": ("分母为 0 ⇒ NOT_EVALUABLE。"',
+        '            "allowed_use": ("可用于断言「本批次不可评估」（status 字段）；"',
         '            "measurement_scope": "NOT_MEASURED",  # MUTANT\n'
-        '            "note": ("分母为 0 ⇒ NOT_EVALUABLE。"',
+        '            "allowed_use": ("可用于断言「本批次不可评估」（status 字段）；"',
     ),
     (
         "I9b", "EVALUATED 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
         '        "measurement_scope": (SYNTHETIC_PREFIX if trace is not None\n'
         '                              else "NOT_MEASURED"),\n'
-        '        "note": ("候选资格集合 = 未被已声明规则排除的记录。"',
+        '        "allowed_use": ("可用于断言「某记录未被已声明规则排除」；"',
         '        "measurement_scope": "NOT_MEASURED",  # MUTANT\n'
-        '        "note": ("候选资格集合 = 未被已声明规则排除的记录。"',
+        '        "allowed_use": ("可用于断言「某记录未被已声明规则排除」；"',
     ),
     (
         "I10", "空分母比例返回 0 而不是 None",
-        '            "unverifiable_ratio": None,',
-        '            "unverifiable_ratio": 0.0,  # MUTANT',
+        '            "unverifiable_ratio": None,\n'
+        '            "record_only_ratio": None,',
+        '            "unverifiable_ratio": 0.0,  # MUTANT\n'
+        '            "record_only_ratio": 0.0,   # MUTANT',
     ),
     (
         "I11", "B3 排除只看路径不看值（改成读 basis_conflict 而非 observed_origin）",
@@ -269,15 +271,19 @@ out["scope"] = safe(_scope)
 
 # V9 · 空分母比例（I10 会在此暴露）
 #
-# ⚠ 记录【是否为 None】的布尔值，而不只是值本身 ——
-#   因为 None 与 0.0 在 JSON 里都能序列化，
-#   只比值的化会被一起读成「差不多」。
+# ⚠ 必须用【真正为空】的 store。
+#   2026-11-26 修正后，空分母分支的条件是 `n == 0 and m == 0`
+#   （n = first_person 数，m = 取回集大小）。
+#   而 mk_empty_denom() 里有一条 record_only ⇒ m == 1 ⇒ 走不到该分支。
+#   ⇒ 第一版此处用的夹具已不适用，改用空 store。
 def _empty_ratios():
-    r = AI.synthetic_ratios(mk_empty_denom(), [])
+    s = RecoveryStore()          # 真·空库
+    r = AI.synthetic_ratios(s, [])
     return {"unv": r["unverifiable_ratio"],
             "ro": r["record_only_ratio"],
             "unv_is_none": r["unverifiable_ratio"] is None,
-            "ro_is_none": r["record_only_ratio"] is None}
+            "ro_is_none": r["record_only_ratio"] is None,
+            "basis": r.get("basis")}
 out["empty_ratios"] = safe(_empty_ratios)
 
 # V10 · record_only × model_generation（I11 会在此暴露：看 origin 还是看 conflict）
@@ -392,6 +398,24 @@ def main():
             changed, detail = behavior_changed(base_obs, mut_obs)
             rc, out = run_target_test(td)
 
+            # ⚠ 2026-11-26 修正（知微复核）：
+            #
+            # 第一版：rc != 0 一律记 CAUGHT。
+            # 知微复现：把变异后的目标运行替为「启动失败，rc=2，零用例」，
+            # 结果仍然是 CAUGHT 1 / PASS / exit 0，
+            # 而且证据行同时写着「失败用例 0 条」——
+            # 一个自相矛盾的证据行，居然没有拦住自己。
+            #
+            # ⇒ 修：把「红」拆成四种，只有第一种算 CAUGHT：
+            #     TEST_ASSERT_FAILED  目标用例确实执行、且按目标断言失败
+            #     TEST_CRASHED        运行中异常（非断言）
+            #     TEST_DID_NOT_RUN    启动失败 / 零用例 / 无 case 级输出
+            #     UNRESOLVED          行为未变或无法观测
+            n_assert_fail = len([l for l in out.splitlines() if "[FAIL]" in l])
+            n_error = len([l for l in out.splitlines() if "[ERR ]" in l])
+            n_case = len([l for l in out.splitlines()
+                          if "[PASS]" in l or "[FAIL]" in l or "[ERR ]" in l])
+
             if changed is None:
                 status = "UNRESOLVED"
                 evid = "E2：无法独立观测（%s）" % detail
@@ -399,16 +423,27 @@ def main():
                 status = "UNRESOLVED"
                 evid = ("直接观测：行为【未变】（%s）⇒ 该变异无效，"
                         "不得据此判断言强弱（M1）" % (detail or "无差异"))
-            elif rc != 0:
-                status = "CAUGHT"
-                fails = [l.strip() for l in out.splitlines()
-                         if "[FAIL]" in l or "[ERR ]" in l]
-                evid = "行为已变（%s）；失败用例 %d 条：%s" % (
-                    detail[:100], len(fails),
-                    fails[0][:70] if fails else "（见输出）")
-            else:
+            elif n_case == 0:
+                # 一个用例都没跑出来 ⇒ 不能算「断言捕获了变异」
+                status = "TEST_DID_NOT_RUN"
+                evid = ("行为已变（%s），但目标测试【零用例输出】"
+                        "（rc=%s）⇒ 不得记 CAUGHT" % (detail[:70], rc))
+            elif n_assert_fail == 0:
+                status = "TEST_CRASHED"
+                evid = ("行为已变（%s），但【无 [FAIL] 断言失败】，"
+                        "仅 %d 条 [ERR ] / rc=%s ⇒ 不算按目标断言捕获"
+                        % (detail[:70], n_error, rc))
+            elif rc == 0:
                 status = "MISSED"
-                evid = "行为已变（%s），但目标测试全绿 ⇒ 真漏洞" % detail[:100]
+                evid = ("行为已变（%s），且出现 %d 条 [FAIL]，"
+                        "但退出码为 0 ⇒ 测试自身判定有误"
+                        % (detail[:70], n_assert_fail))
+            else:
+                status = "CAUGHT"
+                fails = [l.strip() for l in out.splitlines() if "[FAIL]" in l]
+                evid = "行为已变（%s）；%d 条 [FAIL]，首条：%s" % (
+                    detail[:90], n_assert_fail,
+                    fails[0][:64] if fails else "（无）")
 
             rows.append((mid, desc, status, evid))
             print("  [%-11s] %-4s %s" % (status, mid, desc))
@@ -419,17 +454,20 @@ def main():
     counts = {}
     for _, _, st, _ in rows:
         counts[st] = counts.get(st, 0) + 1
-    for st in ("CAUGHT", "UNRESOLVED", "MISSED", "INVALID"):
+    for st in ("CAUGHT", "UNRESOLVED", "MISSED", "INVALID",
+               "TEST_DID_NOT_RUN", "TEST_CRASHED"):
         if st in counts:
-            print("  %-12s %d" % (st, counts[st]))
+            print("  %-18s %d" % (st, counts[st]))
     print("=" * 84)
 
-    bad = counts.get("MISSED", 0) + counts.get("INVALID", 0)
+    # 只有这几类算失败；UNRESOLVED 不计入（三态分离，E2）
+    bad = (counts.get("MISSED", 0) + counts.get("INVALID", 0)
+           + counts.get("TEST_DID_NOT_RUN", 0) + counts.get("TEST_CRASHED", 0))
     verdict = "PASS" if bad == 0 else "FAIL"
     print("  判定：%s（共 %d 个变异）" % (verdict, len(rows)))
     if counts.get("UNRESOLVED", 0):
-        print("  ⚠ UNRESOLVED %d 条：变异未改变可观测行为，不计入 CAUGHT，")
-        print("    也不计入 MISSED —— 三态不合并（E2）。")
+        print("  ⚠ UNRESOLVED %d 条：变异未改变可观测行为/无法观测，" % counts["UNRESOLVED"])
+        print("    不计入 CAUGHT，也不计入 MISSED —— 三态不合并（E2）。")
 
     out_dir = os.path.join(HERE, "reports")
     os.makedirs(out_dir, exist_ok=True)

@@ -8,73 +8,73 @@
       "id": "I1",
       "desc": "B1 排除条件被删掉（model_generation 不再被排除）",
       "status": "CAUGHT",
-      "evidence": "行为已变（b1_first_person: {\"cand\": [\"h1\"]} → {\"cand\": [\"h1\", \"m1\", \"t1\"]}; b1_third_person: {\"has_t1\": false}）；失败用例 6 条：[FAIL] A3-1a B1 正向：model_generation 记录【不在】候选集合里 — m1 是 model_generatio"
+      "evidence": "行为已变（b1_first_person: {\"cand\": [\"h1\"]} → {\"cand\": [\"h1\", \"m1\", \"t1\"]}; b1_third_person: {\"has_t）；7 条 [FAIL]，首条：[FAIL] A3-1a B1 正向：model_generation 记录【不在】候选集合里 — m1 是 model_gen"
     },
     {
       "id": "I2",
       "desc": "B1 排除条件放宽（只排 first_person × model_generation）",
       "status": "CAUGHT",
-      "evidence": "行为已变（b1_first_person: {\"cand\": [\"h1\"]} → {\"cand\": [\"h1\", \"t1\"]}; b1_third_person: {\"has_t1\": false} → {\"h）；失败用例 2 条：[FAIL] A3-1d B1 不区分 asserted 类别：third_person × model_generation 同样排除 —"
+      "evidence": "行为已变（b1_first_person: {\"cand\": [\"h1\"]} → {\"cand\": [\"h1\", \"t1\"]}; b1_third_person: {\"has_t1\": fa）；2 条 [FAIL]，首条：[FAIL] A3-1d B1 不区分 asserted 类别：third_person × model_generation "
     },
     {
       "id": "I3",
       "desc": "exclude 参数被忽略（关闭规则无效 ⇒ 变异无法生效）",
       "status": "CAUGHT",
-      "evidence": "行为已变（exclude_works: {\"on\": false, \"off\": true} → {\"on\": false, \"off\": false}）；失败用例 3 条：[FAIL] A3-3a 关闭 B1 ⇒ 排除确实失效（直接观测，不靠测试红绿） — 关闭 B1 后 m1 仍不在候选集合 ⇒ 变异没生效，"
+      "evidence": "行为已变（exclude_works: {\"on\": false, \"off\": true} → {\"on\": false, \"off\": false}）；4 条 [FAIL]，首条：[FAIL] A3-2a2 反证：若 B1 只在「无召回事件」时生效，A3-2a 必须变红 — 前提失效：关掉 B1 后 m1 "
     },
     {
       "id": "I4",
       "desc": "空分母判据失效（NOT_EVALUABLE 变 EVALUATED）",
       "status": "CAUGHT",
-      "evidence": "行为已变（empty_denom: {\"status\": \"NOT_EVALUABLE\", \"n_cand\": 0, \"scope\": \"MEASURED_ON_SYNTHET → {\"status\": \"EV）；失败用例 2 条：[FAIL] A3-5a J3：分母为空 ⇒ NOT_EVALUABLE，不是 0，也不是「无重要项」 — 空分母被报成 'EVALUATE"
+      "evidence": "行为已变（empty_denom: {\"status\": \"NOT_EVALUABLE\", \"n_cand\": 0, \"scope\": \"MEASURED_ON_SYNTHET → {\"st）；2 条 [FAIL]，首条：[FAIL] A3-5a J3：分母为空 ⇒ NOT_EVALUABLE，不是 0，也不是「无重要项」 — 空分母被报成 'EV"
     },
     {
       "id": "I5",
       "desc": "空分母仍返回全部候选（不是空集）",
       "status": "CAUGHT",
-      "evidence": "行为已变（empty_denom: {\"status\": \"NOT_EVALUABLE\", \"n_cand\": 0, \"scope\": \"MEASURED_ON_SYNTHET → {\"status\": \"NO）；失败用例 1 条：[FAIL] A3-5a J3：分母为空 ⇒ NOT_EVALUABLE，不是 0，也不是「无重要项」 — NOT_EVALUABLE 时候"
+      "evidence": "行为已变（empty_denom: {\"status\": \"NOT_EVALUABLE\", \"n_cand\": 0, \"scope\": \"MEASURED_ON_SYNTHET → {\"st）；1 条 [FAIL]，首条：[FAIL] A3-5a J3：分母为空 ⇒ NOT_EVALUABLE，不是 0，也不是「无重要项」 — NOT_EVALUA"
     },
     {
       "id": "I6",
       "desc": "合成事件流不校验 record_id 真实存在",
       "status": "CAUGHT",
-      "evidence": "行为已变（ghost_id: {\"rejected\": true, \"type\": \"SchemaError\"} → {\"rejected\": false}）；失败用例 1 条：[FAIL] A3-2b 合成事件流拒绝「用不存在的 record_id 造假」 — 合成事件流接受了不存在的 record_id"
+      "evidence": "行为已变（ghost_id: {\"rejected\": true, \"type\": \"SchemaError\"} → {\"rejected\": false}）；1 条 [FAIL]，首条：[FAIL] A3-2b 合成事件流拒绝「用不存在的 record_id 造假」 — 合成事件流接受了不存在的 record_i"
     },
     {
       "id": "I7",
       "desc": "合成事件流不拒绝完全重复事件",
       "status": "CAUGHT",
-      "evidence": "行为已变（dup_event: {\"rejected\": true, \"type\": \"SchemaError\"} → {\"rejected\": false}）；失败用例 1 条：[FAIL] A3-2c 合成事件流拒绝「完全重复的事件」冒充多次召回 — 合成事件流接受了完全重复的事件"
+      "evidence": "行为已变（dup_event: {\"rejected\": true, \"type\": \"SchemaError\"} → {\"rejected\": false}）；1 条 [FAIL]，首条：[FAIL] A3-2c 合成事件流拒绝「完全重复的事件」冒充多次召回 — 合成事件流接受了完全重复的事件"
     },
     {
       "id": "I8",
       "desc": "未知规则被静默忽略",
       "status": "CAUGHT",
-      "evidence": "行为已变（unknown_rule: {\"rejected\": true, \"type\": \"SchemaError\"} → {\"rejected\": false}）；失败用例 1 条：[FAIL] A3-3c 关闭未知规则 ⇒ 报错，不静默忽略 — 未知排除规则被静默接受 ⇒ 变异可能没生效却无人知晓"
+      "evidence": "行为已变（unknown_rule: {\"rejected\": true, \"type\": \"SchemaError\"} → {\"rejected\": false}）；1 条 [FAIL]，首条：[FAIL] A3-3c 关闭未知规则 ⇒ 报错，不静默忽略 — 未知排除规则被静默接受 ⇒ 变异可能没生效却无人知晓"
     },
     {
       "id": "I9",
       "desc": "NOT_EVALUABLE 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
       "status": "CAUGHT",
-      "evidence": "行为已变（empty_denom: {\"status\": \"NOT_EVALUABLE\", \"n_cand\": 0, \"scope\": \"MEASURED_ON_SYNTHET → {\"status\": \"NO）；失败用例 1 条：[FAIL] A3-6a2 空分母（NOT_EVALUABLE）分支同样必须标合成测量 — NOT_EVALUABLE 分支的合成测量未标 "
+      "evidence": "行为已变（empty_denom: {\"status\": \"NOT_EVALUABLE\", \"n_cand\": 0, \"scope\": \"MEASURED_ON_SYNTHET → {\"st）；1 条 [FAIL]，首条：[FAIL] A3-6a2 空分母（NOT_EVALUABLE）分支同样必须标合成测量 — NOT_EVALUABLE 分支的合"
     },
     {
       "id": "I9b",
       "desc": "EVALUATED 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
       "status": "CAUGHT",
-      "evidence": "行为已变（scope: {\"with_trace\": \"MEASURED_ON_SYNTHETIC_ONLY\", \"no_trace\": \"NOT_MEASURED → {\"with_trace\": \"NOT_）；失败用例 2 条：[FAIL] A3-6a 有 trace 时 measurement_scope 必须标 MEASURED_ON_SYNTHETIC_ONL"
+      "evidence": "行为已变（scope: {\"with_trace\": \"MEASURED_ON_SYNTHETIC_ONLY\", \"no_trace\": \"NOT_MEASURED → {\"with_tra）；2 条 [FAIL]，首条：[FAIL] A3-6a 有 trace 时 measurement_scope 必须标 MEASURED_ON_SYNTHET"
     },
     {
       "id": "I10",
       "desc": "空分母比例返回 0 而不是 None",
       "status": "CAUGHT",
-      "evidence": "行为已变（empty_ratios: {\"unv\": null, \"ro\": null, \"unv_is_none\": true, \"ro_is_none\": true} → {\"unv\": 0.0, \"ro\"）；失败用例 1 条：[FAIL] A3-6d 空分母时比例返回 None 而不是 0 — 空分母被报成 0.0，应为 None（0 会被读成「全部可判定」）"
+      "evidence": "行为已变（empty_ratios: {\"unv\": null, \"ro\": null, \"unv_is_none\": true, \"ro_is_none\": true, \"ba → {\"u）；1 条 [FAIL]，首条：[FAIL] A3-6d 空分母时比例返回 None 而不是 0 — 空分母被报成 0.0，应为 None（0 会被读成「全部可"
     },
     {
       "id": "I11",
       "desc": "B3 排除只看路径不看值（改成读 basis_conflict 而非 observed_origin）",
       "status": "CAUGHT",
-      "evidence": "行为已变（ro_model: {\"basis_conflict\": \"none\", \"has_ro2\": false} → {\"basis_conflict\": \"none\", \"has_ro2\": true}）；失败用例 1 条：[FAIL] A3-1e B1 看的是 observed_origin 的值，不是 basis_conflict — ro2 的 basis"
+      "evidence": "行为已变（ro_model: {\"basis_conflict\": \"none\", \"has_ro2\": false} → {\"basis_conflict\": \"none\", \"has_r）；1 条 [FAIL]，首条：[FAIL] A3-1e B1 看的是 observed_origin 的值，不是 basis_conflict — ro2 的"
     }
   ]
 }

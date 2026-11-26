@@ -215,21 +215,84 @@ def a31e():
 
 
 # ================================================== 组 ② 排除不变性
-@case("A3-2a", "同一 record_id 被召回 1/5/50 次，排除结果不变")
+@case("A3-2a", "同一 record_id 被召回 1/5/50 次，【每一档】都必须排除")
 def a32a():
+    """⚠ 知微复核指出的假绿（2026-11-26）：
+
+    第一版的断言是 results[1] == results[5] == results[50]，
+    【只比较三档相等】，不要求每一档的排除布尔值为真。
+
+    ⇒ 后果：若把 B1 改成「只有没有召回事件时才排除」，
+      50 次时 m1 会被放行，而三档的「是否排除」分别是
+      (False, False, False) —— 三者仍然【相等】，
+      断言依然通过。这是假绿。
+
+    实测（知微在临时副本验证）：只改这一处，原目标套件仍 23/23。
+
+    ⇒ 修法：
+      ① 每一档【分别】断言 m1 不在
+      ② 在同一非空事件流上关 B1，确认原目标断言【变红】
+      ③ 保留未受影响记录的对照（h1 始终在）
+    """
     s = mk_mixed()
-    results = {}
+    total = {}
     for n in (1, 5, 50):
         trace = AI.synthetic_trace(s, [
             {"record_id": "m1", "at": "T%03d" % i,
              "query_ref": "q%d" % i} for i in range(n)
         ])
         r = AI.importance_candidates(s, trace=trace)
-        results[n] = ("m1" not in r["candidates"],
-                      tuple(sorted(r["candidates"])))
-    assert results[1] == results[5] == results[50], (
-        "召回次数改变导致候选集合变化 ⇒ 违反 B2：%r" % results)
-    return "1/5/50 次：m1 始终不在候选集合，其余成员不变"
+        # ① 每一档【分别】断言，不允许用「三档相等」代替
+        assert "m1" not in r["candidates"], (
+            "%d 次召回时 m1 进了候选集合 ⇒ B1 在该档失效" % n)
+        # ③ 未受影响记录的对照
+        assert "h1" in r["candidates"], (
+            "%d 次召回时 h1（人输入的）被误排除" % n)
+        total[n] = (tuple(sorted(r["candidates"])), len(trace))
+
+    # 三档之间其余成员也不应变（排除不变性）
+    sets = [v[0] for v in total.values()]
+    assert sets[0] == sets[1] == sets[2], (
+        "召回次数改变导致其余成员变化：%r" % sets)
+
+    return "1/5/50 次逐档断言：m1 均不在，h1 均在，其余成员不变"
+
+
+@case("A3-2a2", "反证：若 B1 只在「无召回事件」时生效，A3-2a 必须变红")
+def a32a2():
+    """这是 A3-2a 的失败样本（A3 要求每条判据配一个已知会失败的情形）。
+
+    做法：用 exclude 关掉 B1 且喂非空事件流 ⇒ 等价于
+    「有召回事件时 B1 不生效」这一变异的行为。
+    ⇒ A3-2a 中「每一档分别断言」的写法会红；
+      而第一版的「三档相等」写法不会红 —— 这正是假绿的证据。
+    """
+    s = mk_mixed()
+    trace = AI.synthetic_trace(s, [{"record_id": "m1", "at": "T%03d" % i,
+                                    "query_ref": "q%d" % i} for i in range(50)])
+    off = AI.importance_candidates(s, trace=trace,
+                                   exclude=["R_MODEL_GENERATION"])
+    # 变异后：m1 被放行
+    assert "m1" in off["candidates"], (
+        "前提失效：关掉 B1 后 m1 仍未进候选，本反证无效")
+
+    # 逐档断言写法会红
+    per_bucket_would_fail = "m1" not in off["candidates"]
+    assert per_bucket_would_fail is False, (
+        "逐档断言应当在此情形变红")
+
+    # 旧写法（三档相等）在此情形【不会】红 —— 因为三档都是 False
+    olds = []
+    for n in (1, 5, 50):
+        tr = AI.synthetic_trace(s, [
+            {"record_id": "m1", "at": "T%03d" % i,
+             "query_ref": "q%d" % i} for i in range(n)])
+        rr = AI.importance_candidates(s, trace=tr,
+                                      exclude=["R_MODEL_GENERATION"])
+        olds.append(tuple(sorted(rr["candidates"])))
+    assert olds[0] == olds[1] == olds[2], (
+        "旧写法在此情形居然不等 ⇒ 反证前提变了")
+    return "变异下：逐档断言红，旧「三档相等」写法不红 ⇒ 假绿已复现并堵住"
 
 
 @case("A3-2b", "合成事件流拒绝「用不存在的 record_id 造假」")
@@ -353,6 +416,69 @@ def a34b():
               and g["observed_origin"] == "model_generation")
     assert pseudo is False, "冲突成立却派生出了伪亲历 ⇒ 两层被压成一层"
     return "冲突成立但伪亲历为假 ⇒ 两层可区分"
+
+
+@case("A3-4c", "J2：消费者真的把 m1 计入、把 t1 排除在伪亲历名单外")
+def a34c():
+    """⚠ 知微复核指出（2026-11-26）：
+
+    A3-4a/4b 在【测试内部】用两个字段重算 pseudo，
+    没有检查【消费者真的做了什么】。
+    ⇒ 那测的是「我能算出这个布尔值」，不是「系统把谁算进了伪亲历」。
+
+    ⇒ 修：直接调用 summarize_conflicts()，查它返回的
+      pseudo_first_person_ids 实际包含谁。
+    """
+    import afrecover as AR
+    s = mk_mixed()   # 含 m1(first_person×model)、t1(third_person×model)、h1
+
+    ids = [r["record_id"] for r in s.sqlite_rows()]
+    conf = AR.summarize_conflicts(s, ids)
+
+    # 逐条：m1 计入、t1 不计入、h1 不计入
+    per = {p["record_id"]: p for p in conf.get("per_record", [])}
+    assert "m1" in per, "per_record 缺 m1"
+    assert per["m1"]["pseudo_first_person"] is True, (
+        "m1 是 first_person × model_generation，消费者未把它标为伪亲历")
+    assert per["t1"]["pseudo_first_person"] is False, (
+        "t1 是 third_person × model_generation，消费者误把它标为伪亲历")
+    assert per["h1"]["pseudo_first_person"] is False, (
+        "h1 是人输入的，消费者误把它标为伪亲历")
+
+    # 汇总名单也要一致
+    plist = conf.get("pseudo_first_person_ids")
+    if plist is not None:
+        assert "m1" in plist, "汇总名单未含 m1：%r" % (plist,)
+        assert "t1" not in plist, "汇总名单含了 t1：%r" % (plist,)
+        assert "h1" not in plist, "汇总名单含了 h1：%r" % (plist,)
+        return "消费者名单 = %r（m1 计入，t1/h1 排除）" % (sorted(plist),)
+    return "逐条 per_record 正确（m1=True, t1/h1=False）；无汇总名单字段"
+
+
+@case("A3-4d", "反证：把伪亲历派生关掉，A3-4c 必须变红")
+def a34d():
+    """A3：这条断言自己也要能失败。
+    构造一个 third_person × model_generation 却自称 first_person 的情形 ——
+    不，那样会改断言对象。
+
+    ⇒ 改用更直接的反证：把 t1 改成 first_person_report（→ 它就该被计入），
+      断言 A3-4c 中「t1 不计入」的那一条会失败。
+    """
+    import afrecover as AR
+    s = RecoveryStore()
+    s.insert(Record(
+        record_id="t1", content="模型说的", source_kind="system_generated",
+        source_ref="gen/t1", participant_id="sys",
+        participation_basis="first_person_report",  # ← 改成第一人称
+        basis_ref="gen/t1", commitment_state="not_a_commitment",
+        revision=1, prev_digest=None, changed_at=PIN,
+        change_authority="synthetic"))
+    s.record_observed("t1", "model_generation")
+    conf = AR.summarize_conflicts(s, ["t1"])
+    per = {p["record_id"]: p for p in conf.get("per_record", [])}
+    assert per["t1"]["pseudo_first_person"] is True, (
+        "改成 first_person 后应计为伪亲历 ⇒ A3-4c 的「t1 不计入」会在此情形红")
+    return "改一处断言对象：t1(first_person) 被计入 ⇒ A3-4c 会红"
 
 
 # ================================================== 组 ⑤ J3 空分母（单独测）
@@ -527,9 +653,10 @@ def main():
 
     groups = [
         ("① B1 正向/负向（凌翼要求 1）", [a31a, a31b, a31c, a31d, a31e]),
-        ("② 不同召回次数下排除不变（要求 2）", [a32a, a32b, a32c, a32d]),
+        ("② 不同召回次数下排除不变（要求 2）",
+         [a32a, a32a2, a32b, a32c, a32d]),
         ("③ 关闭规则时直接观测变异生效（要求 3/4）", [a33a, a33b, a33c]),
-        ("④ J2 伪亲历单独测（要求 5）", [a34a, a34b]),
+        ("④ J2 伪亲历单独测（要求 5）", [a34a, a34b, a34c, a34d]),
         ("⑤ J3 空分母单独测（要求 5）", [a35a, a35b]),
         ("⑥ 合成标记与红线（要求 6）",
          [a36a, a36a2, a36b, a36c, a36d, a36e]),

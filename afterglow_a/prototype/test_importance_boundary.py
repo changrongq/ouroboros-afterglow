@@ -67,6 +67,33 @@ def mk():
 
 
 # ================================================== ① 用语越界
+#
+# ⚠ 2026-11-26 第二次重写（睫复核的注入反例 + 我自己的两次误判）
+#
+# 两版都失败了，失败方式相反：
+#   第一版：否定上下文放宽到 14 字 ⇒ 睫注入的「# 无阈值设计：按重要性排序」
+#           被放行（漏检）
+#   第二版：否定必须紧贴 ⇒ 「✗ 不计算 importance_score」「不得把 candidates
+#           读作『重要记忆已选出』」被误判（误伤）
+#
+# ⇒ 结论：靠【字面前缀猜意图】这条路本身不成立。
+#   中文里否定可以隔一个名词短语，也可以只有一个符号；
+#   而同一个词既可能出现在禁令里，也可能出现在断言里。
+#
+# ⇒ 改为【显式标注】：
+#   凡是合规的越界用语引用（禁止清单、forbidden_use 字段、注释里的否定句），
+#   必须在同一行末尾带标记 `# boundary-ok`。
+#   没有标记就判违规。
+#
+#   代价：写代码时要多打 15 个字符。
+#   收益：不再靠猜 —— 判据变成「有没有标」，而不是「像不像否定」。
+#
+#   ⚠ 这条判据能支持的最强主张：
+#     「源码中每个越界用语都显式标注为边界引用」。
+#     不是「没有越界陈述」—— 因为有人可以给越界语句也打上标记。
+#     这一层的最后防线仍是人读，不是扫描。
+BOUNDARY_MARK = "# boundary-ok"
+
 #: 不得作为【断言】出现的用语（「重要记忆已经选出」这类）
 BANNED_ASSERTIVE = [
     "重要记忆已选出",
@@ -78,31 +105,51 @@ BANNED_ASSERTIVE = [
 ]
 
 
-@case("BND-1a", "代码中不出现断言性的越界用语")
+@case("BND-1a", "越界用语必须显式标注为边界引用（# boundary-ok）")
 def bnd1a():
-    """⚠ 首版直接扫字面，把 docstring 里「✗ 不计算 importance_score」
-    判成违规 —— 误报：那是否定句，正是我们要写的边界声明。
-
-    ⇒ 判据必须区分【断言】与【否定/禁止】：
-      同行内该词前面出现 不 / 不得 / ✗ / 禁 / 禁止 / 无  ⇒ 视为否定，放行。
-    """
-    NEG_MARKERS = ("不", "✗", "禁", "无", "非", "避免")
-
-    def negated(line, idx):
-        head = line[max(0, idx - 14):idx]
-        return any(m in head for m in NEG_MARKERS)
-
     hits = []
     for i, line in enumerate(LINES, 1):
         for b in BANNED_ASSERTIVE:
-            idx = line.find(b)
-            if idx < 0:
+            if b not in line:
                 continue
-            if negated(line, idx):
+            if BOUNDARY_MARK in line:
                 continue
-            hits.append((i, b, line.strip()[:80]))
-    assert not hits, "出现断言性越界用语：%s" % hits
-    return "无命中（扫描 %d 个用语，已排除否定上下文）" % len(BANNED_ASSERTIVE)
+            hits.append((i, b, line.strip()[:78]))
+    assert not hits, (
+        "出现未标注的越界用语（若为合规引用请加 %s）：%s"
+        % (BOUNDARY_MARK, hits))
+    return "全部越界用语均已显式标注"
+
+
+@case("BND-1c", "反证：睫的注入行没有标记，必须被抓到")
+def bnd1c():
+    """A3：这条扫描自己也要能失败。
+    睫 2026-11-26 注入：
+        # 无阈值设计：按重要性排序（注入行）
+    """
+    inject = "  # 无阈值设计：按重要性排序（注入行）"
+    caught = False
+    for b in BANNED_ASSERTIVE:
+        if b in inject and BOUNDARY_MARK not in inject:
+            caught = True
+    assert caught, "注入行未被识别为违规 ⇒ 判据失效"
+    return "注入行（无标记）被判违规"
+
+
+@case("BND-1d", "对照：带标记的正确否定句必须放行（不得误伤）")
+def bnd1d():
+    cases = [
+        ("# ✗ 不计算 importance_score / 任何数值  " + BOUNDARY_MARK,
+         "importance_score"),
+        ('"forbidden_use": "不得读作「重要记忆已选出」",  ' + BOUNDARY_MARK,
+         "重要记忆已选出"),
+    ]
+    for line, word in cases:
+        assert word in line, "用例写错：%r 不含 %r" % (line, word)
+        assert BOUNDARY_MARK in line, "用例缺标记"
+        ok = not (word in line and BOUNDARY_MARK not in line)
+        assert ok, "带标记的正确写法被误判：%r" % line
+    return "%d 条带标记的正确写法均被放行" % len(cases)
 
 
 @case("BND-1b", "「不代表重要记忆已选出」这句必须在代码里")
@@ -228,7 +275,7 @@ def main():
     print("=" * 82)
     print()
     print("[① 用语越界]")
-    for f in (bnd1a, bnd1b):
+    for f in (bnd1a, bnd1c, bnd1d, bnd1b):
         f()
     print()
     print("[② 返回结构边界]")

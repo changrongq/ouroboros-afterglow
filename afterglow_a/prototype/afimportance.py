@@ -14,7 +14,7 @@
 
 本模块【明确不做】的事
 ----------------------
-    ✗ 不计算 importance_score / 任何数值
+    ✗ 不计算 importance_score / 任何数值  # boundary-ok
     ✗ 不训练
     ✗ 不排序（返回的是 set，不是有序列表）
     ✗ 不读写 reports/ 中任何「重要性结论」
@@ -160,12 +160,20 @@ def importance_candidates(store: RecoveryStore,
     {
       status: "EVALUATED" | "NOT_EVALUABLE",
       candidates: set[record_id],      # 未分数、未排序
-      denominator_size: int,           # |asserted == first_person_report 的记录数|
-      excluded: {rule: [record_id]},   # 每条规则排除了谁
+      denominator_size: int,
+      excluded: {rule: [record_id]},
       active_rules: [...],
-      measurement_scope: "SYNTHETIC" | "NOT_MEASURED",
+      measurement_scope: "MEASURED_ON_SYNTHETIC_ONLY" | "NOT_MEASURED",
+      allowed_use: str,                # 肯定式：这个返回值可以被用来做什么
+      forbidden_use: str,              # 否定式：不能被读成什么
       note: str,
     }
+
+    ⚠ 2026-11-26 修正（睫复核）：
+      第一版把「肯定式定义」写在 note 里，后面紧跟一句否定式，
+      于是读者把整段当注释。
+      ⇒ 现拆成 allowed_use（可用途）/ forbidden_use（禁读法）两个必读字段。
+      二者都必须存在：只有否定式的边界防误读，但不给使用范围。
 
     ⚠ C2：分母为空 ⇒ status = NOT_EVALUABLE，且 candidates 为空集。
       不是「没有重要项」，也不是 0。
@@ -213,6 +221,11 @@ def importance_candidates(store: RecoveryStore,
             "active_rules": sorted(active),
             "measurement_scope": (SYNTHETIC_PREFIX if trace is not None
                                   else "NOT_MEASURED"),
+            "allowed_use": ("可用于断言「本批次不可评估」（status 字段）；"
+                            "可用于测试 C2 判据本身。"),
+            "forbidden_use": ("不得把 candidates 为空集读成「没有重要项」；"
+                              "不得把空集与「已判定为零」合并统计；"
+                              "不得脱离 status 单独引用 candidates。"),
             "note": ("分母为 0 ⇒ NOT_EVALUABLE。"
                      "这不是「没有重要项」，也不是 0（C2）。"),
         }
@@ -225,6 +238,11 @@ def importance_candidates(store: RecoveryStore,
         "active_rules": sorted(active),
         "measurement_scope": (SYNTHETIC_PREFIX if trace is not None
                               else "NOT_MEASURED"),
+        "allowed_use": ("可用于断言「某记录未被已声明规则排除」；"
+                        "可用于验证排除规则在合成夹具上的可逆性。"),
+        "forbidden_use": ("不得把 candidates 读作「重要记忆已选出」；"  # boundary-ok
+                          "不得把 set 大小变化读作重要性变化；"
+                          "不得用于任何真实历史结论或科学结论。"),
         "note": ("候选资格集合 = 未被已声明规则排除的记录。"
                  "它不代表「重要记忆已经选出」。"),
     }
@@ -233,56 +251,98 @@ def importance_candidates(store: RecoveryStore,
 # ================================================================ 合成比例（仅合成）
 
 def synthetic_ratios(store: RecoveryStore,
-                     trace: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    """在合成夹具上算 unverifiable_ratio 与 record_only_ratio。
+                     trace: Optional[Iterable[Dict[str, Any]]] = None,
+                     scope_ids: Optional[Iterable[str]] = None,
+                     ) -> Dict[str, Any]:
+    """在合成夹具上算两个覆盖比例。
 
-    ⚠ D3 / 凌翼裁定第 6 条：
-       合成夹具上的基线只能证明「这个指标能算出来」，
-       【不能】证明「它等于多少」。
-       状态词只能写 MEASURED_ON_SYNTHETIC_ONLY。
+    ⚠ 2026-11-26 修正（知微复核）—— 两处口径错误，均已复现：
 
-    ⚠ 红线（Mion 回复6 §五 D5 / C 红线）：
-       无基线前，任何重要性结论不得写入 reports/。
-       本函数【不写任何文件】。调用方拿到值后只能放进测试断言里。
+    【错误一】unverifiable_ratio 把「从未观测」报成 0%
+      第一版只看 basis_conflict ∈ {observed_absent, observed_unresolved}。
+      而【从未调用 record_observed】的记录，basis_conflict = None，
+      ⇒ 被算作「可判定」，于是唯一那条从未观测的记录报成 0% 不可核验。
+      而同一库上 afrecover.summarize_conflicts 把该 ID 列为不可核验。
+      ⇒ 修：observed_origin is None 也计入不可核验
+        （「没有观测通道」与「观测了但判不出」都属于无法判定）。
 
-    ⚠ 2026-11-25 修正（C1 口径）：
-       第一版分母用 len(live)（全体记录）。
-       但 C1 明文规定分母 = |asserted == first_person_report 的记录数|。
-       ⇒ 两者不同：record_only / third_person 的记录不属于「重要性判断」的分母。
-       ⇒ 第一版因此永远不为空（只要库里有一条记录），
-         于是「空分母 ⇒ None」这条判据从未被触发过。
-         这是【判据与实现口径不一致】，不是测试问题。
+    【错误二】record_only_ratio 结构性恒零
+      第一版分母 = first_person_report，再从其中找 record_only
+      ⇒ 分子恒为 0，指标永远没有监测能力。
+      ⇒ 修：该比例的分母改用【指定的取回集】（scope_ids），
+        不再用 first_person 分母。两个指标分母本就不同：
+            unverifiable_ratio  分母 = first_person_report（C1 规定）
+            record_only_ratio   分母 = 取回集（与恢复层同口径）
+      ⚠ 不要简单把两个分母都改回 len(live) —— 那会把 C1 也改错。
+
+    ⚠ 口径必须显式登记：两个指标的总体不同，且各自写明。
     """
     live = list(store.sqlite_rows())
+    by_id = {r["record_id"]: r for r in live}
 
-    # C1：分母 = asserted == first_person_report 的记录数
-    denominator = [r for r in live
-                   if r.get("participation_basis") == "first_person_report"]
-    n = len(denominator)
+    # 取回集：未指定时视为「全库当前版本」
+    if scope_ids is None:
+        scope = live
+        scope_desc = "ALL_CURRENT_RECORDS"
+    else:
+        scope = [by_id[i] for i in scope_ids if i in by_id]
+        scope_desc = "EXPLICIT_SCOPE"
 
-    if n == 0:
+    # ---- 指标一：unverifiable_ratio（C1 分母 = first_person_report）
+    denom = [r for r in scope
+             if r.get("participation_basis") == "first_person_report"]
+    n = len(denom)
+    unverifiable = [
+        r for r in denom
+        if r.get("observed_origin") is None            # 从未观测
+        or r.get("basis_conflict") in ("observed_absent", "observed_unresolved")
+    ]
+
+    # ---- 指标二：record_only_ratio（分母 = 取回集，与恢复层同口径）
+    m = len(scope)
+    record_only = [r for r in scope
+                   if r.get("participation_basis") == "record_only"]
+
+    if n == 0 and m == 0:
         return {
             "measurement_scope": SYNTHETIC_PREFIX,
+            "scope_description": scope_desc,
             "unverifiable_ratio": None,
             "record_only_ratio": None,
             "denominator_size": 0,
+            "record_only_denominator_size": 0,
             "basis": "empty",
-            "note": ("分母（asserted==first_person_report）为空 ⇒ 比例无定义（不是 0）。"),
+            "allowed_use": "可用于断言「两个比例均无定义」（值为 None）。",
+            "forbidden_use": ("不得把 None 写作 0；"
+                              "不得把空分母读作「全部可判定」。"),
+            "note": ("两个分母均为 0 ⇒ 两个比例都无定义（不是 0）。"
+                     "unverifiable 与 record_only 的分母不同，见 denominators 说明。"),
         }
-
-    unverifiable = [r for r in denominator
-                    if r.get("basis_conflict") in
-                    ("observed_absent", "observed_unresolved")]
-    record_only = [r for r in denominator
-                   if r.get("participation_basis") == "record_only"]
 
     return {
         "measurement_scope": SYNTHETIC_PREFIX,
-        "unverifiable_ratio": len(unverifiable) / n,
-        "record_only_ratio": len(record_only) / n,
-        "denominator_size": n,
+        "scope_description": scope_desc,
+        # 分母口径逐项写明 —— 两个指标分母不同，不许默认相同
+        "denominator_size": n,                 # unverifiable 的分母
+        "record_only_denominator_size": m,     # record_only 的分母
+        "unverifiable_ratio": (len(unverifiable) / n) if n else None,
+        "record_only_ratio": (len(record_only) / m) if m else None,
+        # ⚠ 下面两个 ID 列表是【无法核验/只记录 的记录 ID】，
+        #   不是「已识别的伪亲历名单」也不是「已识别的洗白档名单」。
+        #   名字里带 ids 容易被读成「判定结果」，故此处写明。
         "unverifiable_ids": sorted(r["record_id"] for r in unverifiable),
         "record_only_ids": sorted(r["record_id"] for r in record_only),
+        "ids_meaning": ("unverifiable_ids = 无法判定是否伪亲历的记录 ID；"
+                        "record_only_ids = 断言类别为 record_only 的记录 ID。"
+                        "两者都不是「已识别的名单」——前者是判不了，"
+                        "后者是自述类别，均不构成对任何记录的指控或确认。"),
+        "allowed_use": ("可用于在合成夹具上验证比例可算；"
+                        "可用于回归测试的固定断言。"),
+        "forbidden_use": ("不得写入 reports/ 或任何正式报告；"
+                          "不得当作真实历史中的比例；"
+                          "不得把 unverifiable_ids 读作已识别名单；"
+                          "两个比例分母不同，不得合并引用。"),
         "note": ("合成夹具上的测量。只证明该指标能算出来，"
-                 "不证明它在真实历史中等于此值。"),
+                 "不证明它在真实历史中等于此值。"
+                 "两个比例的分母不同，不得合并引用。"),
     }
