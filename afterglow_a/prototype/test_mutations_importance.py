@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,13 +28,46 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TARGET = "afimportance.py"
 TEST_FILE = "test_importance_a3b3.py"
 
-# 每条 = (id, 说明, 原文, 替换为)
+def parse_case_results(out):
+    """解析目标测试的实际 case 级结果：{case_id: "PASS"|"FAIL"|"ERR"}。
+
+    ⚠ 知微定点复验指出：只数 [FAIL] 文本无法归因。
+      必须解析出【哪个 case】红了，才能判断是否为目标 case。
+    格式来自各套测试的输出行：
+        [PASS] A3-1a 说明 — 结果
+        [FAIL] A3-1a 说明 — 原因
+        [ERR ] A3-1a 说明 — 异常
+    """
+    res = {}
+    pat = re.compile(r"\[(PASS|FAIL|ERR)\s*\]\s+([A-Za-z0-9][A-Za-z0-9\-_]*)\s")
+    for line in out.splitlines():
+        m = pat.search(line)
+        if not m:
+            continue
+        state, cid = m.group(1), m.group(2)
+        # 同一 case 出现多次时，取最严重的
+        rank = {"PASS": 0, "FAIL": 1, "ERR": 2}
+        if cid not in res or rank[state] > rank[res[cid]]:
+            res[cid] = state
+    return res
+
+
+# 每条 = (id, 说明, 原文, 替换为, 目标 case ID 集合)
+#
+# ⚠ 2026-11-26 新增第五项（知微定点复验）：
+#   原实现只数 [FAIL] 文本，【不核 case ID】。
+#   知微实测：对实际改变排除结果的 I1，用「只有无关 A3-6e 红」的输出替身，
+#   得到 CAUGHT / PASS / exit 0。
+#   ⇒ 必须为每个变异声明【可归因的目标 case】，
+#      并解析实际 case 结果，只有目标 case 真的红了才算 CAUGHT。
+
 MUTATIONS = [
     (
         "I1", "B1 排除条件被删掉（model_generation 不再被排除）",
         '        if ("R_MODEL_GENERATION" in active\n'
         '                and rec.get("observed_origin") == "model_generation"):',
         '        if False:  # MUTANT: B1 失效',
+        {"A3-1a", "A3-1c", "A3-1d", "A3-1e"},
     ),
     (
         "I2", "B1 排除条件放宽（只排 first_person × model_generation）",
@@ -43,37 +77,46 @@ MUTATIONS = [
         '                and rec.get("observed_origin") == "model_generation"\n'
         '                and rec.get("participation_basis")\n'
         '                    == "first_person_report"):  # MUTANT',
+        {"A3-1d", "A3-1e"},
     ),
     (
         "I3", "exclude 参数被忽略（关闭规则无效 ⇒ 变异无法生效）",
         '    active = rules - off',
         '    active = rules  # MUTANT: 忽略 exclude',
+        {"A3-3a", "A3-3b", "A3-2a2"},
     ),
     (
         "I4", "空分母判据失效（NOT_EVALUABLE 变 EVALUATED）",
         '    if ("R_EMPTY_DENOMINATOR" in active) and denom_size == 0:',
         '    if False:  # MUTANT: C2 失效',
+        {"A3-5a"},
     ),
     (
         "I5", "空分母仍返回全部候选（不是空集）",
         '            "candidates": set(),',
         '            "candidates": candidates,  # MUTANT: 空分母返回非空集',
+        {"A3-5a"},
     ),
     (
         "I6", "合成事件流不校验 record_id 真实存在",
-        '        if store.get(rid) is None:',
-        '        if False:  # MUTANT: 不校验存在性',
+        '        if store.get(rid) is None:\n'
+        '            raise SchemaError(',
+        '        if False:  # MUTANT: 不校验存在性\n'
+        '            raise SchemaError(',
+        {"A3-2b"},
     ),
     (
         "I7", "合成事件流不拒绝完全重复事件",
         '        if key in seen_events:',
         '        if False:  # MUTANT: 允许重复事件',
+        {"A3-2c"},
     ),
     (
         "I8", "未知规则被静默忽略",
         '    if unknown_off:\n'
         '        raise SchemaError("exclude 含未知规则：%s" % sorted(unknown_off))',
         '    # MUTANT: 未知规则直接忽略',
+        {"A3-3c"},
     ),
     (
         "I9", "NOT_EVALUABLE 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
@@ -82,6 +125,7 @@ MUTATIONS = [
         '            "allowed_use": ("可用于断言「本批次不可评估」（status 字段）；"',
         '            "measurement_scope": "NOT_MEASURED",  # MUTANT\n'
         '            "allowed_use": ("可用于断言「本批次不可评估」（status 字段）；"',
+        {"A3-6a2"},
     ),
     (
         "I9b", "EVALUATED 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
@@ -90,6 +134,7 @@ MUTATIONS = [
         '        "allowed_use": ("可用于断言「某记录未被已声明规则排除」；"',
         '        "measurement_scope": "NOT_MEASURED",  # MUTANT\n'
         '        "allowed_use": ("可用于断言「某记录未被已声明规则排除」；"',
+        {"A3-6a", "A3-6e"},
     ),
     (
         "I10", "空分母比例返回 0 而不是 None",
@@ -97,12 +142,35 @@ MUTATIONS = [
         '            "record_only_ratio": None,',
         '            "unverifiable_ratio": 0.0,  # MUTANT\n'
         '            "record_only_ratio": 0.0,   # MUTANT',
+        {"A3-6d"},
     ),
     (
         "I11", "B3 排除只看路径不看值（改成读 basis_conflict 而非 observed_origin）",
         '                and rec.get("observed_origin") == "model_generation"):',
         '                and rec.get("basis_conflict")\n'
         '                    == "asserted_contradicts_observed"):  # MUTANT',
+        {"A3-1e"},
+    ),
+    # ⚠ 2026-11-26 新增（知微定点复验 §「显式范围会改变样本总体却不告知」）
+    (
+        "I12", "显式范围允许重复 ID（同一记录被算两次）",
+        '            if rid in seen:\n'
+        '                dup.append(rid)\n'
+        '                continue',
+        '            if False:  # MUTANT: 允许重复 ID\n'
+        '                dup.append(rid)\n'
+        '                continue',
+        {"A3-7a"},
+    ),
+    (
+        "I13", "显式范围静默丢弃未知 ID",
+        '            if rid not in by_id:\n'
+        '                unknown.append(rid)\n'
+        '                continue',
+        '            if False:  # MUTANT: 静默丢弃未知 ID\n'
+        '                unknown.append(rid)\n'
+        '                continue',
+        {"A3-7b"},
     ),
 ]
 
@@ -144,6 +212,14 @@ def mk_mixed():
         basis_ref="gen/t1", commitment_state="not_a_commitment",
         revision=1, prev_digest=None, changed_at=PIN,
         change_authority="synthetic"))
+    # ⚠ 2026-11-26 补：探针夹具原缺 ro1，
+    #   于是 scope_contract 里 ["h1","ro1"] 报「不存在 ro1」而不是正常返回，
+    #   I12/I13 因此无法归因（探针缺口，不是代码问题）。
+    s.insert(Record(record_id="ro1", content="只记录",
+        source_kind="unknown", source_ref="doc/ro1", participant_id=None,
+        participation_basis="record_only", basis_ref="doc/ro1",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
     s.record_observed("m1", "model_generation", note="probe")
     s.record_observed("t1", "model_generation", note="probe")
     return s
@@ -292,6 +368,43 @@ out["ro_model"] = safe(lambda: {
     "has_ro2": "ro2" in AI.importance_candidates(
         mk_record_only_model(), trace=[])["candidates"]})
 
+# V11 · 显式范围契约（I12/I13 会在此暴露）
+#
+# ⚠ 2026-11-26 新增（知微定点复验 §「显式范围会改变样本总体却不告知」）：
+#   重复 ID 与未知 ID 的处理必须可观测，否则这两个变异无法归因。
+def _scope_contract():
+    s = mk_mixed()
+    out2 = {}
+    # 基准：正常显式范围
+    try:
+        r = AI.synthetic_ratios(s, [], scope_ids=["h1", "ro1"])
+        out2["normal"] = {"denom": r["record_only_denominator_size"],
+                          "ro": r["record_only_ratio"]}
+    except Exception as e:
+        out2["normal"] = {"_exc": type(e).__name__}
+    # 重复 ID
+    try:
+        r = AI.synthetic_ratios(s, [], scope_ids=["h1", "ro1", "ro1"])
+        out2["dup"] = {"accepted": True,
+                       "denom": r["record_only_denominator_size"],
+                       "ro": r["record_only_ratio"]}
+    except Exception as e:
+        out2["dup"] = {"accepted": False, "exc": type(e).__name__}
+    # 未知 ID
+    try:
+        r = AI.synthetic_ratios(s, [], scope_ids=["ghost"])
+        out2["unknown"] = {"accepted": True, "basis": r.get("basis")}
+    except Exception as e:
+        out2["unknown"] = {"accepted": False, "exc": type(e).__name__}
+    # 空范围（对照组）
+    try:
+        r = AI.synthetic_ratios(s, [], scope_ids=[])
+        out2["empty"] = {"accepted": True, "basis": r.get("basis")}
+    except Exception as e:
+        out2["empty"] = {"accepted": False, "exc": type(e).__name__}
+    return out2
+out["scope_contract"] = safe(_scope_contract)
+
 print("PROBE_JSON " + json.dumps(out, ensure_ascii=False))
 '''
 
@@ -385,7 +498,7 @@ def main():
         print()
 
     rows = []
-    for mid, desc, old, new in MUTATIONS:
+    for mid, desc, old, new, target_cases in MUTATIONS:
         with tempfile.TemporaryDirectory() as td:
             copy_all(td)
             ok, note = apply_mut(td, old, new)
@@ -398,23 +511,25 @@ def main():
             changed, detail = behavior_changed(base_obs, mut_obs)
             rc, out = run_target_test(td)
 
-            # ⚠ 2026-11-26 修正（知微复核）：
+            # ⚠ 2026-11-26 第二次修正（知微定点复验）：
             #
-            # 第一版：rc != 0 一律记 CAUGHT。
-            # 知微复现：把变异后的目标运行替为「启动失败，rc=2，零用例」，
-            # 结果仍然是 CAUGHT 1 / PASS / exit 0，
-            # 而且证据行同时写着「失败用例 0 条」——
-            # 一个自相矛盾的证据行，居然没有拦住自己。
+            # 第一版：rc != 0 一律 CAUGHT。
+            # 第二版：数 [FAIL] 文本，仍【不核 case ID】。
+            #   知微实测：对真正改变排除结果的 I1，
+            #   用「只有无关 A3-6e 红」的输出替身 ⇒ CAUGHT / PASS / exit 0。
+            #   「目标 A3-1a 抛异常 + 无关 A3-6e 红」同样被放过。
             #
-            # ⇒ 修：把「红」拆成四种，只有第一种算 CAUGHT：
-            #     TEST_ASSERT_FAILED  目标用例确实执行、且按目标断言失败
-            #     TEST_CRASHED        运行中异常（非断言）
-            #     TEST_DID_NOT_RUN    启动失败 / 零用例 / 无 case 级输出
-            #     UNRESOLVED          行为未变或无法观测
-            n_assert_fail = len([l for l in out.splitlines() if "[FAIL]" in l])
-            n_error = len([l for l in out.splitlines() if "[ERR ]" in l])
-            n_case = len([l for l in out.splitlines()
-                          if "[PASS]" in l or "[FAIL]" in l or "[ERR ]" in l])
+            # ⇒ 现在：每个变异声明 target_cases，
+            #   解析实际 case 结果，只有【目标 case 真的红了】才算 CAUGHT。
+            case_results = parse_case_results(out)
+            hit = sorted(tc for tc in target_cases
+                         if case_results.get(tc) in ("FAIL", "ERR"))
+
+            n_case = len(case_results)
+            n_fail = sum(1 for v in case_results.values() if v == "FAIL")
+            n_err = sum(1 for v in case_results.values() if v == "ERR")
+            unrelated = sorted(tc for tc, v in case_results.items()
+                               if v in ("FAIL", "ERR") and tc not in target_cases)
 
             if changed is None:
                 status = "UNRESOLVED"
@@ -424,26 +539,37 @@ def main():
                 evid = ("直接观测：行为【未变】（%s）⇒ 该变异无效，"
                         "不得据此判断言强弱（M1）" % (detail or "无差异"))
             elif n_case == 0:
-                # 一个用例都没跑出来 ⇒ 不能算「断言捕获了变异」
                 status = "TEST_DID_NOT_RUN"
                 evid = ("行为已变（%s），但目标测试【零用例输出】"
-                        "（rc=%s）⇒ 不得记 CAUGHT" % (detail[:70], rc))
-            elif n_assert_fail == 0:
-                status = "TEST_CRASHED"
-                evid = ("行为已变（%s），但【无 [FAIL] 断言失败】，"
-                        "仅 %d 条 [ERR ] / rc=%s ⇒ 不算按目标断言捕获"
-                        % (detail[:70], n_error, rc))
-            elif rc == 0:
+                        "（rc=%s）⇒ 不得记 CAUGHT" % (detail[:60], rc))
+            elif hit:
+                # 目标 case 真的红了
+                if rc == 0:
+                    status = "MISSED"
+                    evid = ("目标 case %s 红，但退出码 0 ⇒ 测试自身判定有误"
+                            % hit)
+                else:
+                    status = "CAUGHT"
+                    evid = ("行为已变；目标 case 红：%s（%d FAIL / %d ERR）%s"
+                            % (", ".join(hit), n_fail, n_err,
+                               ("；另有无关红：%s" % unrelated) if unrelated else ""))
+            elif n_fail == 0 and n_err == 0:
                 status = "MISSED"
-                evid = ("行为已变（%s），且出现 %d 条 [FAIL]，"
-                        "但退出码为 0 ⇒ 测试自身判定有误"
-                        % (detail[:70], n_assert_fail))
+                evid = ("行为已变（%s），但【无任何 case 红】"
+                        "⇒ 真漏洞（目标 %s 未被守住）"
+                        % (detail[:60], sorted(target_cases)))
+            elif unrelated:
+                status = "NOT_ATTRIBUTABLE"
+                evid = ("行为已变（%s），但红的是【无关 case】%s，"
+                        "目标 %s 全绿 ⇒ 无法归因到本变异"
+                        % (detail[:60], unrelated, sorted(target_cases)))
             else:
-                status = "CAUGHT"
-                fails = [l.strip() for l in out.splitlines() if "[FAIL]" in l]
-                evid = "行为已变（%s）；%d 条 [FAIL]，首条：%s" % (
-                    detail[:90], n_assert_fail,
-                    fails[0][:64] if fails else "（无）")
+                status = "TEST_CRASHED"
+                evid = ("行为已变（%s），目标 case 有 ERR：%s"
+                        "（无 FAIL，按异常单列）"
+                        % (detail[:60],
+                           sorted(tc for tc, v in case_results.items()
+                                  if v == "ERR")))
 
             rows.append((mid, desc, status, evid))
             print("  [%-11s] %-4s %s" % (status, mid, desc))
@@ -455,19 +581,23 @@ def main():
     for _, _, st, _ in rows:
         counts[st] = counts.get(st, 0) + 1
     for st in ("CAUGHT", "UNRESOLVED", "MISSED", "INVALID",
-               "TEST_DID_NOT_RUN", "TEST_CRASHED"):
+               "TEST_DID_NOT_RUN", "TEST_CRASHED", "NOT_ATTRIBUTABLE"):
         if st in counts:
             print("  %-18s %d" % (st, counts[st]))
     print("=" * 84)
 
     # 只有这几类算失败；UNRESOLVED 不计入（三态分离，E2）
     bad = (counts.get("MISSED", 0) + counts.get("INVALID", 0)
-           + counts.get("TEST_DID_NOT_RUN", 0) + counts.get("TEST_CRASHED", 0))
+           + counts.get("TEST_DID_NOT_RUN", 0) + counts.get("TEST_CRASHED", 0)
+           + counts.get("NOT_ATTRIBUTABLE", 0))
     verdict = "PASS" if bad == 0 else "FAIL"
     print("  判定：%s（共 %d 个变异）" % (verdict, len(rows)))
     if counts.get("UNRESOLVED", 0):
         print("  ⚠ UNRESOLVED %d 条：变异未改变可观测行为/无法观测，" % counts["UNRESOLVED"])
         print("    不计入 CAUGHT，也不计入 MISSED —— 三态不合并（E2）。")
+    if counts.get("NOT_ATTRIBUTABLE", 0):
+        print("  ⚠ NOT_ATTRIBUTABLE %d 条：行为变了但红的不是目标 case" % counts["NOT_ATTRIBUTABLE"])
+        print("    ⇒ 不能归因到本变异，不算捕获（知微定点复验要求）。")
 
     out_dir = os.path.join(HERE, "reports")
     os.makedirs(out_dir, exist_ok=True)

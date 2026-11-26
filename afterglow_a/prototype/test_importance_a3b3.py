@@ -446,13 +446,54 @@ def a34c():
         "h1 是人输入的，消费者误把它标为伪亲历")
 
     # 汇总名单也要一致
-    plist = conf.get("pseudo_first_person_ids")
-    if plist is not None:
-        assert "m1" in plist, "汇总名单未含 m1：%r" % (plist,)
-        assert "t1" not in plist, "汇总名单含了 t1：%r" % (plist,)
-        assert "h1" not in plist, "汇总名单含了 h1：%r" % (plist,)
-        return "消费者名单 = %r（m1 计入，t1/h1 排除）" % (sorted(plist),)
-    return "逐条 per_record 正确（m1=True, t1/h1=False）；无汇总名单字段"
+    #
+    # ⚠ 2026-11-26 修正（知微定点复验）：
+    #   第一版写 `if plist is not None:` —— 名单【整个缺失】时直接进成功分支。
+    #   知微实测：只把消费者输出改名为 pseudo_first_person_xx、
+    #   保留逐条值，目标套件仍 26/26 全绿。
+    #   ⇒ 缺字段不得算通过。必须断言：键存在、值可迭代、且集合恰等于
+    #     per_record 中标真的全部 ID。
+    assert "pseudo_first_person_ids" in conf, (
+        "summarize_conflicts 缺 pseudo_first_person_ids 字段 ⇒ "
+        "A3-4c 不能靠「字段不存在就跳过」通过")
+    plist = conf["pseudo_first_person_ids"]
+    assert isinstance(plist, (list, tuple, set)), (
+        "pseudo_first_person_ids 类型为 %s，应为名单"
+        % type(plist).__name__)
+
+    # 逐条真值为 True 的 ID 集合，必须与名单【恰等】——不是「包含」
+    expect = {rid for rid, p in per.items()
+              if p.get("pseudo_first_person") is True}
+    assert set(plist) == expect, (
+        "名单与逐条不一致：名单=%r 逐条真值=%r"
+        % (sorted(plist), sorted(expect)))
+    # 反向也要守：名单里不得出现逐条为 False 的 ID
+    for rid in plist:
+        assert per.get(rid, {}).get("pseudo_first_person") is not False, (
+            "%r 在名单里，但逐条判为 False ⇒ 两者矛盾" % rid)
+    return "名单与逐条恰等：%r（m1 计入，t1/h1 排除）" % (sorted(plist),)
+
+
+@case("A3-4c2", "反证：名单字段缺失时 A3-4c 必须变红")
+def a34c2():
+    """A3：A3-4c 自己也要能失败。
+
+    知微实测的形态：把消费者输出改名（保留逐条值），
+    第一版仍 26/26 全绿。
+    ⇒ 这里断言「缺字段会被 A3-4c 的 `in conf` 判据抓住」。
+    """
+    fake_conf = {"per_record": [
+        {"record_id": "m1", "pseudo_first_person": True}]}   # 缺名单
+
+    caught_by_presence_check = "pseudo_first_person_ids" not in fake_conf
+    assert caught_by_presence_check, (
+        "缺字段居然被判为存在 ⇒ A3-4c 的键存在断言无效")
+
+    # 对照：旧写法会放行
+    old_would_pass = ("if plist is not None" and
+                      fake_conf.get("pseudo_first_person_ids") is None)
+    assert old_would_pass, "旧写法的逃逸前提变了"
+    return "缺字段：旧写法放行、新写法（in conf）拦截"
 
 
 @case("A3-4d", "反证：把伪亲历派生关掉，A3-4c 必须变红")
@@ -616,6 +657,63 @@ def a36e():
     return "两函数键名一致：measurement_scope=%s" % c["measurement_scope"]
 
 
+# ================================================== 组 ⑦ 显式范围契约
+@case("A3-7a", "显式范围拒绝重复 ID（同一记录不得被算两次）")
+def a37a():
+    """知微定点复验：原实现保留重复 ⇒ [r1,ro1,ro1] 分母变 3，
+    比例从 0.5 变 0.667，而调用方看不出范围被改变了。
+    """
+    s = mk_mixed()
+    ok = AI.synthetic_ratios(s, [], scope_ids=["h1", "ro1"])
+    assert ok["record_only_denominator_size"] == 2, (
+        "基准：[h1,ro1] 分母应为 2，实测 %r"
+        % ok["record_only_denominator_size"])
+
+    try:
+        AI.synthetic_ratios(s, [], scope_ids=["h1", "ro1", "ro1"])
+    except SchemaError as e:
+        assert "重复" in str(e), "拒绝理由未提重复：%s" % str(e)[:60]
+        return "重复 ID 被拒：[h1,ro1] 分母 2；[h1,ro1,ro1] 报错"
+    raise AssertionError(
+        "重复 ID 被静默接受 ⇒ 同一记录会被算两次，比例失真")
+
+
+@case("A3-7b", "显式范围拒绝未知 ID（不得与「范围为空」混淆）")
+def a37b():
+    """知微定点复验：原实现静默丢弃 ⇒ [ghost] 与 [] 返回完全相同，
+    于是「没能解析任何 ID」与「本次范围本来为空」混成一件事。
+    """
+    s = mk_mixed()
+
+    # 空范围：语义是「范围为空」，应当正常返回空
+    empty = AI.synthetic_ratios(s, [], scope_ids=[])
+    assert empty.get("basis") == "empty", (
+        "空范围应返回 basis=empty，实测 %r" % empty.get("basis"))
+
+    # 未知 ID：语义是「解析失败」，必须报错而不是伪装成空
+    try:
+        AI.synthetic_ratios(s, [], scope_ids=["ghost"])
+    except SchemaError as e:
+        assert "不存在" in str(e) or "ghost" in str(e), (
+            "拒绝理由不明：%s" % str(e)[:60])
+        return "[] → basis=empty；[ghost] → 报错（两者不再等同）"
+    raise AssertionError(
+        "未知 ID 被静默丢弃 ⇒ 不完整范围会冒充完整范围")
+
+
+@case("A3-7c", "两个返回分支的键集合一致（空分支不再少字段）")
+def a37c():
+    """知微 + 睫都指出：空分支 10 键、非空 12 键。
+    ⇒ 同一函数两种键集合 ⇒ 「完整清单」站不住。
+    """
+    full = AI.synthetic_ratios(mk_mixed(), [])
+    empty = AI.synthetic_ratios(RecoveryStore(), [])
+    assert set(full) == set(empty), (
+        "两分支键集合不同：仅非空有 %s；仅空有 %s"
+        % (sorted(set(full) - set(empty)), sorted(set(empty) - set(full))))
+    return "两分支均 %d 键，集合一致" % len(full)
+
+
 # ================================================== 自指检查
 @case("A3-0", "本文件的断言不是空转：构造一个必然违反 B1 的输入")
 def a30():
@@ -656,10 +754,11 @@ def main():
         ("② 不同召回次数下排除不变（要求 2）",
          [a32a, a32a2, a32b, a32c, a32d]),
         ("③ 关闭规则时直接观测变异生效（要求 3/4）", [a33a, a33b, a33c]),
-        ("④ J2 伪亲历单独测（要求 5）", [a34a, a34b, a34c, a34d]),
+        ("④ J2 伪亲历单独测（要求 5）", [a34a, a34b, a34c, a34c2, a34d]),
         ("⑤ J3 空分母单独测（要求 5）", [a35a, a35b]),
         ("⑥ 合成标记与红线（要求 6）",
          [a36a, a36a2, a36b, a36c, a36d, a36e]),
+        ("⑦ 显式范围契约（知微定点复验）", [a37a, a37b, a37c]),
         ("⑦ A3 自指：本文件能否失败", [a30]),
     ]
     for title, fns in groups:

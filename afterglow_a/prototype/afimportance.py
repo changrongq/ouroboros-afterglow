@@ -72,7 +72,17 @@ EXCLUSION_RULES = {
     "R_EMPTY_DENOMINATOR",
 }
 
-#: 结论状态词。⚠ 三者不合并。
+#: 结论状态词。
+#
+# ⚠ 2026-11-26 更正（睫指出）：原注释写「⚠ 三者不合并」，实际只有 2 个值。
+#   那是从别处抄来的残留 —— 注释说的数量与代码不符，
+#   而读者会信注释。现按实际数量写。
+#
+# ⚠ 另一个必须写明的：本字段【不可】与 synthetic_ratios 的 basis 混读。
+#   status = 这批能不能评估（EVALUATED / NOT_EVALUABLE）
+#   basis  = 为什么是空（empty）
+#   ⇒ 「判未判定」须读各自载体（status，或 basis + 比例为 None），
+#     不许按「有没有 status 键」当跨函数统一信号。
 CANDIDATE_STATUS = {
     "EVALUATED",        # 有分母、规则已应用
     "NOT_EVALUABLE",    # 分母为空 —— 不是「没有重要项」，也不是 0
@@ -281,12 +291,53 @@ def synthetic_ratios(store: RecoveryStore,
     by_id = {r["record_id"]: r for r in live}
 
     # 取回集：未指定时视为「全库当前版本」
+    #
+    # ⚠ 2026-11-26 修正（知微定点复验）—— 显式范围会静默改变样本总体：
+    #
+    #   原实现：scope = [by_id[i] for i in scope_ids if i in by_id]
+    #   ⇒ ① 重复 ID 被保留 ⇒ [r1,ro1,ro1] 的分母变成 3
+    #          同一集合重复提交，比例从 0.5 变成 0.667
+    #      ② 不存在的 ID 被静默丢弃 ⇒ [ghost] 与 [] 返回完全相同
+    #          「没能解析任何 ID」与「本次范围本来为空」混成了一件事
+    #
+    #   ⇒ 现在：重复 ID 与未知 ID 一律【拒绝】，并列出是哪些。
+    #      理由：契约说的是「记录集合」，集合语义下重复无意义；
+    #      而静默丢弃会让「不完整范围」冒充「完整范围」。
     if scope_ids is None:
         scope = live
         scope_desc = "ALL_CURRENT_RECORDS"
+        unresolved = []
     else:
-        scope = [by_id[i] for i in scope_ids if i in by_id]
+        requested = list(scope_ids)
+        seen = set()
+        dup = []
+        unknown = []
+        scope = []
+        for rid in requested:
+            if rid in seen:
+                dup.append(rid)
+                continue
+            seen.add(rid)
+            if rid not in by_id:
+                unknown.append(rid)
+                continue
+            scope.append(by_id[rid])
+
+        if dup:
+            raise SchemaError(
+                "scope_ids 含重复 ID %s。范围是【记录集合】，"
+                "重复提交会把同一记录算两次，从而改变分母与比例。"
+                % (sorted(set(dup)),))
+        if unknown:
+            raise SchemaError(
+                "scope_ids 含不存在的 ID %s。"
+                "不得静默丢弃 —— 那会让不完整范围冒充完整范围。"
+                "若本次确实没有取回任何记录，请传 []，"
+                "它的语义是「范围为空」，不是「解析失败」。"
+                % (sorted(unknown),))
+
         scope_desc = "EXPLICIT_SCOPE"
+        unresolved = []
 
     # ---- 指标一：unverifiable_ratio（C1 分母 = first_person_report）
     denom = [r for r in scope
@@ -304,6 +355,11 @@ def synthetic_ratios(store: RecoveryStore,
                    if r.get("participation_basis") == "record_only"]
 
     if n == 0 and m == 0:
+        # ⚠ 2026-11-26 修正（知微 + 睫）：空分支原本只有 10 键，
+        #   而非空分支 12 键（缺 ids_meaning 与两个 ids 列表，多 basis）。
+        #   ⇒ 同一函数两种键集合 ⇒ 「完整清单」这个说法站不住。
+        #   ⇒ 现按【同一键集合】返回；空分支的两个 ids 列表为 []，
+        #     并用 basis="empty" 说明为何是空 —— 不靠「缺键」表达。
         return {
             "measurement_scope": SYNTHETIC_PREFIX,
             "scope_description": scope_desc,
@@ -311,12 +367,19 @@ def synthetic_ratios(store: RecoveryStore,
             "record_only_ratio": None,
             "denominator_size": 0,
             "record_only_denominator_size": 0,
+            "unverifiable_ids": [],
+            "record_only_ids": [],
+            "ids_meaning": ("unverifiable_ids = 无法判定是否伪亲历的记录 ID；"
+                            "record_only_ids = 断言类别为 record_only 的记录 ID。"
+                            "两者都不是「已识别的名单」——前者是判不了，"
+                            "后者是自述类别，均不构成对任何记录的指控或确认。"),
             "basis": "empty",
             "allowed_use": "可用于断言「两个比例均无定义」（值为 None）。",
             "forbidden_use": ("不得把 None 写作 0；"
                               "不得把空分母读作「全部可判定」。"),
             "note": ("两个分母均为 0 ⇒ 两个比例都无定义（不是 0）。"
-                     "unverifiable 与 record_only 的分母不同，见 denominators 说明。"),
+                     "unverifiable 与 record_only 的分母不同，见两个 "
+                     "denominator_size 字段。"),
         }
 
     return {
@@ -332,6 +395,8 @@ def synthetic_ratios(store: RecoveryStore,
         #   名字里带 ids 容易被读成「判定结果」，故此处写明。
         "unverifiable_ids": sorted(r["record_id"] for r in unverifiable),
         "record_only_ids": sorted(r["record_id"] for r in record_only),
+        # 与空分支保持同一键集合（2026-11-26：两分支键必须一致）
+        "basis": "nonempty",
         "ids_meaning": ("unverifiable_ids = 无法判定是否伪亲历的记录 ID；"
                         "record_only_ids = 断言类别为 record_only 的记录 ID。"
                         "两者都不是「已识别的名单」——前者是判不了，"

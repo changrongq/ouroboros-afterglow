@@ -173,11 +173,14 @@ def bnd2a():
     returns = [i for i, l in enumerate(body_lines) if re.match(r"\s+return \{", l)]
     assert returns, "没找到 return { 块"
     for r in returns:
-        block = "\n".join(body_lines[r:r + 24])
+        # 窗口按【下一个 return 或函数尾】取，不写死 24 行 ——
+        # 写死会在返回块变长时误报（2026-11-26 实际发生过一次）
+        rest = [k for k in returns if k > r]
+        stop = rest[0] if rest else len(body_lines)
+        block = "\n".join(body_lines[r:stop])
         assert "measurement_scope" in block, (
-            "行 %d 附近的返回块缺 measurement_scope" % (
-                start and SRC[:start].count("\n") + r + 1))
-        assert '"note"' in block, "返回块缺 note"
+            "返回块（行 %d 起）缺 measurement_scope" % r)
+        assert '"note"' in block, "返回块（行 %d 起）缺 note" % r
     return "%d 个返回点均有 scope + note" % len(returns)
 
 
@@ -188,9 +191,13 @@ def bnd2b():
     returns = [i for i, l in enumerate(body_lines) if re.match(r"\s+return \{", l)]
     assert returns, "没找到 return { 块"
     for r in returns:
-        block = "\n".join(body_lines[r:r + 24])
-        assert "measurement_scope" in block, "synthetic_ratios 返回块缺 measurement_scope"
-        assert '"note"' in block, "synthetic_ratios 返回块缺 note"
+        rest = [k for k in returns if k > r]
+        stop = rest[0] if rest else len(body_lines)
+        block = "\n".join(body_lines[r:stop])
+        assert "measurement_scope" in block, (
+            "synthetic_ratios 返回块（行 %d 起）缺 measurement_scope" % r)
+        assert '"note"' in block, (
+            "synthetic_ratios 返回块（行 %d 起）缺 note" % r)
     return "%d 个返回点均有 scope + note" % len(returns)
 
 
