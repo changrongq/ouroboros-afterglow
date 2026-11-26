@@ -453,8 +453,9 @@ def a36c():
         if os.path.isdir(os.path.join(HERE, "reports")) else set()
     assert before == after, (
         "synthetic_ratios 改动了 reports/ 目录：新增 %s" % (after - before))
-    assert r["scope"] == AI.SYNTHETIC_PREFIX
-    return "未写任何文件；scope=%s" % r["scope"]
+    assert r["measurement_scope"] == AI.SYNTHETIC_PREFIX, (
+        "合成比例未标 measurement_scope（键名须与 importance_candidates 一致）")
+    return "未写任何文件；measurement_scope=%s" % r["measurement_scope"]
 
 
 @case("A3-6d", "空分母时比例返回 None 而不是 0")
@@ -466,6 +467,27 @@ def a36d():
         % r["unverifiable_ratio"])
     assert r["record_only_ratio"] is None
     return "空分母 ⇒ None（不是 0）"
+
+
+@case("A3-6e", "两个函数用同一个测量范围键名（不得 scope / measurement_scope 并存）")
+def a36e():
+    """⚠ 自查发现的真问题：
+    importance_candidates 用 measurement_scope，
+    synthetic_ratios 第一版用 scope。
+    ⇒ 同一个概念两个键名 ⇒ 读者会以为是两件事。
+    ⇒ 现统一为 measurement_scope，并加此断言防止漂回。
+    """
+    s = mk_mixed()
+    c = AI.importance_candidates(s, trace=[])
+    p = AI.synthetic_ratios(s, AI.synthetic_trace(
+        s, [{"record_id": "m1", "at": "T0", "query_ref": "q0"}]))
+    assert "measurement_scope" in c, "importance_candidates 缺 measurement_scope"
+    assert "measurement_scope" in p, (
+        "synthetic_ratios 缺 measurement_scope（键名与另一个函数不一致）")
+    assert "scope" not in p, (
+        "synthetic_ratios 仍带裸 scope 键 ⇒ 同一概念出现两个名字")
+    assert c["measurement_scope"] == p["measurement_scope"] == AI.SYNTHETIC_PREFIX
+    return "两函数键名一致：measurement_scope=%s" % c["measurement_scope"]
 
 
 # ================================================== 自指检查
@@ -509,7 +531,8 @@ def main():
         ("③ 关闭规则时直接观测变异生效（要求 3/4）", [a33a, a33b, a33c]),
         ("④ J2 伪亲历单独测（要求 5）", [a34a, a34b]),
         ("⑤ J3 空分母单独测（要求 5）", [a35a, a35b]),
-        ("⑥ 合成标记与红线（要求 6）", [a36a, a36a2, a36b, a36c, a36d]),
+        ("⑥ 合成标记与红线（要求 6）",
+         [a36a, a36a2, a36b, a36c, a36d, a36e]),
         ("⑦ A3 自指：本文件能否失败", [a30]),
     ]
     for title, fns in groups:

@@ -262,7 +262,7 @@ def synthetic_ratios(store: RecoveryStore,
 
     if n == 0:
         return {
-            "scope": SYNTHETIC_PREFIX,
+            "measurement_scope": SYNTHETIC_PREFIX,
             "unverifiable_ratio": None,
             "record_only_ratio": None,
             "denominator_size": 0,
@@ -277,7 +277,7 @@ def synthetic_ratios(store: RecoveryStore,
                    if r.get("participation_basis") == "record_only"]
 
     return {
-        "scope": SYNTHETIC_PREFIX,
+        "measurement_scope": SYNTHETIC_PREFIX,
         "unverifiable_ratio": len(unverifiable) / n,
         "record_only_ratio": len(record_only) / n,
         "denominator_size": n,

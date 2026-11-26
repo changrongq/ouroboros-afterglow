@@ -62,7 +62,7 @@
       "id": "I9b",
       "desc": "EVALUATED 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
       "status": "CAUGHT",
-      "evidence": "行为已变（scope: {\"with_trace\": \"MEASURED_ON_SYNTHETIC_ONLY\", \"no_trace\": \"NOT_MEASURED → {\"with_trace\": \"NOT_）；失败用例 1 条：[FAIL] A3-6a 有 trace 时 measurement_scope 必须标 MEASURED_ON_SYNTHETIC_ONL"
+      "evidence": "行为已变（scope: {\"with_trace\": \"MEASURED_ON_SYNTHETIC_ONLY\", \"no_trace\": \"NOT_MEASURED → {\"with_trace\": \"NOT_）；失败用例 2 条：[FAIL] A3-6a 有 trace 时 measurement_scope 必须标 MEASURED_ON_SYNTHETIC_ONL"
     },
     {
       "id": "I10",
