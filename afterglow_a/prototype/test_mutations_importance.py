@@ -23,6 +23,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TARGET = "afimportance.py"
@@ -610,25 +612,131 @@ def behavior_changed(base, mut):
     return (len(diffs) > 0), "; ".join(diffs)
 
 
+def _run_identity():
+    """生成本次运行的独立身份。凌翼裁定 3.2：
+
+    「校验基线真实执行，并为每次运行建立独立身份、
+      失败状态及旧报告失效机制。」
+    """
+    return {
+        "run_id": "%s-%s" % (
+            datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"),
+            uuid.uuid4().hex[:8]),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "commit": _git_head(),
+        "host_note": "本机（不跨机器成立）",
+    }
+
+
+def _git_head():
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"],
+                           cwd=HERE, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+        return (r.stdout or "").strip() or "unavailable"
+    except Exception:
+        return "unavailable"
+
+
+def _write_report(payload):
+    """写报告 —— **每次运行都写，包括基线失败**（凌翼 3.2）。
+
+    ⚠ 2026-11-27 修正：
+      原实现基线失败时 `return 1` 直接退出，不写报告
+      ⇒ 报告路径上残留的是上一次的 COMPLETE
+      ⇒ 消费者分不清「本次没写」与「本次写了 COMPLETE」。
+    """
+    out_dir = os.path.join(HERE, "reports")
+    os.makedirs(out_dir, exist_ok=True)
+    p = os.path.join(out_dir, "mutations_importance_result.json")
+    with open(p, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    print("  结果已写入 reports/mutations_importance_result.json"
+          "（run_id=%s）" % payload.get("run_id"))
+    return p
+
+
+def _check_baseline(td):
+    """基线核验 —— 不只核退出码（凌翼 3.2 / 知微 ②）。
+
+    返回 (ok, detail)
+      ok=False 时 detail 说明是哪一项没通过。
+    """
+    rc, out = run_target_test(td)
+    detail = {"returncode": rc}
+
+    # ① 退出码
+    if rc != 0:
+        detail["reason"] = "baseline_nonzero_exit"
+        detail["tail"] = out[-1200:]
+        return False, detail
+
+    # ② 基线所需的用例确实运行过（不能是「exit 0、零用例」）
+    case_results = parse_case_results(out)
+    detail["n_case"] = len(case_results)
+    if not case_results:
+        detail["reason"] = "baseline_zero_cases"
+        detail["note"] = ("基线子进程 exit 0 但零 case 输出 ⇒ "
+                          "不能当作「基线通过」（知微 2026-11-27 实测形态）")
+        return False, detail
+
+    # ③ 基线不得有 FAIL / ERR
+    bad = {k: v for k, v in case_results.items() if v in ("FAIL", "ERR")}
+    detail["bad_cases"] = bad
+    if bad:
+        detail["reason"] = "baseline_cases_failed"
+        return False, detail
+
+    # ④ 探针须可解析
+    obs = observe(td)
+    if not obs or obs.get("parse_error"):
+        detail["reason"] = "probe_unparseable"
+        return False, detail
+
+    detail["probe_ok"] = True
+    return True, detail
+
+
 def main():
+    ident = _run_identity()
     print("=" * 84)
     print("第 5 项变异验证（凌翼要求 3/4）")
     print("  先直接观测行为是否改变（E1/M1），再看目标测试是否红（A3）")
     print("  三态：CAUGHT / UNRESOLVED / MISSED —— 不许合并")
+    print("  run_id = %s" % ident["run_id"])
     print("=" * 84)
     print()
 
-    # 基线
+    # ---- 基线（不只核退出码；失败也要写本次可识别的结果）
     with tempfile.TemporaryDirectory() as td:
         copy_all(td)
-        rc, out = run_target_test(td)
-        if rc != 0:
-            print("!! 基线不绿，变异结果无意义")
-            print(out[-2000:])
+        base_ok, base_detail = _check_baseline(td)
+        if not base_ok:
+            print("!! 基线不通过（%s），变异结果无意义"
+                  % base_detail.get("reason"))
+            print(json.dumps(base_detail, ensure_ascii=False,
+                             indent=2)[:2000])
+            # ⚠ 凌翼 3.2：失败也要写【本次可识别的】结果，
+            #   不能让消费者读到上一次的成功报告。
+            _write_report({
+                **ident,
+                "verdict": "EVIDENCE_FAIL",
+                "exit_code": 1,
+                "baseline_ok": False,
+                "baseline_detail": base_detail,
+                "counts": {},
+                "rows": [],
+                "manifest_check": "NOT_RUN_BASELINE_FAILED",
+                "note": ("基线未通过 ⇒ 本批变异未执行。"
+                         "本报告的 run_id 是本次运行的标识；"
+                         "若消费者读到的 run_id 与本次不符，说明读到的是旧报告。"),
+            })
             return 1
         base_obs = observe(td)
-        print("[基线] 目标测试 rc=0；直接观测 = %s" % json.dumps(
-            base_obs, ensure_ascii=False))
+        print("[基线] 通过：rc=0, %d 个 case 全绿, 探针可解析"
+              % base_detail["n_case"])
+        print("[基线] 直接观测 = %s" % json.dumps(
+            base_obs, ensure_ascii=False)[:200])
         print()
 
     rows = []
@@ -795,19 +903,19 @@ def main():
 
     out_dir = os.path.join(HERE, "reports")
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "mutations_importance_result.json"),
-              "w", encoding="utf-8", newline="\n") as f:
-        json.dump({"verdict": verdict,
-                   "exit_code": exit_code,
-                   "counts": counts,
-                   # detail 已含 fail_detail / n_unresolved / manifest_ok /
-                   # manifest_check / missing / unexpected / duplicated /
-                   # all_caught —— 直接展开，不再重复引用局部变量
-                   **detail,
-                   "rows": [{"id": a, "desc": b, "status": c, "evidence": d}
-                            for a, b, c, d in rows]},
-                  f, ensure_ascii=False, indent=2)
-    print("  结果已写入 reports/mutations_importance_result.json")
+    _write_report({
+        **ident,
+        "verdict": verdict,
+        "exit_code": exit_code,
+        "baseline_ok": True,
+        "baseline_detail": base_detail,
+        "counts": counts,
+        # detail 已含 fail_detail / n_unresolved / manifest_ok /
+        # manifest_check / missing / unexpected / duplicated /
+        # all_caught —— 直接展开，不再重复引用局部变量
+        **detail,
+        "rows": [{"id": a, "desc": b, "status": c, "evidence": d}
+                 for a, b, c, d in rows]})
     return exit_code
 
 
