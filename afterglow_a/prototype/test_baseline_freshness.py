@@ -54,11 +54,16 @@ def case(cid, name):
 
 
 def copy_tree(td):
+    # ⚠ 2026-11-27：加 mutation_preflight.py —— 驱动 import 它，
+    #   不拷进来基線子进程会 ImportError（BF 四条当场全红抓到的）。
     for f in ("afcore.py", "afrecover.py", "afimportance.py",
-              "mutation_manifest.py", "test_importance_a3b3.py",
+              "mutation_manifest.py", "mutation_preflight.py",
+              "test_importance_a3b3.py",
               "test_importance_boundary.py", "test_evidence_state.py",
               DRIVER):
-        shutil.copy2(os.path.join(HERE, f), os.path.join(td, f))
+        src = os.path.join(HERE, f)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(td, f))
     os.makedirs(os.path.join(td, "reports"), exist_ok=True)
 
 

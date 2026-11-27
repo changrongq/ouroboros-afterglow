@@ -553,8 +553,14 @@ print("PROBE_JSON " + json.dumps(out, ensure_ascii=False))
 
 
 def copy_all(td):
-    for f in ("afcore.py", "afrecover.py", TARGET, TEST_FILE):
-        shutil.copy2(os.path.join(HERE, f), os.path.join(td, f))
+    # ⚠ 2026-11-27：新增 mutation_manifest.py 与 mutation_preflight.py ——
+    #   驱动 import 它们；不拷进临时目录会导致基线子进程 ImportError。
+    #   （BF-4 当场变红抓到的。）
+    for f in ("afcore.py", "afrecover.py", TARGET, TEST_FILE,
+              "mutation_manifest.py", "mutation_preflight.py"):
+        src = os.path.join(HERE, f)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(td, f))
     os.makedirs(os.path.join(td, "reports"), exist_ok=True)
     syn = os.path.join(HERE, "synthetic")
     if os.path.isdir(syn):
@@ -713,6 +719,40 @@ def main():
     print("  run_id = %s" % ident["run_id"])
     print("=" * 84)
     print()
+
+    # ---- MUTATION_PREFLIGHT（凌翼 2026-11-27 裁定二）
+    #
+    # 「不必先运行 15 个变异才发现计划无法执行。」
+    # preflight 查「计划能否执行」；baseline 查「未变异时是否正常」。
+    # 两者分开 —— 这里只做前者，且【先于】拷贝与基线。
+    from mutation_preflight import preflight, print_preflight
+    from mutation_manifest import REGISTERED_MUTATION_IDS
+
+    pf = preflight([m[0] for m in MUTATIONS],
+                   os.path.join(HERE, TARGET),
+                   MUTATIONS,
+                   list(REGISTERED_MUTATION_IDS))
+    print_preflight(pf, ident["run_id"])
+    print()
+
+    if not pf["ok"]:
+        # 要求 3/4：fail-closed，且失败也留下【本次】可辨认的结果
+        _write_report({
+            **ident,
+            "verdict": "EVIDENCE_FAIL",
+            "exit_code": 1,
+            "baseline_ok": None,
+            "baseline_detail": {"reason": "PREFLIGHT_FAILED",
+                                "note": "计划不可执行，变异与基线均未运行"},
+            "preflight": pf,
+            "manifest_check": "NOT_RUN_PREFLIGHT_FAILED",
+            "counts": {},
+            "rows": [],
+            "note": ("preflight 失败 ⇒ 本批变异未执行、基线未运行。"
+                     "本报告的 run_id 是本次运行的标识；"
+                     "若消费者读到的 run_id 与本次不符，说明读到的是旧报告。"),
+        })
+        return 1
 
     # ---- 基线（不只核退出码；失败也要写本次可识别的结果）
     with tempfile.TemporaryDirectory() as td:
