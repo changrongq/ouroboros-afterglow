@@ -80,7 +80,7 @@ EXCLUSION_RULES = {
 #
 # ⚠ 另一个必须写明的：本字段【不可】与 synthetic_ratios 的 basis 混读。
 #   status = 这批能不能评估（EVALUATED / NOT_EVALUABLE）
-#   basis  = 为什么是空（empty）
+#   basis  = 为什么是空 / 是不是空（empty / nonempty）
 #   ⇒ 「判未判定」须读各自载体（status，或 basis + 比例为 None），
 #     不许按「有没有 status 键」当跨函数统一信号。
 CANDIDATE_STATUS = {
@@ -406,7 +406,10 @@ def synthetic_ratios(store: RecoveryStore,
         "forbidden_use": ("不得写入 reports/ 或任何正式报告；"
                           "不得当作真实历史中的比例；"
                           "不得把 unverifiable_ids 读作已识别名单；"
-                          "两个比例分母不同，不得合并引用。"),
+                          "两个比例分母不同，不得合并引用；"
+                          "本函数的取回范围与 importance_candidates 的"
+                          "全库过滤不是同一对象，不得把两者输出"
+                          "当同一请求的结果组合。"),
         "note": ("合成夹具上的测量。只证明该指标能算出来，"
                  "不证明它在真实历史中等于此值。"
                  "两个比例的分母不同，不得合并引用。"),

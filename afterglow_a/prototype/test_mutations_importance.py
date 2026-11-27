@@ -163,14 +163,29 @@ MUTATIONS = [
         {"A3-7a"},
     ),
     (
-        "I13", "显式范围静默丢弃未知 ID",
+        "I13", "显式范围静默丢弃未知 ID（保留 continue，不登记 unknown）",
+        # ⚠ 2026-11-27 重做（知微复验）：
+        #   原变异体把【整段 if 判断】改成 False，
+        #   于是 `continue` 也不再执行，后面的 by_id[rid] 抛 KeyError('ghost')。
+        #   ⇒ 它实现的是「崩溃」，不是注释所说的「静默丢弃」。
+        #   ⇒ 该格的 CAUGHT 是异常冒充断言，作废。
+        #
+        #   真正的「静默丢弃」= 仍然跳过这条 ID（continue 保留），
+        #   只是不把它记进 unknown 列表。
         '            if rid not in by_id:\n'
         '                unknown.append(rid)\n'
         '                continue',
-        '            if False:  # MUTANT: 静默丢弃未知 ID\n'
-        '                unknown.append(rid)\n'
-        '                continue',
+        '            if rid not in by_id:\n'
+        '                continue  # MUTANT: 静默丢弃（不登记 unknown）',
         {"A3-7b"},
+    ),
+    (
+        "I14", "不可核验率不再计入「从未观测」（知微 2026-11-27 要求防回归）",
+        '        if r.get("observed_origin") is None            # 从未观测\n'
+        '        or r.get("basis_conflict") in ("observed_absent", "observed_unresolved")',
+        '        if r.get("basis_conflict") in ("observed_absent", "observed_unresolved")'
+        '  # MUTANT: 去掉「从未观测」这一项',
+        {"A3-7d"},
     ),
 ]
 
@@ -405,6 +420,38 @@ def _scope_contract():
     return out2
 out["scope_contract"] = safe(_scope_contract)
 
+# V12 · 不可核验率对「从未观测」的计入（I14 会在此暴露）
+#
+# ⚠ 2026-11-27 新增（知微复验：「尚缺防回归断言」）：
+#   固定单条未观测记录时，unverifiable_ratio 必须为 1.0，
+#   否则「从未观测」这一项被删掉也不会红。
+def _unverifiable_single():
+    s = RecoveryStore()
+    s.insert(Record(record_id="r1", content="x",
+        source_kind="user_utterance", source_ref="utt/r1",
+        participant_id="A", participation_basis="first_person_report",
+        basis_ref="utt/r1", commitment_state="not_a_commitment",
+        revision=1, prev_digest=None, changed_at=PIN,
+        change_authority="synthetic"))
+    r = AI.synthetic_ratios(s, [])
+    out2 = {"ratio": r["unverifiable_ratio"],
+            "ids": r["unverifiable_ids"],
+            "denom": r["denominator_size"]}
+    # 对照：已观测且一致
+    s2 = RecoveryStore()
+    s2.insert(Record(record_id="r1", content="x",
+        source_kind="user_utterance", source_ref="utt/r1",
+        participant_id="A", participation_basis="first_person_report",
+        basis_ref="utt/r1", commitment_state="not_a_commitment",
+        revision=1, prev_digest=None, changed_at=PIN,
+        change_authority="synthetic"))
+    s2.record_observed("r1", "human_input")
+    r2 = AI.synthetic_ratios(s2, [])
+    out2["observed_ratio"] = r2["unverifiable_ratio"]
+    out2["observed_ids"] = r2["unverifiable_ids"]
+    return out2
+out["unverifiable_single"] = safe(_unverifiable_single)
+
 print("PROBE_JSON " + json.dumps(out, ensure_ascii=False))
 '''
 
@@ -521,9 +568,25 @@ def main():
             #
             # ⇒ 现在：每个变异声明 target_cases，
             #   解析实际 case 结果，只有【目标 case 真的红了】才算 CAUGHT。
+            #
+            # ⚠ 2026-11-27 第三次修正（知微复验）：
+            #   前一版把 FAIL 与 ERR 一起算入 hit。
+            #   知微实测：目标 A3-1a 抛异常 + 无关 A3-6e 断言失败
+            #            ⇒ 仍 CAUGHT / PASS / exit 0。
+            #   而她同时指出：I13 的原日志就是 0 FAIL / 1 ERR
+            #   （KeyError('ghost')）——
+            #   ⇒ 那一格 CAUGHT 是【异常】冒充了【断言捕获】。
+            #
+            #   ⇒ 现在只有 FAIL 算断言捕获；
+            #      目标只有 ERR 时单列 TARGET_ERRORED，不算 CAUGHT。
             case_results = parse_case_results(out)
-            hit = sorted(tc for tc in target_cases
-                         if case_results.get(tc) in ("FAIL", "ERR"))
+
+            # 目标 case 中【断言失败】的（这才是「按目标断言捕获」）
+            hit_fail = sorted(tc for tc in target_cases
+                              if case_results.get(tc) == "FAIL")
+            # 目标 case 中【抛异常】的（单列，不算捕获）
+            hit_err = sorted(tc for tc in target_cases
+                             if case_results.get(tc) == "ERR")
 
             n_case = len(case_results)
             n_fail = sum(1 for v in case_results.values() if v == "FAIL")
@@ -542,17 +605,25 @@ def main():
                 status = "TEST_DID_NOT_RUN"
                 evid = ("行为已变（%s），但目标测试【零用例输出】"
                         "（rc=%s）⇒ 不得记 CAUGHT" % (detail[:60], rc))
-            elif hit:
-                # 目标 case 真的红了
+            elif hit_fail:
+                # 目标 case【按断言】失败 —— 这才是「按目标断言捕获」
                 if rc == 0:
                     status = "MISSED"
-                    evid = ("目标 case %s 红，但退出码 0 ⇒ 测试自身判定有误"
-                            % hit)
+                    evid = ("目标 case %s 断言失败，但退出码 0 ⇒ 测试自身判定有误"
+                            % hit_fail)
                 else:
                     status = "CAUGHT"
-                    evid = ("行为已变；目标 case 红：%s（%d FAIL / %d ERR）%s"
-                            % (", ".join(hit), n_fail, n_err,
+                    evid = ("行为已变；目标 case 断言失败：%s"
+                            "（全库 %d FAIL / %d ERR）%s"
+                            % (", ".join(hit_fail), n_fail, n_err,
                                ("；另有无关红：%s" % unrelated) if unrelated else ""))
+            elif hit_err:
+                # 目标 case【抛异常】—— 变异可能打穿了，但没有断言守住它
+                status = "TARGET_ERRORED"
+                evid = ("行为已变；目标 case %s 抛异常（非断言失败）"
+                        "⇒ 不构成「按目标断言捕获」。"
+                        "多半是变异体写错（改坏了语法/引用），需重做变异。"
+                        % (", ".join(hit_err),))
             elif n_fail == 0 and n_err == 0:
                 status = "MISSED"
                 evid = ("行为已变（%s），但【无任何 case 红】"

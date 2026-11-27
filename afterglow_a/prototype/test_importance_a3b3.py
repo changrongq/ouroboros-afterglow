@@ -714,6 +714,53 @@ def a37c():
     return "两分支均 %d 键，集合一致" % len(full)
 
 
+@case("A3-7d", "不可核验率的固定值：单条未观测 ⇒ 1.0 且 ID 正确")
+def a37d():
+    """⚠ 知微 2026-11-27 复验补充：
+
+    「非空不可核验率退化为 0 的独立变异，再跑 30 项仍 exit 0；
+      原计算正确，尚缺防回归断言。建议固定单条未观测时值为 1 且 ID 正确。」
+
+    ⇒ 原 A3-6d 只测空分母返回 None，没测【非空时值必须为 1】。
+      ⇒ 若把 `observed_origin is None` 那一项删掉，
+        这条测试不会红（因为它是靠变异 I 系列守的，不是靠固定断言）。
+    ⇒ 现补固定断言。
+    """
+    s = mk()   # 单条 first_person，从未 record_observed
+    g = s.get("r1")
+    assert g["observed_origin"] is None, "前提：该记录从未被观测"
+    assert g["basis_conflict"] is None, "前提：basis_conflict 为 None"
+
+    r = AI.synthetic_ratios(s, [])
+    assert r["denominator_size"] == 1, (
+        "分母应为 1（一条 first_person），实测 %r" % r["denominator_size"])
+    assert r["unverifiable_ratio"] == 1.0, (
+        "单条从未观测 ⇒ 不可核验率必须为 1.0，实测 %r。"
+        "若为 0.0 说明「从未观测」没有被计入。" % r["unverifiable_ratio"])
+    assert r["unverifiable_ids"] == ["r1"], (
+        "ID 必须为 ['r1']，实测 %r" % r["unverifiable_ids"])
+    return "单条未观测：ratio=1.0, ids=['r1']"
+
+
+@case("A3-7e", "不可核验率的对照：已观测且一致 ⇒ 0.0（不得恒为 1）")
+def a37e():
+    """与 A3-7d 配对：避免把该比例写死成 1.0 也能过。"""
+    s = mk()
+    s.record_observed("r1", "human_input")
+    g = s.get("r1")
+    assert g["observed_origin"] == "human_input"
+    assert g["basis_conflict"] == "none", (
+        "前提：human_input × first_person 应判 none，实测 %r"
+        % g["basis_conflict"])
+
+    r = AI.synthetic_ratios(s, [])
+    assert r["unverifiable_ratio"] == 0.0, (
+        "已观测且一致 ⇒ 不可核验率应为 0.0，实测 %r" % r["unverifiable_ratio"])
+    assert r["unverifiable_ids"] == [], (
+        "ID 应为空，实测 %r" % r["unverifiable_ids"])
+    return "已观测一致：ratio=0.0, ids=[]"
+
+
 # ================================================== 自指检查
 @case("A3-0", "本文件的断言不是空转：构造一个必然违反 B1 的输入")
 def a30():
@@ -758,7 +805,8 @@ def main():
         ("⑤ J3 空分母单独测（要求 5）", [a35a, a35b]),
         ("⑥ 合成标记与红线（要求 6）",
          [a36a, a36a2, a36b, a36c, a36d, a36e]),
-        ("⑦ 显式范围契约（知微定点复验）", [a37a, a37b, a37c]),
+        ("⑦ 显式范围契约（知微定点复验）",
+         [a37a, a37b, a37c, a37d, a37e]),
         ("⑦ A3 自指：本文件能否失败", [a30]),
     ]
     for title, fns in groups:
