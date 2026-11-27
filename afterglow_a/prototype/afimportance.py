@@ -533,12 +533,42 @@ def synthetic_ratios(store: RecoveryStore,
                 #     累计列表是追加的，本版边集 = 上版边集 + 新增若干条。
                 #     新增条数 = len(this) − len(prev)，取最后那个切片。
                 #     这样重复引用同一依据也能被识别为「新增了一条边」。
+                #
+                # ⚠ 2026-11-27 第四次修正（知微独立复核 §2）：
+                #   边数差仍会在【新增多条边】时歧义：
+                #     跃变版同时新增 ('A', ...) 与 ('B', ...) 两条，
+                #     原实现取新增段【首条】⇒ 签发 'A'，且 unknown 为空。
+                #     但两条边都可能是造成跃变的原因 —— 这份确定性是假的。
+                #   （知微实测：attrition=1, cause='A', unknown=[]；
+                #     我已复现。她的做法是只改只读历史替身，未改真实历史。）
+                #
+                #   ⇒ 现在的签发规则（知微给定）：
+                #     只有当【新增段恰好一条】、且该边可归属到本条记录
+                #     （from_id 为空或等于 rid）、且目标有效（to_id 非空）时，
+                #     才签发具体 ID；
+                #     否则保留流失计数，cause 写 ATTRIBUTION_UNKNOWN，
+                #     并列入 unknown 清单。
+                #
+                #   ⚠ 不要求依据记录也在本次取回集内（知微明确）：
+                #     cause 只指【被引用的依据记录】，不是本次范围成员。
                 n_new = len(this_edges) - len(prev_edges)
-                if n_new > 0:
-                    cause = this_edges[-n_new].get("to_id")
-                else:
+                if n_new <= 0:
                     # 跃变版没有新增边 ⇒ 这一处无法归因
                     cause = None
+                else:
+                    new_seg = this_edges[-n_new:]
+                    if len(new_seg) != 1:
+                        # 多条新增边 ⇒ 歧义，不猜
+                        cause = None
+                    else:
+                        e0 = new_seg[0]
+                        frm = e0.get("from_id")
+                        to = e0.get("to_id")
+                        if (frm not in (None, "", rid)) or not to:
+                            # 边不归属本条记录，或目标无效 ⇒ 不签发
+                            cause = None
+                        else:
+                            cause = to
             prev_basis = this_basis
             prev_edges = this_edges
 

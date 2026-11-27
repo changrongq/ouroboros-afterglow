@@ -409,6 +409,147 @@ def ap12():
     return "正常计划 ok=True / reasons=[]"
 
 
+@case("AP-16", "歧义：跃变版新增两条边 ⇒ 归因未知，不得签发具体 ID")
+def ap16():
+    """⚠ 知微 2026-11-27 独立复核 §2 指出的第三种失效（我已复现）：
+
+    「保留相同版本和退出事实，仅在只读历史替身里
+      让退出版本同时新增指向 A、B 的两条纠正边。
+      afimportance.py 按边数增长取新增段首条，
+      返回流失 1、依据 A、未知清单为空。」
+
+    ⇒ 两份候选都在新增段里，签发给 A 是【假的确定性】。
+    ⇒ 修法（知微给定）：只有【新增段恰好一条】且可归属到本条记录、
+      目标有效时才签发具体 ID；否则 ATTRIBUTION_UNKNOWN。
+
+    ⚠ 本用例只改【只读历史替身】，不制造异常历史，不改真实存储。
+    """
+    import copy
+
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("B", "record_only"))
+    s.correct("R", "v2", "A", "cite A")
+    s.correct("R", "v3", "B", "cite B")
+
+    real = s.history("R")
+    assert real[1]["participation_basis"] == "first_person_report"
+    assert real[2]["participation_basis"] == "record_only"
+
+    # 替身：退出版本同时新增 A、B 两条边
+    sim = [copy.deepcopy(h) for h in real]
+    prev = list(sim[1].get("relation") or [])
+    sim[2]["relation"] = prev + [
+        {"relation_type": "correction_of", "from_id": "R", "to_id": "A",
+         "relation_basis": "cited again at same time"},
+        {"relation_type": "correction_of", "from_id": "R", "to_id": "B",
+         "relation_basis": "cited B"},
+    ]
+
+    class _Fake(RecoveryStore):
+        def history(self, rid):
+            if rid == "R":
+                return copy.deepcopy(sim)
+            return super().history(rid)
+
+    fs = _Fake.__new__(_Fake)
+    fs.__dict__.update(s.__dict__)
+
+    r = AI.synthetic_ratios(fs, [])
+    assert r["denominator_attrition"] == 1, (
+        "流失计数应保留为 1，实测 %d" % r["denominator_attrition"])
+    cause = r["denominator_attrition_cause"]["R"]
+    assert cause == AI.UNKNOWN_CAUSE, (
+        "新增两条边时不得签发具体 ID（实测 %r）—— "
+        "那会给出假的确定性" % (cause,))
+    assert "R" in r["denominator_attrition_unknown"], (
+        "R 应进入 unknown 清单")
+    return "两条新增边 ⇒ ATTRITION_UNKNOWN + unknown 含 R"
+
+
+@case("AP-17", "对照：新增段恰好一条且可归属 ⇒ 仍签发具体 ID")
+def ap17():
+    """AP-16 不能把正常可归因的情况也判成未知。
+    这是 AP-16 的必需对照，否则修法会退化成「全都不签」。
+    """
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("B", "record_only"))
+    s.correct("R", "v2", "A", "cite A")
+    s.correct("R", "v3", "B", "cite B")
+
+    r = AI.synthetic_ratios(s, [])
+    assert r["denominator_attrition_cause"]["R"] == "B", \
+        r["denominator_attrition_cause"]
+    assert "R" not in r["denominator_attrition_unknown"]
+    return "单条可归属 ⇒ cause='B'"
+
+
+@case("AP-18", "解码失败 ⇒ preflight 必须走失败出口并落本轮报告")
+def ap18():
+    """⚠ 知微 2026-11-27 独立复核 §3：
+
+    「另一个真入口对照先保留上轮 COMPLETE 报告，
+      再在临时副本中让目标文件无法按 UTF-8 解码。
+      实得退出码 1、UnicodeDecodeError，磁盘报告逐字节未变，
+      仍显示上轮 EVIDENCE_COMPLETE。
+      本轮停止执行了，却没有给读取报告的人留下本轮的失败记录。」
+
+    根因：UnicodeDecodeError 是 ValueError 子类，【不是】OSError，
+          原 preflight 只接住 OSError ⇒ 异常逃出 ⇒ 跳过失败报告。
+    """
+    import json
+    import shutil
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as td:
+        work = os.path.join(td, "proto")
+        shutil.copytree(HERE, work,
+                        ignore=shutil.ignore_patterns("__pycache__",
+                                                      "*.npy"))
+        rep = os.path.join(work, "reports",
+                           "mutations_importance_result.json")
+
+        # 先放一份「上轮成功报告」
+        os.makedirs(os.path.dirname(rep), exist_ok=True)
+        with open(rep, "w", encoding="utf-8") as f:
+            json.dump({"verdict": "EVIDENCE_COMPLETE",
+                       "run_id": "OLD-RUN-FROM-LAST-ROUND",
+                       "exit_code": 0}, f)
+        old_bytes = open(rep, "rb").read()
+
+        # 让目标文件无法按 UTF-8 解码
+        p = os.path.join(work, TM.TARGET)
+        with open(p, "wb") as f:
+            f.write(b"\xff\xfe\x00\x00invalid utf8 \xc3\x28\n")
+
+        r = subprocess.run(
+            [sys.executable,
+             os.path.join(work, "test_mutations_importance.py")],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", cwd=work, timeout=600,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+        assert r.returncode == 1, (
+            "解码失败时退出码应为 1，实测 %d" % r.returncode)
+
+        new_bytes = open(rep, "rb").read()
+        assert new_bytes != old_bytes, (
+            "报告未被本轮覆盖 ⇒ 读报告的人看到的是上轮的 COMPLETE")
+
+        d = json.loads(new_bytes.decode("utf-8"))
+
+    assert d["verdict"] == "EVIDENCE_FAIL", d["verdict"]
+    assert d["run_id"] != "OLD-RUN-FROM-LAST-ROUND", (
+        "run_id 应为本轮新值，实测 %r" % d.get("run_id"))
+    assert d["baseline_ok"] is None, (
+        "解码失败时基线不应运行，实测 baseline_ok=%r" % d["baseline_ok"])
+    assert d["rows"] == [], d["rows"]
+    reasons = " ".join(d.get("preflight", {}).get("reasons") or [])
+    assert "UTF-8" in reasons or "UTF" in reasons, (
+        "报告应含可辨认的解码原因，实测 reasons=%r" % reasons)
+    return "解码失败 ⇒ 新 run_id / FAIL / baseline 未跑 / 原因可辨认"
+
+
 @case("AP-15", "边界：preflight【不】校验经审查的名册摘要身份")
 def ap15():
     """⚠ 凌翼 2026-11-27 第二次核对：
@@ -452,27 +593,51 @@ def ap15():
             "preflight 的【代码】里出现了 %r ⇒ 它可能在比摘要，"
             "与「摘要身份在后续阶段核对」的说法不符" % banned)
 
-    # (b) 篡改名册内容，preflight 仍通过（它只看 ID 与锚点）
+    # (b) 差分对照（知微 2026-11-27 独立复核 §3 给定）：
+    #
+    # ⚠ 我原来写的是「同一份计划连跑两次结果一致」——
+    #   知微指出那只能说明「同样输入得到同样结果」，什么也没证明。
+    #   她给的更强对照：保持计划、ID 集合、锚点全不变，
+    #   【仅颠倒登记 ID 的顺序】：
+    #     ⇒ preflight 通过（它只看集合与锚点）
+    #     ⇒ 而 check_manifest_identity() 得 consistent=False
+    #           （因为它比的是顺序敏感的摘要）
+    #   ⇒ 一对相反结果，正好说明两个阶段各自承担什么责任。
     import mutation_manifest as MM
     orig = MM.REGISTERED_MUTATION_IDS
     try:
-        # 计划不变、登记也没变 ⇒ 通过；这里改的是【摘要之外】的东西
-        # 无法只改摘要而不改内容，故直接验证：
-        # preflight 对同一份计划两次调用结果一致，不读摘要
-        a = PF.preflight([m[0] for m in TM.MUTATIONS],
-                         os.path.join(HERE, TM.TARGET), TM.MUTATIONS)
-        b = PF.preflight([m[0] for m in TM.MUTATIONS],
-                         os.path.join(HERE, TM.TARGET), TM.MUTATIONS)
-        assert a["ok"] == b["ok"] is True
+        plan = [m[0] for m in TM.MUTATIONS]
+        pf_before = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
+                                 TM.MUTATIONS)
+        ident_before = MM.check_manifest_identity()
+        assert pf_before["ok"] is True and ident_before["consistent"] is True
+
+        # 仅颠倒登记顺序，集合不变
+        rev = list(reversed(orig))
+        MM.REGISTERED_MUTATION_IDS = tuple(rev)
+
+        pf_after = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
+                                TM.MUTATIONS)
+        ident_after = MM.check_manifest_identity()
+
+        assert set(rev) == set(orig), "顺序颠倒不应改变集合"
+        assert pf_after["ok"] is True, (
+            "preflight 只看集合与锚点，颠倒顺序后应仍通过；"
+            "实测 reasons=%r" % pf_after["reasons"])
+        assert ident_after["consistent"] is False, (
+            "名册摘要应随顺序变化 ⇒ 应判不一致；实测 %r"
+            % ident_after["consistent"])
+        assert ident_after["current"] != ident_after["reviewed"]
     finally:
         MM.REGISTERED_MUTATION_IDS = orig
 
-    # (c) 名册身份校验确实在另一处存在且有效
+    # (c) 恢复后名册身份校验确实在另一处存在且有效
     import mutation_manifest as MM2
     info = MM2.check_manifest_identity()
     assert info["consistent"] is True, (
         "名册摘要校验应独立存在且当前一致，实测 %r" % info)
-    return "preflight 不读摘要（非完整前置身份验证）；摘要校验在 check_manifest_identity"
+    return ("仅颠登记顺序：preflight 通过 / check_manifest_identity 不一致 "
+            "⇒ 两阶段责任不同")
 
 
 # ================================================ 汇总
@@ -481,8 +646,8 @@ def main():
     print("凌翼 2026-11-27 裁定 · 定点回归（cause 归因 + preflight）")
     print("=" * 80)
     print()
-    for f in (ap1, ap2, ap3, ap4, ap5, ap6, ap13, ap14, ap7, ap8, ap9,
-              ap10, ap11, ap12, ap15):
+    for f in (ap1, ap2, ap3, ap4, ap5, ap6, ap13, ap14, ap16, ap17,
+              ap7, ap8, ap9, ap10, ap11, ap12, ap18, ap15):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)

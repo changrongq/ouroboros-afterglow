@@ -99,6 +99,22 @@ def preflight(plan_ids, target_path, mutations,
             "unknown_ids": unknown_ids,
             "missing_ids": missing_ids,
         }
+    except UnicodeDecodeError as e:
+        # ⚠ 2026-11-27 修正（知微独立复核 §3）：
+        #   UnicodeDecodeError 是 ValueError 子类，【不是】OSError，
+        #   原实现只接住 OSError ⇒ 解码失败会【逃出】preflight()，
+        #   驱动因此跳过失败报告 ⇒ 磁盘上仍是上一轮的 EVIDENCE_COMPLETE。
+        #   知微实测：退出码 1、UnicodeDecodeError、报告逐字节未变。
+        #   ⇒ 本轮确实停止了，但没给读报告的人留下本轮的失败记录。
+        return {
+            "ok": False,
+            "reasons": ["目标文件不是合法 UTF-8：%s" % e],
+            "n_plan": len(plan_ids),
+            "n_registered": len(registered_ids),
+            "anchors": [],
+            "unknown_ids": unknown_ids,
+            "missing_ids": missing_ids,
+        }
 
     anchors = []
     for m in mutations:

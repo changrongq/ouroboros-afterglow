@@ -399,23 +399,44 @@ def mn10():
     synthetic_ratios 对重复 ID 直接拒绝。
     ⇒ 若两处各自实现，这个差异不会被发现。
     ⇒ 现在 afrecover 调用同一函数，并用断言固定范围一致。
+
+    ⚠ 2026-11-27 补充输入域说明（知微独立复核 §1）：
+      「MN-10 的公开入口差异可以保留，但请在 R2 旁写明输入域。
+        传入 [H, RO, RO]，恢复入口去重后给 1/2，指标入口报 SchemaError。
+        二者接受的原始输入不同。
+        对于由唯一、已知 ID 构成的同一取回集，
+        可以要求 record_only 成员和比例一致。
+        若 Mion 的 R2 要求任意同一原始列表都有相同结果，
+        本版没有满足那种要求。
+        建议保留这条差异测试，避免调用方把两种入口互换。」
+
+      ⇒ R2 的一致性只在【唯一、已知 ID 构成的取回集】上成立：
+        两个入口接受同一取回集时，record_only 成员与比例必须一致。
+        它们【不】接受同一原始列表（重复 ID 的处置不同）。
+      ⇒ 这条测试存在的目的就是防止调用方互换两个入口。
     """
     s = _store_with([_rec("h1", "first_person_report"),
                      _rec("ro1", "record_only")])
 
-    # synthetic_ratios 拒绝重复
+    # 输入域内：唯一、已知 ID 的同一取回集 ⇒ 两入口一致
+    ids = ["h1", "ro1"]
+    a = AI.synthetic_ratios(s, [], scope_ids=ids)
+    b = afrecover.summarize_conflicts(s, ids)
+    assert a["record_only_ids"] == b["record_only_ids"], (
+        "同一取回集上两入口应一致：%r vs %r"
+        % (a["record_only_ids"], b["record_only_ids"]))
+
+    # 输入域外：重复 ID ⇒ synthetic 拒绝，afrecover 去重
     try:
         AI.synthetic_ratios(s, [], scope_ids=["h1", "ro1", "ro1"])
         raise AssertionError("重复 ID 未被拒绝")
     except Exception as e:
         assert "重复" in str(e), str(e)[:80]
-
-    # afrecover 接受重复并去重（其契约是集合语义）
     r = afrecover.summarize_conflicts(s, ["h1", "ro1", "ro1"])
-    assert r.get("record_only_denominator_size") in (None, 2) or True
     assert abs((r.get("record_only_ratio") or 0) - 0.5) < 1e-9, (
         "去重后应为 1/2，实测 %r" % r.get("record_only_ratio"))
-    return "重复：synthetic 拒绝 / afrecover 去重为 2（契约差异已知且写明）"
+    return ("域内(唯一ID)两入口一致；域外(重复ID)：synthetic 拒绝 / "
+            "afrecover 去重 —— 不得互换入口")
 
 
 # ================================================ ④ 空集合
