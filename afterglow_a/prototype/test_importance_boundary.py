@@ -105,35 +105,88 @@ BANNED_ASSERTIVE = [
 ]
 
 
-@case("BND-1a", "越界用语必须显式标注为边界引用（# boundary-ok）")
-def bnd1a():
+#: 扫描入口 —— BND-1a 与 BND-1c【共用同一个函数】。
+#:
+#: ⚠ 2026-11-27 修正（凌翼裁定三）：
+#:   原 BND-1c 在测试里【重写了一遍判据】：
+#:       for b in BANNED_ASSERTIVE:
+#:           if b in inject and BOUNDARY_MARK not in inject:
+#:               caught = True
+#:   ⇒ 那不是「把注入行送进扫描」，是「我抄了一遍判据再验它」。
+#:     凌翼：「使它真正经过被检验的扫描入口，
+#:            而不是在测试内部验证自己写出的判断。」
+#:
+#:   ⇒ 现在抽出 scan_lines()，BND-1a 扫真实源码、BND-1c 扫注入后的
+#:     临时源码副本，两者走【同一个函数】。
+def scan_lines(lines):
+    """扫描一组源码行，返回未标注的越界用语。"""
     hits = []
-    for i, line in enumerate(LINES, 1):
+    for i, line in enumerate(lines, 1):
         for b in BANNED_ASSERTIVE:
             if b not in line:
                 continue
             if BOUNDARY_MARK in line:
                 continue
             hits.append((i, b, line.strip()[:78]))
+    return hits
+
+
+@case("BND-1a", "越界用语必须显式标注为边界引用（# boundary-ok）")
+def bnd1a():
+    hits = scan_lines(LINES)
     assert not hits, (
         "出现未标注的越界用语（若为合规引用请加 %s）：%s"
         % (BOUNDARY_MARK, hits))
     return "全部越界用语均已显式标注"
 
 
-@case("BND-1c", "反证：睫的注入行没有标记，必须被抓到")
+@case("BND-1c", "反证：把注入行写进真实源码副本后，扫描必须抓到")
 def bnd1c():
     """A3：这条扫描自己也要能失败。
+
     睫 2026-11-26 注入：
         # 无阈值设计：按重要性排序（注入行）
+
+    ⚠ 2026-11-27（凌翼裁定三）：现在【真的写进临时副本再扫】，
+      不再在测试内部重写判据。
+      ⇒ 同时验证两条：
+        (a) 注入行未加标记 ⇒ 被抓到
+        (b) 同一行加上标记后 ⇒ 放行（证明不是「见行就报」）
     """
+    import shutil
+    import tempfile
+
     inject = "  # 无阈值设计：按重要性排序（注入行）"
-    caught = False
-    for b in BANNED_ASSERTIVE:
-        if b in inject and BOUNDARY_MARK not in inject:
-            caught = True
-    assert caught, "注入行未被识别为违规 ⇒ 判据失效"
-    return "注入行（无标记）被判违规"
+    with tempfile.TemporaryDirectory() as td:
+        dst = os.path.join(td, "afimportance_injected.py")
+        shutil.copy2(os.path.join(HERE, "afimportance.py"), dst)
+
+        # (a) 未加标记
+        with open(dst, encoding="utf-8") as f:
+            src = f.read()
+        with open(dst, "w", encoding="utf-8", newline="\n") as f:
+            f.write(src + "\n" + inject + "\n")
+        with open(dst, encoding="utf-8") as f:
+            hit_lines = f.read().splitlines()
+        hits_a = scan_lines(hit_lines)
+        assert hits_a, (
+            "注入行（无标记）未被扫描抓到 ⇒ 判据失效")
+        assert any("按重要性排序" in h[1] for h in hits_a), hits_a
+
+        # (b) 同一行加标记 ⇒ 放行
+        with open(dst, "w", encoding="utf-8", newline="\n") as f:
+            f.write(src + "\n" + inject + "  " + BOUNDARY_MARK + "\n")
+        with open(dst, encoding="utf-8") as f:
+            marked_lines = f.read().splitlines()
+        hits_b = scan_lines(marked_lines)
+        assert not hits_b, (
+            "同一行加标记后仍被判违规 ⇒ 扫描见行就报，没有分辨力：%r"
+            % hits_b)
+
+        # (c) 扫描确实读到了注入行（防止「根本没读到文件尾部」）
+        assert any("注入行" in l for l in marked_lines), (
+            "临时副本里找不到注入行 ⇒ 上面的断言可能是空的")
+    return "注入→抓 1 处；加标记→放行；注入行确实在副本里"
 
 
 @case("BND-1d", "对照：带标记的正确否定句必须放行（不得误伤）")

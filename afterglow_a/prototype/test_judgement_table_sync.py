@@ -9,8 +9,18 @@ Mion 2026-11-24：
 import sys, os, io, re
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-ROOT = r"d:\qcr\ouroboros-afterglow"
-CORE = os.path.join(ROOT, "afterglow_a", "prototype", "afcore.py")
+#: ⚠ 2026-11-27 修正（凌翼裁定三 · 可移植性）：
+#:   原实现硬编码 ROOT = r"d:\qcr\ouroboros-afterglow"
+#:   ⇒ 在作者本机 rc=0，在干净克隆上 FileNotFoundError（睫与知微均已实测）。
+#:   ⇒ 现按【本文件位置】反推仓库根：本文件在 <root>/afterglow_a/prototype/ 下，
+#:     上溯两级即 root。不依赖任何绝对路径，也不依赖 cwd。
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
+CORE = os.path.join(_THIS_DIR, "afcore.py")
+
+if not os.path.exists(CORE):
+    print("[FAIL] afcore.py 不在 %s —— 本文件位置假设被破坏" % _THIS_DIR)
+    sys.exit(1)
 src = open(CORE, encoding="utf-8").read()
 lines = src.splitlines()
 
@@ -48,7 +58,7 @@ print()
 print("=" * 78)
 print("二 · 实测矩阵")
 print("=" * 78)
-sys.path.insert(0, os.path.join(ROOT, "afterglow_a", "prototype"))
+sys.path.insert(0, _THIS_DIR)
 import afcore
 
 PIN = "2026-11-24T00:00:00Z"
