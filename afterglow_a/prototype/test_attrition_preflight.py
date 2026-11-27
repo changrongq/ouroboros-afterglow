@@ -621,21 +621,34 @@ def ap15():
     # 对照二：仅顺序反转，【显式喂给 preflight 同一序列】
     pf_rev = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
                           TM.MUTATIONS, registered_ids=rev)
-    assert set(rev) == set(pf_rev and [r for r in rev]), "自检"
-
-    # 同一序列用于身份核验：直接按 rev 计算摘要
-    import hashlib
-    import json as _json
-    rev_payload = _json.dumps(rev, ensure_ascii=False, separators=(",", ":"))
-    rev_sha = hashlib.sha256(rev_payload.encode("utf-8")).hexdigest()
-
     assert pf_rev["ok"] is True, (
         "preflight 只看集合与锚点，顺序反转后应仍通过；实测 reasons=%r"
         % pf_rev["reasons"])
-    assert rev_sha != ident_same["reviewed"], (
-        "顺序反转后摘要应与冻结值不同 ⇒ 身份核验应判不一致")
-    return ("仅反转登记顺序：preflight 通过 / 名册摘要不符 "
-            "⇒ 两阶段责任不同（显式传参，两侧经历同一变化）")
+
+    # 倒序分支的身份核验必须调用【真实核验器】，不能手算摘要
+    #
+    # ⚠ 2026-11-27 第三次修正（知微第三次复验指出）：
+    #   原写法在测试里【手算】倒序摘要再与冻结值比，
+    #   ⇒ 知微实测：把真实核验器改成「始终使用登记摘要」，AP-15 仍绿。
+    #     因为根本没经过那个核验器。
+    #   ⇒ 现在：在测试作用域里让名册模块读到同一倒序元组，
+    #     断言真实 check_manifest_identity()["consistent"] is False，
+    #     再在 finally 中恢复。
+    orig_tuple = MM.REGISTERED_MUTATION_IDS
+    try:
+        MM.REGISTERED_MUTATION_IDS = tuple(rev)
+        ident_rev = MM.check_manifest_identity()
+        assert ident_rev["consistent"] is False, (
+            "倒序名册下真实核验器应判不一致，实测 %r"
+            % ident_rev["consistent"])
+        assert ident_rev["current"] != ident_rev["reviewed"]
+    finally:
+        MM.REGISTERED_MUTATION_IDS = orig_tuple
+
+    # 恢复后应回到一致
+    assert MM.check_manifest_identity()["consistent"] is True
+    return ("仅反转登记顺序：preflight 通过 / 真实 check_manifest_identity "
+            "判不一致 ⇒ 两阶段责任不同")
 
 
 @case("AP-19", "前缀不匹配：退出版本边序为 [B,A] 而前版 [A] ⇒ 归因未知")
@@ -698,6 +711,13 @@ def ap20():
     ⇒ 我选后者：要求 from_id 显式等于 rid。
       理由：历史容器不提供可采信的归属证据，
             只有边自己的 from_id 能证明它属于本条记录。
+
+    ⚠ 2026-11-27 第三次修正（知微第三次复验指出，我已复现）：
+      原用例「删除退出版本【所有】边的 from_id」——
+      连旧边（前版已有那条）也改了，
+      于是【前缀检查先拒绝】这份历史，根本走不到「新增边归属」那一关。
+      知微实测：在临时副本恢复「允许空 from_id」的旧判断，仓内 AP-20 仍绿。
+      ⇒ 单因素：只删【新增边】的 from_id，前版边逐项原样。
     """
     import copy
     s = _store(_rec("R", "first_person_report"),
@@ -708,8 +728,17 @@ def ap20():
     real = s.history("R")
 
     sim = [copy.deepcopy(h) for h in real]
-    for e in sim[2]["relation"]:
-        e.pop("from_id", None)
+    prev_edges = list(sim[1].get("relation") or [])
+    # 只删【新增那一条】的 from_id；前版边保持原样（前缀仍成立）
+    new_edge = copy.deepcopy(sim[2]["relation"][len(prev_edges)])
+    new_edge.pop("from_id", None)
+    sim[2]["relation"] = copy.deepcopy(prev_edges) + [new_edge]
+
+    # 自检：前缀仍成立，确认这条用例真的走到了「新增边归属」那一关
+    assert sim[2]["relation"][:len(prev_edges)] == prev_edges, (
+        "用例构造错误：前缀被打断 ⇒ 测不到新增边归属")
+    assert "from_id" not in sim[2]["relation"][-1], "新增边应已无 from_id"
+    assert all("from_id" in e for e in prev_edges), "旧边不应被改动"
 
     class _F(RecoveryStore):
         def history(self, rid):
@@ -721,11 +750,12 @@ def ap20():
     f.__dict__.update(s.__dict__)
     r = AI.synthetic_ratios(f, [])
 
+    assert r["denominator_attrition"] == 1, r["denominator_attrition"]
     assert r["denominator_attrition_cause"]["R"] == AI.UNKNOWN_CAUSE, (
-        "缺 from_id 时不得签发，实测 %r"
+        "新增边缺 from_id 时不得签发，实测 %r"
         % r["denominator_attrition_cause"]["R"])
     assert "R" in r["denominator_attrition_unknown"]
-    return "缺 from_id ⇒ ATTRIBUTION_UNKNOWN"
+    return "仅新增边缺 from_id（前缀完好）⇒ ATTRIBUTION_UNKNOWN"
 
 
 @case("AP-21", "反证：AP-19/20 不是空的 —— 正常边仍签发 'B'")
