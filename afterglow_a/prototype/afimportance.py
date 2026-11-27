@@ -414,16 +414,49 @@ def synthetic_ratios(store: RecoveryStore,
     #   ⚠ 范围：只统计【本次取回集内】的记录。
     #     若统计全库，则「本次只取回 3 条」时衰减量仍报全库的，
     #     两个数不同范围，会被误读成同一请求的两个侧面。
+    #
+    # ⚠ 2026-11-27 第五次补充（Mion 回执 第二封 §二，A2）：
+    #   Mion：「attrition 回答『少了多少』，cause 回答『谁搬的』。
+    #          只报前者，报告能看出问题但追不到动作。
+    #          而这个项目里，【追得到动作】比【知道少了多少】重要 ——
+    #          那正是溯源的全部意义。」
+    #
+    #   ⇒ 新增 denominator_attrition_cause =
+    #        { <被移出分母的记录 id>: <那次 correct 的 correcting_record_id> }
+    #
+    #   ⚠ 数据来源不是新字段，是【已经存在的】relation 里的 correction_of 边：
+    #        {"relation_type": "correction_of",
+    #         "from_id": <被纠正的记录>, "to_id": <纠正依据>}
+    #      ⇒ 之前没读它，不是因为不存在，是因为只报了「少了几条」。
+    #
+    #   ⚠ 取值规则：若一条记录被多次纠正，取【最近一次】把 basis
+    #     搬离 first_person_report 的那次。理由：问的是「谁把它搬走的」，
+    #     第一次搬走它的那次才是答案。
     attrition_ids = []
+    attrition_cause = {}
     for r in scope:
         rid = r["record_id"]
         cur_basis = r.get("participation_basis")
         if cur_basis == "first_person_report":
             continue                      # 还在分母里，未流失
+        hist = store.history(rid)
         was_fpr = any(h.get("participation_basis") == "first_person_report"
-                      for h in store.history(rid))
-        if was_fpr:
-            attrition_ids.append(rid)
+                      for h in hist)
+        if not was_fpr:
+            continue
+        attrition_ids.append(rid)
+
+        # 谁搬的：在这一版历史里找 correction_of 边
+        #
+        # hist 按写入顺序；只考虑【当前版】上的 correction_of 边 ——
+        # 因为当前版才是把 basis 变成现在这个值的那一版。
+        cause = None
+        for edge in (r.get("relation") or []):
+            if edge.get("relation_type") == "correction_of":
+                cause = edge.get("to_id")
+                break
+        if cause is not None:
+            attrition_cause[rid] = cause
     denominator_attrition = len(attrition_ids)
 
     if n == 0 and m == 0:
@@ -448,6 +481,8 @@ def synthetic_ratios(store: RecoveryStore,
             #   读者才知道「没有流失」与「分母本来就是 0」是一回事。
             "denominator_attrition": 0,
             "denominator_attrition_ids": [],
+            # Mion 回执第二封 §二（A2）：谁搬的。空范围内没有搬动。
+            "denominator_attrition_cause": {},
             "unverifiable_ids": [],
             "record_only_ids": [],
             "ids_meaning": ("unverifiable_ids = 无法判定是否伪亲历的记录 ID；"
@@ -480,6 +515,14 @@ def synthetic_ratios(store: RecoveryStore,
         # ---- Mion 回执 §三：分母流失量
         "denominator_attrition": denominator_attrition,
         "denominator_attrition_ids": sorted(attrition_ids),
+        # Mion 回执第二封 §二（A2）：谁搬的
+        #   {被移出分母的记录 id: 那次 correct 的 correcting_record_id}
+        # ⚠ 只在能追到 correction_of 边时出现。若某条记录
+        #   basis 不是经 correct() 改的（例如种子数据本来就是
+        #   record_only，而历史里有 first_person —— 不可能，但防御）
+        #   则此处会缺该键，而 denominator_attrition_ids 里仍有它。
+        #   两表长度不一致时，缺口【本身就是信息】：说明搬动无法归因。
+        "denominator_attrition_cause": dict(attrition_cause),
         # ⚠ 下面两个 ID 列表是【无法核验/只记录 的记录 ID】，
         #   不是「已识别的伪亲历名单」也不是「已识别的洗白档名单」。
         #   名字里带 ids 容易被读成「判定结果」，故此处写明。

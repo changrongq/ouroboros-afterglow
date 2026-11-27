@@ -278,6 +278,82 @@ def mn7():
     return "全库=1；范围[in1]=0"
 
 
+@case("MN-13", "A2 attrition_cause 追到「谁搬的」")
+def mn13():
+    """Mion 第二封 §二：
+
+    「attrition 回答『少了多少』，cause 回答『谁搬的』。
+      只报前者，报告能看出问题但追不到动作。
+      而这个项目里，【追得到动作】比【知道少了多少】重要。」
+
+    ⇒ cause = {被移出分母的记录 id: 那次 correct 的 correcting_record_id}
+    """
+    s = _store_with([_rec("t1", "first_person_report"),
+                     _rec("t2", "first_person_report")])
+    s.insert(_rec("donor_a", "record_only"))
+    s.insert(_rec("donor_b", "record_only"))
+    s.correct("t1", "x", "donor_a", "wash-a")
+    s.correct("t2", "x", "donor_b", "wash-b")
+
+    r = AI.synthetic_ratios(s, [])
+    assert r["denominator_attrition"] == 2, r["denominator_attrition"]
+    assert r["denominator_attrition_cause"] == {
+        "t1": "donor_a", "t2": "donor_b"}, \
+        r["denominator_attrition_cause"]
+    return "cause={'t1':'donor_a','t2':'donor_b'}"
+
+
+@case("MN-14", "A2 反证：只报数量时追不到动作")
+def mn14():
+    """证明 cause 不是 repeating ids 的装饰。
+
+    ids 只有 ['t1','t2'] —— 谁搬的完全不在里面。
+    若没有 cause，同一份报告无法回答「哪条记录被谁当依据搬走」。
+    """
+    s = _store_with([_rec("t1", "first_person_report")])
+    s.insert(_rec("donor_x", "record_only"))
+    s.correct("t1", "x", "donor_x", "wash")
+
+    r = AI.synthetic_ratios(s, [])
+    ids = r["denominator_attrition_ids"]
+    cause = r["denominator_attrition_cause"]
+
+    assert ids == ["t1"]
+    # ids 里没有搬运者
+    assert "donor_x" not in ids, "ids 不应包含搬运者"
+    # cause 里才有
+    assert cause.get("t1") == "donor_x", cause
+    return "ids=['t1'] 无搬运者；cause 给出 'donor_x'"
+
+
+@case("MN-15", "A2 边：未被搬动的记录不出现在 cause 里")
+def mn15():
+    s = _store_with([_rec("ok1", "first_person_report"),
+                     _rec("t1", "first_person_report")])
+    s.insert(_rec("d1", "record_only"))
+    s.correct("t1", "x", "d1", "wash")
+
+    r = AI.synthetic_ratios(s, [])
+    assert "ok1" not in r["denominator_attrition_cause"], (
+        "仍在分母里的记录不应出现在 cause")
+    assert r["denominator_attrition_cause"] == {"t1": "d1"}
+    return "cause 只含被搬走的 t1"
+
+
+@case("MN-16", "A2 空分支：cause 为空 dict，且键集合与非空一致")
+def mn16():
+    s = _store_with([_rec("h1", "first_person_report")])
+    empty = AI.synthetic_ratios(s, [], scope_ids=[])
+    assert empty["denominator_attrition_cause"] == {}, \
+        empty["denominator_attrition_cause"]
+    nonempty = AI.synthetic_ratios(s, [])
+    assert set(empty.keys()) == set(nonempty.keys()), (
+        "键集合不一致：仅空有 %r；仅非空有 %r"
+        % (sorted(set(empty) - set(nonempty)),
+           sorted(set(nonempty) - set(empty))))
+    return "空分支 cause={}，两分支均 %d 键" % len(empty)
+
+
 # ================================================ ③ 取回集一处实现
 
 @case("MN-8", "③ 取回集定义只在一处：retrieval_scope 是唯一构造点")
@@ -379,7 +455,7 @@ def main():
     print("=" * 80)
     print()
     for f in (mn1, mn2, mn3, mn4, mn5, mn6, mn7, mn8, mn9, mn10,
-              mn11, mn12):
+              mn11, mn12, mn13, mn14, mn15, mn16):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)
