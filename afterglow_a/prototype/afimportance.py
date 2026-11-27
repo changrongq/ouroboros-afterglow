@@ -92,6 +92,15 @@ CANDIDATE_STATUS = {
 #:   合成基线只允许标记 MEASURED_ON_SYNTHETIC_ONLY，不写正式重要性结论。
 SYNTHETIC_PREFIX = "MEASURED_ON_SYNTHETIC_ONLY"
 
+#: 归因未知的显式标记（凌翼裁定回执 2026-11-27 §一）。
+#:
+#: 「如历史证据无法确定相应纠正依据，应显式报告归因未知，
+#:   不得静默给出错误 ID。」
+#:
+#: ⚠ 用显式值而非「缺键」：缺键会让读者以为「没查到东西」，
+#:   而显式值才能说「查过了，定不了」。
+UNKNOWN_CAUSE = "ATTRIBUTION_UNKNOWN"
+
 
 # ================================================================ 合成召回事件流
 
@@ -429,11 +438,36 @@ def synthetic_ratios(store: RecoveryStore,
     #         "from_id": <被纠正的记录>, "to_id": <纠正依据>}
     #      ⇒ 之前没读它，不是因为不存在，是因为只报了「少了几条」。
     #
-    #   ⚠ 取值规则：若一条记录被多次纠正，取【最近一次】把 basis
-    #     搬离 first_person_report 的那次。理由：问的是「谁把它搬走的」，
-    #     第一次搬走它的那次才是答案。
+    # ⚠ 2026-11-27 第六次修正（凌翼裁定回执 §一，静态核对发现）：
+    #
+    #   原实现从【当前】relation 列表找【第一条】correction_of 就 break。
+    #   而 correct() 是【追加】边（rel = list(cur.relation) + [新边]）。
+    #   ⇒ 一条记录被纠正多次时，第一条边属于【最早那次】，
+    #     而真正把 basis 搬离 first_person_report 的可能是后面某次。
+    #   凌翼给的反例（我复现成立）：
+    #      R 初始 first_person
+    #      第 1 次由 first_person 记录 A 纠正 → R 仍是 first_person（未流失）
+    #      第 2 次由 record_only 记录 B 纠正 → R 才退出分母
+    #      旧实现给出 cause=A，正确答案是 B。
+    #
+    #   ⚠ 而且我此前的注释写的是「取最近一次把 basis 搬离的那次」，
+    #     代码却是「取第一条」—— 注释声明的规则与实际行为相反。
+    #     这比没写注释更糟：读者会信注释。
+    #
+    #   ⇒ 现在改为【按历史版本逐步比对来源字段】：
+    #     找第一个满足「该版本 basis 已不是 first_person_report、
+    #                 而紧邻的前一版本 basis 是 first_person_report」
+    #     的版本，取该版本上的 correction_of 边。
+    #     这一版就是【把记录搬出分母的那一版】。
+    #
+    #   ⇒ 若历史里找不到这样的一对版本（数据不自洽），
+    #     或该版本上没有 correction_of 边，
+    #     则【显式报归因未知】，不得静默给出一个 ID。
+    #     （凌翼：「如历史证据无法确定相应纠正依据，
+    #             应显式报告归因未知，不得静默给出错误 ID。」）
     attrition_ids = []
     attrition_cause = {}
+    attrition_unknown = []
     for r in scope:
         rid = r["record_id"]
         cur_basis = r.get("participation_basis")
@@ -446,17 +480,52 @@ def synthetic_ratios(store: RecoveryStore,
             continue
         attrition_ids.append(rid)
 
-        # 谁搬的：在这一版历史里找 correction_of 边
+        # ---- 谁搬的：按历史版本逐步比对来源字段
         #
-        # hist 按写入顺序；只考虑【当前版】上的 correction_of 边 ——
-        # 因为当前版才是把 basis 变成现在这个值的那一版。
+        # hist 按写入顺序（revision 递增）。
+        # 找第一处「前一版是 first_person_report、这一版不是」的跃变，
+        # 该跃变对应的版本就是【把它搬出分母的那一版】。
+        #
+        # ⚠ 不能取 relation 列表首条：correct() 是追加边，
+        #   首条属于最早一次纠正，而那次可能没改变 basis（凌翼反例）。
         cause = None
-        for edge in (r.get("relation") or []):
-            if edge.get("relation_type") == "correction_of":
-                cause = edge.get("to_id")
-                break
+        prev_basis = None
+        prev_edges = []
+        for h in hist:
+            this_basis = h.get("participation_basis")
+            this_edges = [e for e in (h.get("relation") or [])
+                          if e.get("relation_type") == "correction_of"]
+            if (prev_basis == "first_person_report"
+                    and this_basis != "first_person_report"):
+                # 这一版【是】一处搬出分母的跃变。
+                #
+                # ⚠ relation 是【累计】的（correct() 追加），
+                #   所以本版真正新增的边 = 本版边集 − 上一版边集。
+                #   直接取首条会是【最早那次】纠正（凌翼反例里就是 A）。
+                #
+                # ⚠ 2026-11-27 第二次修正（AP-3 暴露）：
+                #   不能在第一处跃变就 break ——
+                #   记录可能【退出 → 恢复 → 再次退出】，
+                #   当前 basis 由【最后一处跃变】决定。
+                #   ⇒ 继续扫，每遇跃变就更新 cause，最后那次胜出。
+                new_edges = [e for e in this_edges
+                             if e.get("to_id") not in
+                             {pe.get("to_id") for pe in prev_edges}]
+                if new_edges:
+                    cause = new_edges[-1].get("to_id")
+                else:
+                    # 跃变版没有新增边 ⇒ 这一处无法归因
+                    cause = None
+            prev_basis = this_basis
+            prev_edges = this_edges
+
         if cause is not None:
             attrition_cause[rid] = cause
+        else:
+            # 凌翼：「如历史证据无法确定相应纠正依据，
+            #        应显式报告归因未知，不得静默给出错误 ID。」
+            attrition_cause[rid] = UNKNOWN_CAUSE
+            attrition_unknown.append(rid)
     denominator_attrition = len(attrition_ids)
 
     if n == 0 and m == 0:
@@ -483,6 +552,8 @@ def synthetic_ratios(store: RecoveryStore,
             "denominator_attrition_ids": [],
             # Mion 回执第二封 §二（A2）：谁搬的。空范围内没有搬动。
             "denominator_attrition_cause": {},
+            # 凌翼裁定回执 §一：归因未知的清单（空范围内自然为空）
+            "denominator_attrition_unknown": [],
             "unverifiable_ids": [],
             "record_only_ids": [],
             "ids_meaning": ("unverifiable_ids = 无法判定是否伪亲历的记录 ID；"
@@ -517,12 +588,13 @@ def synthetic_ratios(store: RecoveryStore,
         "denominator_attrition_ids": sorted(attrition_ids),
         # Mion 回执第二封 §二（A2）：谁搬的
         #   {被移出分母的记录 id: 那次 correct 的 correcting_record_id}
-        # ⚠ 只在能追到 correction_of 边时出现。若某条记录
-        #   basis 不是经 correct() 改的（例如种子数据本来就是
-        #   record_only，而历史里有 first_person —— 不可能，但防御）
-        #   则此处会缺该键，而 denominator_attrition_ids 里仍有它。
-        #   两表长度不一致时，缺口【本身就是信息】：说明搬动无法归因。
+        # ⚠ 2026-11-27 凌翼裁定后修正：多次纠正时按【历史版本跃变】定位，
+        #   不取 relation 列表首条（首条属于最早那次，可能没改变 basis）。
+        # ⚠ 无法归因的记录，此表给 "ATTRIBUTION_UNKNOWN" 而不是缺键 ——
+        #   凌翼：「应显式报告归因未知，不得静默给出错误 ID。」
+        #   缺键会让读者以为「没查到东西」，显式值才不会。
         "denominator_attrition_cause": dict(attrition_cause),
+        "denominator_attrition_unknown": sorted(attrition_unknown),
         # ⚠ 下面两个 ID 列表是【无法核验/只记录 的记录 ID】，
         #   不是「已识别的伪亲历名单」也不是「已识别的洗白档名单」。
         #   名字里带 ids 容易被读成「判定结果」，故此处写明。
