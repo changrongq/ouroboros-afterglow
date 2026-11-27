@@ -50,7 +50,7 @@ def case(cid, name):
     return deco
 
 
-from afcore import Record, RecoveryStore  # noqa: E402
+from afcore import Record, RecoveryStore, SchemaError  # noqa: E402
 import afimportance as AI                  # noqa: E402
 import afrecover                           # noqa: E402
 
@@ -426,16 +426,35 @@ def mn10():
         "同一取回集上两入口应一致：%r vs %r"
         % (a["record_only_ids"], b["record_only_ids"]))
 
-    # 输入域外：重复 ID ⇒ synthetic 拒绝，afrecover 去重
+    # 输入域外：重复 ID ⇒ synthetic 必须拒绝，afrecover 去重
+    #
+    # ⚠ 2026-11-27 修正（知微第二次复验）：
+    #   原写法：
+    #       try:
+    #           AI.synthetic_ratios(...重复...)
+    #           raise AssertionError("重复 ID 未被拒绝")
+    #       except Exception as e:
+    #           assert "重复" in str(e)
+    #   ⇒ 它自己抛的 AssertionError 消息里含「重复」二字，
+    #     被同一个 except 接住并判为合格。
+    #     知微实测：把指标入口临时换成「先去重再算」，MN-10 仍 PASS。
+    #   ⇒ 现在只捕获【预期的 SchemaError】，未抛异常的失败断言放 else。
+    raised = None
     try:
         AI.synthetic_ratios(s, [], scope_ids=["h1", "ro1", "ro1"])
-        raise AssertionError("重复 ID 未被拒绝")
-    except Exception as e:
-        assert "重复" in str(e), str(e)[:80]
+    except SchemaError as e:
+        raised = e
+    else:
+        raise AssertionError(
+            "重复 ID 被静默接受（未抛 SchemaError）⇒ 同一记录会被算两次")
+
+    assert "重复" in str(raised), (
+        "拒绝对象正确但理由未提重复：%s" % str(raised)[:80])
+
     r = afrecover.summarize_conflicts(s, ["h1", "ro1", "ro1"])
     assert abs((r.get("record_only_ratio") or 0) - 0.5) < 1e-9, (
         "去重后应为 1/2，实测 %r" % r.get("record_only_ratio"))
-    return ("域内(唯一ID)两入口一致；域外(重复ID)：synthetic 拒绝 / "
+    return ("域内(唯一ID)两入口一致；域外(重复ID)：synthetic 抛 SchemaError / "
             "afrecover 去重 —— 不得互换入口")
 
 

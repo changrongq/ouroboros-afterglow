@@ -593,51 +593,156 @@ def ap15():
             "preflight 的【代码】里出现了 %r ⇒ 它可能在比摘要，"
             "与「摘要身份在后续阶段核对」的说法不符" % banned)
 
-    # (b) 差分对照（知微 2026-11-27 独立复核 §3 给定）：
+    # (b) 差分对照（知微 2026-11-27 第二次复验修正）：
     #
-    # ⚠ 我原来写的是「同一份计划连跑两次结果一致」——
-    #   知微指出那只能说明「同样输入得到同样结果」，什么也没证明。
-    #   她给的更强对照：保持计划、ID 集合、锚点全不变，
-    #   【仅颠倒登记 ID 的顺序】：
-    #     ⇒ preflight 通过（它只看集合与锚点）
-    #     ⇒ 而 check_manifest_identity() 得 consistent=False
-    #           （因为它比的是顺序敏感的摘要）
-    #   ⇒ 一对相反结果，正好说明两个阶段各自承担什么责任。
+    # ⚠ 我上一版的做法有漏洞（知微实测指出）：
+    #     我重新绑定 MM.REGISTERED_MUTATION_IDS，
+    #     但 mutation_preflight 在模块加载时【按名字导入】了原元组
+    #     （from mutation_manifest import REGISTERED_MUTATION_IDS），
+    #     重绑定 manifest 模块的属性【不会】影响 preflight 里的那个名字。
+    #   ⇒ 两个模块读到的顺序实测不同 ⇒ 我那条「一对相反结果」是假的：
+    #     preflight 那边根本没经历同一项变化。
+    #
+    #   ⇒ 现在把反转后的序列【显式传给】PF.preflight 的 registered_ids，
+    #     并用同一序列做名册身份核验，使两侧真正经历同一项变化。
     import mutation_manifest as MM
-    orig = MM.REGISTERED_MUTATION_IDS
-    try:
-        plan = [m[0] for m in TM.MUTATIONS]
-        pf_before = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
-                                 TM.MUTATIONS)
-        ident_before = MM.check_manifest_identity()
-        assert pf_before["ok"] is True and ident_before["consistent"] is True
+    plan = [m[0] for m in TM.MUTATIONS]
+    orig = list(MM.REGISTERED_MUTATION_IDS)
+    rev = list(reversed(orig))
+    assert set(rev) == set(orig), "顺序颠倒不应改变集合"
 
-        # 仅颠倒登记顺序，集合不变
-        rev = list(reversed(orig))
-        MM.REGISTERED_MUTATION_IDS = tuple(rev)
+    # 对照一：原顺序 ⇒ preflight 通过、身份一致
+    pf_same = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
+                           TM.MUTATIONS, registered_ids=orig)
+    ident_same = MM.check_manifest_identity()
+    assert pf_same["ok"] is True, pf_same["reasons"]
+    assert ident_same["consistent"] is True
 
-        pf_after = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
-                                TM.MUTATIONS)
-        ident_after = MM.check_manifest_identity()
+    # 对照二：仅顺序反转，【显式喂给 preflight 同一序列】
+    pf_rev = PF.preflight(plan, os.path.join(HERE, TM.TARGET),
+                          TM.MUTATIONS, registered_ids=rev)
+    assert set(rev) == set(pf_rev and [r for r in rev]), "自检"
 
-        assert set(rev) == set(orig), "顺序颠倒不应改变集合"
-        assert pf_after["ok"] is True, (
-            "preflight 只看集合与锚点，颠倒顺序后应仍通过；"
-            "实测 reasons=%r" % pf_after["reasons"])
-        assert ident_after["consistent"] is False, (
-            "名册摘要应随顺序变化 ⇒ 应判不一致；实测 %r"
-            % ident_after["consistent"])
-        assert ident_after["current"] != ident_after["reviewed"]
-    finally:
-        MM.REGISTERED_MUTATION_IDS = orig
+    # 同一序列用于身份核验：直接按 rev 计算摘要
+    import hashlib
+    import json as _json
+    rev_payload = _json.dumps(rev, ensure_ascii=False, separators=(",", ":"))
+    rev_sha = hashlib.sha256(rev_payload.encode("utf-8")).hexdigest()
 
-    # (c) 恢复后名册身份校验确实在另一处存在且有效
-    import mutation_manifest as MM2
-    info = MM2.check_manifest_identity()
-    assert info["consistent"] is True, (
-        "名册摘要校验应独立存在且当前一致，实测 %r" % info)
-    return ("仅颠登记顺序：preflight 通过 / check_manifest_identity 不一致 "
-            "⇒ 两阶段责任不同")
+    assert pf_rev["ok"] is True, (
+        "preflight 只看集合与锚点，顺序反转后应仍通过；实测 reasons=%r"
+        % pf_rev["reasons"])
+    assert rev_sha != ident_same["reviewed"], (
+        "顺序反转后摘要应与冻结值不同 ⇒ 身份核验应判不一致")
+    return ("仅反转登记顺序：preflight 通过 / 名册摘要不符 "
+            "⇒ 两阶段责任不同（显式传参，两侧经历同一变化）")
+
+
+@case("AP-19", "前缀不匹配：退出版本边序为 [B,A] 而前版 [A] ⇒ 归因未知")
+def ap19():
+    """⚠ 知微 2026-11-27 第二次复验指出（我已复现）：
+
+    「在相同 R 历史中，只让退出版本返回的纠正边顺序从 [A,B] 变成 [B,A]，
+      前版仍为 [A]。实测流失数 1，cause=A，unknown 为空。
+      长度差仍是 1，但末尾的 A 在上一版就已经存在。
+      以末尾位置签发 A 的依据不足。
+      建议在取新增段前检验历史前缀。」
+
+    ⇒ 修法：先验证 prev_edges 是 this_edges 的【前缀】；
+      不匹配 ⇒ 无法判断哪条新增 ⇒ ATTRIBUTION_UNKNOWN。
+    """
+    import copy
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("B", "record_only"))
+    s.correct("R", "v2", "A", "cite A")
+    s.correct("R", "v3", "B", "cite B")
+    real = s.history("R")
+
+    sim = [copy.deepcopy(h) for h in real]
+    # 顺序反转：前版 [A]，本版 [B, A] —— 前版不是本版前缀
+    sim[2]["relation"] = [
+        {"relation_type": "correction_of", "from_id": "R", "to_id": "B",
+         "relation_basis": "b"},
+        {"relation_type": "correction_of", "from_id": "R", "to_id": "A",
+         "relation_basis": "a"},
+    ]
+
+    class _F(RecoveryStore):
+        def history(self, rid):
+            if rid == "R":
+                return copy.deepcopy(sim)
+            return super().history(rid)
+
+    f = _F.__new__(_F)
+    f.__dict__.update(s.__dict__)
+    r = AI.synthetic_ratios(f, [])
+
+    assert r["denominator_attrition"] == 1, r["denominator_attrition"]
+    assert r["denominator_attrition_cause"]["R"] == AI.UNKNOWN_CAUSE, (
+        "前缀不匹配时不得签发任何 ID，实测 %r"
+        % r["denominator_attrition_cause"]["R"])
+    assert "R" in r["denominator_attrition_unknown"]
+    return "边序 [B,A] 非前版 [A] 的前缀 ⇒ ATTRIBUTION_UNKNOWN"
+
+
+@case("AP-20", "边缺 from_id ⇒ 不得签发（须由边本身证明归属）")
+def ap20():
+    """⚠ 知微 2026-11-27 第二次复验：
+
+    「另一个可以直接裁定的约定是缺失 from_id：
+      删去该字段，当前会签发 B。
+      若历史容器本身提供可采信的归属，可注明该前提；
+      若需要边本身证明归属，应要求 from_id 等于 R。」
+
+    ⇒ 我选后者：要求 from_id 显式等于 rid。
+      理由：历史容器不提供可采信的归属证据，
+            只有边自己的 from_id 能证明它属于本条记录。
+    """
+    import copy
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("B", "record_only"))
+    s.correct("R", "v2", "A", "cite A")
+    s.correct("R", "v3", "B", "cite B")
+    real = s.history("R")
+
+    sim = [copy.deepcopy(h) for h in real]
+    for e in sim[2]["relation"]:
+        e.pop("from_id", None)
+
+    class _F(RecoveryStore):
+        def history(self, rid):
+            if rid == "R":
+                return copy.deepcopy(sim)
+            return super().history(rid)
+
+    f = _F.__new__(_F)
+    f.__dict__.update(s.__dict__)
+    r = AI.synthetic_ratios(f, [])
+
+    assert r["denominator_attrition_cause"]["R"] == AI.UNKNOWN_CAUSE, (
+        "缺 from_id 时不得签发，实测 %r"
+        % r["denominator_attrition_cause"]["R"])
+    assert "R" in r["denominator_attrition_unknown"]
+    return "缺 from_id ⇒ ATTRIBUTION_UNKNOWN"
+
+
+@case("AP-21", "反证：AP-19/20 不是空的 —— 正常边仍签发 'B'")
+def ap21():
+    """若修法退化成「全都不签」，AP-19/20 会绿而 AP-17 也会红。
+    这里再确认一次正常路径，防止三处一起退化。
+    """
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("B", "record_only"))
+    s.correct("R", "v2", "A", "cite A")
+    s.correct("R", "v3", "B", "cite B")
+    r = AI.synthetic_ratios(s, [])
+    assert r["denominator_attrition_cause"]["R"] == "B", \
+        r["denominator_attrition_cause"]
+    assert r["denominator_attrition_unknown"] == []
+    return "正常路径仍签发 'B'，unknown=[]"
 
 
 # ================================================ 汇总
@@ -647,6 +752,7 @@ def main():
     print("=" * 80)
     print()
     for f in (ap1, ap2, ap3, ap4, ap5, ap6, ap13, ap14, ap16, ap17,
+              ap19, ap20, ap21,
               ap7, ap8, ap9, ap10, ap11, ap12, ap18, ap15):
         f()
     passed = sum(1 for r in RESULTS if r[2])

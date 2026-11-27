@@ -551,12 +551,33 @@ def synthetic_ratios(store: RecoveryStore,
                 #
                 #   ⚠ 不要求依据记录也在本次取回集内（知微明确）：
                 #     cause 只指【被引用的依据记录】，不是本次范围成员。
+                #
+                # ⚠ 2026-11-27 第五次修正（知微第二次复验）：
+                #   长度差 + 「取末尾」仍不足。【前版纠正边必须是本版的【前缀】】。
+                #   反例（知微给，我复现）：
+                #     真实 rev2 edges=['A']，rev3=['A','B']
+                #     替身让 rev3 = ['B','A']（顺序变了，前版仍是 ['A']）
+                #     长度差 = 1，「末尾」是 'A' —— 但 'A' 在上一版就存在，
+                #     以末尾位置签发给它依据不足。实测 cause='A'。
+                #   ⇒ 先验证前缀：this_edges[:len(prev_edges)] == prev_edges。
+                #     前缀不匹配 ⇒ 无法确定哪条是新增的 ⇒ 归因未知。
+                #
+                # ⚠ 关于 from_id（知微：「可以直接裁定的约定」）：
+                #   缺失 from_id 时原实现会签发。现按【要求边本身证明归属】处理：
+                #     from_id 必须显式等于 rid；缺失或不等 ⇒ 不签发。
+                #   理由：历史容器不提供可采信的归属证据，
+                #         只有边自己的 from_id 能证明它属于本条记录。
+                prefix_ok = (len(this_edges) >= len(prev_edges)
+                             and this_edges[:len(prev_edges)] == prev_edges)
                 n_new = len(this_edges) - len(prev_edges)
-                if n_new <= 0:
+                if not prefix_ok:
+                    # 前版边集不是本版的前缀 ⇒ 无法判断哪条新增
+                    cause = None
+                elif n_new <= 0:
                     # 跃变版没有新增边 ⇒ 这一处无法归因
                     cause = None
                 else:
-                    new_seg = this_edges[-n_new:]
+                    new_seg = this_edges[len(prev_edges):]
                     if len(new_seg) != 1:
                         # 多条新增边 ⇒ 歧义，不猜
                         cause = None
@@ -564,8 +585,8 @@ def synthetic_ratios(store: RecoveryStore,
                         e0 = new_seg[0]
                         frm = e0.get("from_id")
                         to = e0.get("to_id")
-                        if (frm not in (None, "", rid)) or not to:
-                            # 边不归属本条记录，或目标无效 ⇒ 不签发
+                        if frm != rid or not to:
+                            # 边未显式证明归属本条记录（或目标无效）⇒ 不签发
                             cause = None
                         else:
                             cause = to
