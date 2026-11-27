@@ -241,14 +241,17 @@ MUTATIONS = [
         {"A3-1e"},
     ),
     # ⚠ 2026-11-26 新增（知微定点复验 §「显式范围会改变样本总体却不告知」）
+    # ⚠ 2026-11-27 锚点更新（Mion 回执 §四 R1）：
+    #   取回集构造已从 synthetic_ratios 搬进 retrieval_scope()，
+    #   缩进减少 4 空格。旧锚点匹配 0 次 ⇒ INVALID。
     (
         "I12", "显式范围允许重复 ID（同一记录被算两次）",
-        '            if rid in seen:\n'
-        '                dup.append(rid)\n'
-        '                continue',
-        '            if False:  # MUTANT: 允许重复 ID\n'
-        '                dup.append(rid)\n'
-        '                continue',
+        '        if rid in seen:\n'
+        '            dup.append(rid)\n'
+        '            continue',
+        '        if False:  # MUTANT: 允许重复 ID\n'
+        '            dup.append(rid)\n'
+        '            continue',
         {"A3-7a"},
     ),
     (
@@ -261,19 +264,23 @@ MUTATIONS = [
         #
         #   真正的「静默丢弃」= 仍然跳过这条 ID（continue 保留），
         #   只是不把它记进 unknown 列表。
-        '            if rid not in by_id:\n'
-        '                unknown.append(rid)\n'
-        '                continue',
-        '            if rid not in by_id:\n'
-        '                continue  # MUTANT: 静默丢弃（不登记 unknown）',
+        #
+        # ⚠ 2026-11-27 锚点更新：同上，缩进减少 4 空格。
+        '        if rid not in by_id:\n'
+        '            unknown.append(rid)\n'
+        '            continue',
+        '        if rid not in by_id:\n'
+        '            continue  # MUTANT: 静默丢弃（不登记 unknown）',
         {"A3-7b"},
     ),
     (
         "I14", "不可核验率不再计入「从未观测」（知微 2026-11-27 要求防回归）",
-        '        if r.get("observed_origin") is None            # 从未观测\n'
-        '        or r.get("basis_conflict") in ("observed_absent", "observed_unresolved")',
-        '        if r.get("basis_conflict") in ("observed_absent", "observed_unresolved")'
-        '  # MUTANT: 去掉「从未观测」这一项',
+        # ⚠ 2026-11-27 锚点更新（Mion 回执 §二）：
+        #   (a)(b) 分项后，never_observed 已改成列表推导，
+        #   旧锚点（带注释的 or 表达式）不再存在。
+        #   新变异体仍表达同一件事：只保留 (b)，去掉「从未观测」这一项。
+        '        r for r in denom if r.get("observed_origin") is None',
+        '        r for r in denom if False  # MUTANT: 去掉「从未观测」这一项',
         {"A3-7d"},
     ),
 ]

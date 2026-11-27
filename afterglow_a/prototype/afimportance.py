@@ -260,6 +260,64 @@ def importance_candidates(store: RecoveryStore,
 
 # ================================================================ 合成比例（仅合成）
 
+
+#: 「取回集」的唯一实现（Mion 2026-11-27 §4 R1/R3）。
+#:
+#: ⚠ 为什么必须抽成一处：
+#:   Mion 原话——「『我们理解一致』不是保证。
+#:   『两处代码各自实现同一个概念』本身就是我们治了一整轮的那个病。」
+#:   ⇒ 在她写信之前，afrecover.summarize_conflicts 与
+#:     afimportance.synthetic_ratios 各自算了一遍 record_only_ratio，
+#:     且 total 的来源不同（前者 len(ids)，后者 len(scope)）。
+#:   ⇒ 现在两边都必须调用本函数，不得自行构造范围。
+#:
+#: ⚠ R3：禁止任何一侧自行过滤或复制这段定义。
+#:   本函数的契约：
+#:     · scope_ids is None  ⇒ 全库当前版本
+#:     · scope_ids 含重复   ⇒ 拒绝（否则同一记录被算两次，分母被算大）
+#:     · scope_ids 含未知   ⇒ 拒绝（否则不完整范围冒充完整范围）
+#:     · scope_ids == []    ⇒ 语义是「范围为空」，返回空列表，不报错
+#:
+#: 返回 (scope_records, scope_desc, by_id)
+def retrieval_scope(store: RecoveryStore,
+                    scope_ids: Optional[Iterable[str]] = None,
+                    ) -> tuple:
+    live = list(store.sqlite_rows())
+    by_id = {r["record_id"]: r for r in live}
+
+    if scope_ids is None:
+        return live, "ALL_CURRENT_RECORDS", by_id
+
+    requested = list(scope_ids)
+    seen = set()
+    dup = []
+    unknown = []
+    scope = []
+    for rid in requested:
+        if rid in seen:
+            dup.append(rid)
+            continue
+        seen.add(rid)
+        if rid not in by_id:
+            unknown.append(rid)
+            continue
+        scope.append(by_id[rid])
+
+    if dup:
+        raise SchemaError(
+            "scope_ids 含重复 ID %s。范围是【记录集合】，"
+            "重复提交会把同一记录算两次，从而改变分母与比例。"
+            % (sorted(set(dup)),))
+    if unknown:
+        raise SchemaError(
+            "scope_ids 含不存在的 ID %s。"
+            "不得静默丢弃 —— 那会让不完整范围冒充完整范围。"
+            "若本次确实没有取回任何记录，请传 []，"
+            "它的语义是「范围为空」，不是「解析失败」。"
+            % (sorted(unknown),))
+
+    return scope, "EXPLICIT_SCOPE", by_id
+
 def synthetic_ratios(store: RecoveryStore,
                      trace: Optional[Iterable[Dict[str, Any]]] = None,
                      scope_ids: Optional[Iterable[str]] = None,
@@ -288,71 +346,85 @@ def synthetic_ratios(store: RecoveryStore,
     ⚠ 口径必须显式登记：两个指标的总体不同，且各自写明。
     """
     live = list(store.sqlite_rows())
-    by_id = {r["record_id"]: r for r in live}
 
-    # 取回集：未指定时视为「全库当前版本」
+    # 取回集：**唯一实现**在 retrieval_scope()（Mion 2026-11-27 §4 R1/R3）
     #
-    # ⚠ 2026-11-26 修正（知微定点复验）—— 显式范围会静默改变样本总体：
-    #
-    #   原实现：scope = [by_id[i] for i in scope_ids if i in by_id]
-    #   ⇒ ① 重复 ID 被保留 ⇒ [r1,ro1,ro1] 的分母变成 3
-    #          同一集合重复提交，比例从 0.5 变成 0.667
-    #      ② 不存在的 ID 被静默丢弃 ⇒ [ghost] 与 [] 返回完全相同
-    #          「没能解析任何 ID」与「本次范围本来为空」混成了一件事
-    #
-    #   ⇒ 现在：重复 ID 与未知 ID 一律【拒绝】，并列出是哪些。
-    #      理由：契约说的是「记录集合」，集合语义下重复无意义；
-    #      而静默丢弃会让「不完整范围」冒充「完整范围」。
-    if scope_ids is None:
-        scope = live
-        scope_desc = "ALL_CURRENT_RECORDS"
-        unresolved = []
-    else:
-        requested = list(scope_ids)
-        seen = set()
-        dup = []
-        unknown = []
-        scope = []
-        for rid in requested:
-            if rid in seen:
-                dup.append(rid)
-                continue
-            seen.add(rid)
-            if rid not in by_id:
-                unknown.append(rid)
-                continue
-            scope.append(by_id[rid])
-
-        if dup:
-            raise SchemaError(
-                "scope_ids 含重复 ID %s。范围是【记录集合】，"
-                "重复提交会把同一记录算两次，从而改变分母与比例。"
-                % (sorted(set(dup)),))
-        if unknown:
-            raise SchemaError(
-                "scope_ids 含不存在的 ID %s。"
-                "不得静默丢弃 —— 那会让不完整范围冒充完整范围。"
-                "若本次确实没有取回任何记录，请传 []，"
-                "它的语义是「范围为空」，不是「解析失败」。"
-                % (sorted(unknown),))
-
-        scope_desc = "EXPLICIT_SCOPE"
-        unresolved = []
+    # ⚠ 2026-11-27 第三次修正（Mion 回执 §四）：
+    #   原实现把范围构造写在本函数里，而 afrecover.summarize_conflicts
+    #   另有一份。Mion：
+    #     「『两处代码各自实现同一个概念』本身就是我们治了一整轮的那个病。」
+    #   ⇒ 现在只调 retrieval_scope()，不得在此自行过滤。
+    scope, scope_desc, by_id = retrieval_scope(store, scope_ids)
 
     # ---- 指标一：unverifiable_ratio（C1 分母 = first_person_report）
     denom = [r for r in scope
              if r.get("participation_basis") == "first_person_report"]
     n = len(denom)
-    unverifiable = [
-        r for r in denom
-        if r.get("observed_origin") is None            # 从未观测
-        or r.get("basis_conflict") in ("observed_absent", "observed_unresolved")
+
+    # ⚠ 2026-11-27 第四次修正（Mion 回执 §二）：(a)(b) 必须分项报
+    #
+    #   Mion：「『无法核验』= 我们没有能力判断它是不是伪亲历
+    #          ≠ 我们判断过了但判不出
+    #          ⇒ 从未观测 ⇒ 完全没判断过 ⇒ 不可核验，而且是最严重的一种。」
+    #
+    #   她还指出只算 (b) 会推出荒谬结论：
+    #     「观测得越少，『可核验率』越高。」——反向激励。
+    #
+    #   ⇒ 合计仍进分子，但 (a)(b) 分解必须同时给出：
+    #       (a) never_observed          从没看过    ← 流程缺口
+    #       (b) observed_but_unresolved 看了判不出  ← 能力缺口
+    #     否则不知道下一笔投入该补哪一头。
+    never_observed = [
+        r for r in denom if r.get("observed_origin") is None
     ]
+    # (b) 只数「观测过、但 basis_conflict 落在无法判定的两个值上」，
+    #     不与 (a) 重叠：observed_origin is None 的记录已在 (a)，
+    #     不再进 (b)（否则同一记录被计两次，分子大于实际）。
+    observed_but_unresolved = [
+        r for r in denom
+        if r.get("observed_origin") is not None
+        and r.get("basis_conflict") in ("observed_absent",
+                                        "observed_unresolved")
+    ]
+    unverifiable = never_observed + observed_but_unresolved
+    assert len(unverifiable) == len({r["record_id"] for r in unverifiable}), (
+        "(a)(b) 分解存在重叠 ⇒ 分子会大于实际不可核验记录数")
+    assert len(unverifiable) <= n, "(a)(b) 合计超过了分母"
 
     # ---- 指标二：record_only_ratio（分母 = 取回集，与恢复层同口径）
     m = len(scope)
     record_only = [r for r in scope
                    if r.get("participation_basis") == "record_only"]
+
+    # ---- 追加指标：denominator_attrition（Mion 回执 §三）
+    #
+    #   Mion：「若只数当前版本，则一条原本 first_person_report 的记录，
+    #          被改成 record_only 之后，就从分母里消失。
+    #          ⇒ 这是洗白档的操作路径。分母可以被改小，而比例会变好看。」
+    #
+    #   ⇒ denominator_attrition =
+    #        (历史版本中曾为 first_person_report 的记录数)
+    #      − (当前版本中 first_person_report 的记录数)
+    #
+    #   ⚠ 计数单位是【记录】，不是【版本】：
+    #     同一条记录若历史上声称过 3 次、现在没声称，
+    #     流失量是 1（一条记录离开了分母），不是 3。
+    #     问的是「有多少条记录离开了分母」，不是「流失了多少次声称」。
+    #
+    #   ⚠ 范围：只统计【本次取回集内】的记录。
+    #     若统计全库，则「本次只取回 3 条」时衰减量仍报全库的，
+    #     两个数不同范围，会被误读成同一请求的两个侧面。
+    attrition_ids = []
+    for r in scope:
+        rid = r["record_id"]
+        cur_basis = r.get("participation_basis")
+        if cur_basis == "first_person_report":
+            continue                      # 还在分母里，未流失
+        was_fpr = any(h.get("participation_basis") == "first_person_report"
+                      for h in store.history(rid))
+        if was_fpr:
+            attrition_ids.append(rid)
+    denominator_attrition = len(attrition_ids)
 
     if n == 0 and m == 0:
         # ⚠ 2026-11-26 修正（知微 + 睫）：空分支原本只有 10 键，
@@ -367,6 +439,15 @@ def synthetic_ratios(store: RecoveryStore,
             "record_only_ratio": None,
             "denominator_size": 0,
             "record_only_denominator_size": 0,
+            # Mion 回执 §二：空分支同样必须给出 (a)(b) 分解（均为 0），
+            #   否则空/非空两分支键集合又不一致。
+            "never_observed_count": 0,
+            "observed_but_unresolved_count": 0,
+            # Mion 回执 §三：空范围内不可能观察到流失（没有记录被取回），
+            #   故为 0 —— 但必须与 denominator_size=0 同时出现，
+            #   读者才知道「没有流失」与「分母本来就是 0」是一回事。
+            "denominator_attrition": 0,
+            "denominator_attrition_ids": [],
             "unverifiable_ids": [],
             "record_only_ids": [],
             "ids_meaning": ("unverifiable_ids = 无法判定是否伪亲历的记录 ID；"
@@ -393,6 +474,12 @@ def synthetic_ratios(store: RecoveryStore,
         "record_only_denominator_size": m,     # record_only 的分母
         "unverifiable_ratio": (len(unverifiable) / n) if n else None,
         "record_only_ratio": (len(record_only) / m) if m else None,
+        # ---- Mion 回执 §二：(a)(b) 分项报（合计仍进分子）
+        "never_observed_count": len(never_observed),
+        "observed_but_unresolved_count": len(observed_but_unresolved),
+        # ---- Mion 回执 §三：分母流失量
+        "denominator_attrition": denominator_attrition,
+        "denominator_attrition_ids": sorted(attrition_ids),
         # ⚠ 下面两个 ID 列表是【无法核验/只记录 的记录 ID】，
         #   不是「已识别的伪亲历名单」也不是「已识别的洗白档名单」。
         #   名字里带 ids 容易被读成「判定结果」，故此处写明。

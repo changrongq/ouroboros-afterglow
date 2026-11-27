@@ -1,7 +1,7 @@
 {
-  "run_id": "20261127T060237841630Z-d544c461",
-  "started_at": "2026-11-27T06:02:37.841630+00:00",
-  "commit": "5fc17f27bc2bc49b6fc276bc064266c1e0f35712",
+  "run_id": "20261127T100606228729Z-b179e848",
+  "started_at": "2026-11-27T10:06:06.228729+00:00",
+  "commit": "6a66654771b91d07314aad144bbb7025c3674b62",
   "host_note": "本机（不跨机器成立）",
   "verdict": "EVIDENCE_COMPLETE",
   "exit_code": 0,

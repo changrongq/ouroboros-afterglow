@@ -516,11 +516,27 @@ def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
     # ⇒ 判定管不了它，只有度量管得住。
     #
     # ⚠ 此指标【不是合格率】，是伪亲历统计可信度的前置条件。
-    record_only_ids = []
-    for rid in ids:
-        rec = store.get(rid)
-        if rec is not None and rec.get("participation_basis") == "record_only":
-            record_only_ids.append(rid)
+    #
+    # ⚠ 2026-11-27（Mion 回执 §四 R1/R3）：
+    #   本函数原本自己算了一遍 record_only_ratio，与
+    #   afimportance.synthetic_ratios 各自实现同一个概念。
+    #   Mion：「『两处代码各自实现同一个概念』本身就是我们治了一整轮的那个病。」
+    #   ⇒ 现在调用【同一处】定义。
+    #
+    #   ⚠ 但两边的规模语义不同，不能直接改成同一表达式：
+    #     本函数已先把 record_ids 去重排序成 `ids`（集合语义），
+    #     而 synthetic_ratios 拒绝重复并区分「空范围」与「未知 ID」。
+    #     ⇒ 此处把已按集合处理好的 `ids` 作为范围传入。
+    #     下面用断言固定「两条路径给出同一范围」，
+    #     而不靠注释声称它们一致（R2）。
+    from afimportance import retrieval_scope
+    scope_recs, _scope_desc, _by_id = retrieval_scope(store, list(ids))
+    assert sorted(r["record_id"] for r in scope_recs) == sorted(ids), (
+        "取回集两处定义不一致：retrieval_scope 返回 %r，本函数 ids 为 %r"
+        % (sorted(r["record_id"] for r in scope_recs)[:8], sorted(ids)[:8]))
+
+    record_only_ids = [r["record_id"] for r in scope_recs
+                       if r.get("participation_basis") == "record_only"]
     record_only_ratio = (len(record_only_ids) / total) if total else None
 
     # ---- 观测是否进链（Mion 2026-11-24 回复4 §三 状态词）
