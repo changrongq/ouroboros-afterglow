@@ -77,17 +77,26 @@ def case(cid, name):
 def classify(rows, expected_ids=None, expected_n=None):
     """薄封装：调用【真实驱动】的 classify_evidence。
 
-    ⚠ 保留 expected_n 参数是为了让旧用例写法不变，
-      但它现在被转换成 expected_ids（取前 n 个实际 row 的 ID 之外的占位）。
-      新增用例应直接用 expected_ids。
+    ⚠ 2026-11-27 第二次修正：
+      降级模式（expected_ids=None）现在判 PARTIAL，不再判 COMPLETE
+      （知微：「缺预期时至多 PARTIAL」）。
+      ⇒ 传了 expected_n 但没传 expected_ids 时，必须构造出【明确的】
+        预期 ID 清单，不能退化成降级模式。
+      ⇒ 不传任何参数时，用实际 rows 的 ID 作为预期（调用方的责任）。
     """
-    if expected_n is not None and expected_ids is None:
-        # 构造「预期比实际多」的情形：补一个不存在的 ID
-        ids = [r[0] for r in rows]
+    if expected_ids is not None:
+        v, rc, c, d = classify_evidence(rows, expected_ids)
+        return v, rc, c
+
+    ids = [r[0] for r in rows]
+    if expected_n is not None:
+        # 构造「预期比实际多」的情形：补占位 ID（这些 ID 不会出现在 rows 里）
         while len(ids) < expected_n:
             ids.append("__EXPECTED_MISSING_%d" % len(ids))
-        expected_ids = ids[:expected_n]
-    v, rc, c, _ = classify_evidence(rows, expected_ids)
+        ids = ids[:expected_n]
+
+    # 显式把预期传进去，避免落入降级模式（降级现在至多 PARTIAL）
+    v, rc, c, d = classify_evidence(rows, ids)
     return v, rc, c
 
 
@@ -237,13 +246,97 @@ def es9():
     return "同一引用 + 删掉后会被放过 + 现在计入（三层接线检查）"
 
 
+@case("ES-10", "反证：给真实 main 的可执行列表删掉末项 ⇒ 必须 PARTIAL")
+def es10():
+    """⚠ 知微 2026-11-27 的实测：
+
+    「给真实 main 的可执行列表仅去掉 I14，不补副本，其余 14 项照常真跑
+      ⇒ COMPLETE/0；14 CAUGHT，manifest_ok=True，missing=[]。
+      这是未关闭的一格。」
+
+    ⇒ 她指出的根因：expected_ids 从 MUTATIONS 生成，与执行计划同源。
+    ⇒ 现在 expected 来自 mutation_manifest.REGISTERED_MUTATION_IDS
+      （独立登记）。本用例验证：执行列表少一项时，
+      对账必须报 missing 并判 PARTIAL。
+
+    ⚠ 本用例不真跑 14 个变异（那是几分钟），
+      而是用【真实 classify_evidence + 真实登记清单】验证对账逻辑。
+    """
+    import mutation_manifest as MM
+    import test_mutations_importance as TM
+
+    manifest_ids = list(MM.REGISTERED_MUTATION_IDS)
+    assert manifest_ids == [m[0] for m in TM.MUTATIONS], (
+        "前提：当前登记与执行计划应一致")
+
+    # 模拟「执行列表去掉 I14，其余 14 项真跑且全 CAUGHT」
+    simulated_rows = [(i, "d", "CAUGHT", "e")
+                      for i in manifest_ids if i != "I14"]
+    v, rc, c, d = TM.classify_evidence(simulated_rows, manifest_ids)
+
+    assert v == "EVIDENCE_PARTIAL", (
+        "执行少一项仍判 %s ⇒ 未关闭（知微说的那一格）" % v)
+    assert rc == 2, rc
+    assert d["missing"] == ["I14"], (
+        "missing 应为 ['I14']，实测 %r" % (d["missing"],))
+    assert d["manifest_ok"] is False
+
+    # 对照：若 expected 也来自执行计划（知微指出的旧写法），会放过
+    old_expected = [r[0] for r in simulated_rows]
+    v_old, _, _, _ = TM.classify_evidence(simulated_rows, old_expected)
+    assert v_old == "EVIDENCE_COMPLETE", (
+        "旧写法（expected 与执行同源）本应放过，实测 %s" % v_old)
+    return "执行少 I14：新判 PARTIAL/missing=[I14]；旧写法仍 COMPLETE"
+
+
+@case("ES-11", "预期清单自身有重复 ⇒ 不得 COMPLETE")
+def es11():
+    """知微 2026-11-27：
+
+    「预期清单有重复、明细无重复时（预期 16 行、实得 15 行）仍 COMPLETE」
+
+    ⇒ 集合相等但数量对不上，旧判据放过。
+    """
+    import test_mutations_importance as TM
+    base = [("I%d" % i, "d", "CAUGHT", "e") for i in range(1, 16)]
+    exp = ["I%d" % i for i in range(1, 16)] + ["I1"]   # 16 项，I1 重复
+
+    v, rc, c, d = TM.classify_evidence(base, exp)
+    assert v == "EVIDENCE_PARTIAL", (
+        "预期有重复仍判 %s ⇒ 未防住" % v)
+    assert rc == 2
+    assert d["expected_duplicated"] == ["I1"], (
+        "应报 expected_duplicated=['I1']，实测 %r"
+        % (d.get("expected_duplicated"),))
+    return "预期 16 项含重复 I1，实得 15 ⇒ PARTIAL"
+
+
+@case("ES-12", "未提供预期清单 ⇒ 至多 PARTIAL，不得 COMPLETE")
+def es12():
+    """知微 2026-11-27：
+
+    「未提供预期清单的降级模式也能 COMPLETE。
+      若 COMPLETE 承诺『完整且与有效登记一一对应』，缺预期时至多 PARTIAL。」
+    """
+    import test_mutations_importance as TM
+    rows = [("I%d" % i, "d", "CAUGHT", "e") for i in range(1, 16)]
+
+    v, rc, c, d = TM.classify_evidence(rows, None)
+    assert v == "EVIDENCE_PARTIAL", (
+        "降级模式判了 %s ⇒ 仍能 COMPLETE" % v)
+    assert rc == 2
+    assert d["manifest_check"] == "DEGRADED_NO_EXPECTED_LIST"
+    return "无预期清单 ⇒ PARTIAL / 2（不再 COMPLETE）"
+
+
 # ======================================================== 汇总
 def main():
     print("=" * 80)
     print("证据状态三态最小验收对照（知微 2026-11-27）")
     print("=" * 80)
     print()
-    for f in (es1, es2, es3, es4, es5, es6, es7, es8, es9):
+    for f in (es1, es2, es3, es4, es5, es6, es7, es8, es9,
+              es10, es11, es12):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)

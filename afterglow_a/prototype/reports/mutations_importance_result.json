@@ -13,6 +13,7 @@
   "missing": [],
   "unexpected": [],
   "duplicated": [],
+  "expected_duplicated": [],
   "all_caught": true,
   "rows": [
     {

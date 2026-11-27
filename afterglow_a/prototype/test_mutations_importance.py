@@ -71,22 +71,35 @@ def classify_evidence(rows, expected_ids=None):
 
     if expected_ids is None:
         # 未提供预期清单 ⇒ 只能做「非空 + 唯一」的最低检查
-        manifest_ok = bool(got_ids) and len(set(got_ids)) == len(got_ids)
+        #
+        # ⚠ 2026-11-27 修正（知微定点复验）：
+        #   「未提供预期清单的降级模式也能 COMPLETE。
+        #     若 COMPLETE 承诺『完整且与有效登记一一对应』，
+        #     缺预期时至多 PARTIAL。」
+        #   ⇒ 降级模式改为：可以判 PARTIAL，不判 COMPLETE。
+        manifest_ok = False
         detail.update({"manifest_ok": manifest_ok,
-                       "manifest_check": "DEGRADED_NO_EXPECTED_LIST"})
+                       "manifest_check": "DEGRADED_NO_EXPECTED_LIST",
+                       "note": ("未提供预期清单 ⇒ 无法核对身份 ⇒ 至多 PARTIAL"
+                                "（知微 2026-11-27）")})
     else:
         exp = list(expected_ids)
         exp_set, got_set = set(exp), set(got_ids)
         missing = sorted(exp_set - got_set)
         unexpected = sorted(got_set - exp_set)
         duplicated = sorted({i for i in got_ids if got_ids.count(i) > 1})
+        # ⚠ 预期清单自身也要唯一（知微 2026-11-27）：
+        #   「预期清单有重复、明细无重复时（预期 16 行、实得 15 行）仍 COMPLETE」
+        #   ⇒ 预期重复 + 明细不重复 = 数量对不上，但集合相等，旧判据放过。
+        exp_duplicated = sorted({i for i in exp if exp.count(i) > 1})
         manifest_ok = (bool(exp) and not missing and not unexpected
-                       and not duplicated)
+                       and not duplicated and not exp_duplicated)
         detail.update({"manifest_ok": manifest_ok,
                        "manifest_check": "STRICT_EXPECTED_LIST",
                        "expected_n": len(exp), "got_n": len(got_ids),
                        "missing": missing, "unexpected": unexpected,
-                       "duplicated": duplicated})
+                       "duplicated": duplicated,
+                       "expected_duplicated": exp_duplicated})
 
     all_caught = bool(got_ids) and all(st == "CAUGHT"
                                        for _, _, st, _ in rows)
@@ -737,18 +750,34 @@ def main():
 
     # ---- 证据状态三态（判定逻辑已抽到模块级 classify_evidence）
     #
-    # ⚠ 2026-11-27 修正（知微第 1 条）：
-    #   原用 len(MUTATIONS) == len(rows) 判完备。
-    #   知微实测：15 行、14 个不同 ID（末项 I14 被换成 I1 的副本），
-    #   两个长度都等于 15 ⇒ manifest_ok=True / COMPLETE / 0。
-    #   ⇒ 条数不能代替身份。
-    #   ⇒ 现在传入【固定的预期 ID 清单】，逐一核对缺失/多余/重复。
-    expected_ids = [m[0] for m in MUTATIONS]
-    verdict, exit_code, counts2, detail = classify_evidence(rows, expected_ids)
+    # ⚠ 2026-11-27 第二次修正（知微定点复验）：
+    #   第一次改成 `expected_ids = [m[0] for m in MUTATIONS]` ——
+    #   预期没有从 rows 反推，但【预期与执行计划仍同源】。
+    #   知微实测：给真实 main 的可执行列表仅去掉 I14（不补副本），
+    #              14 项照常真跑 ⇒ COMPLETE / 0，missing=[]。
+    #   ⇒ 现在改用【独立登记的清单】（mutation_manifest.py），
+    #     它与 MUTATIONS 不是同一个对象。
+    #     ⇒ 执行列表删了一项而登记仍有它 ⇒ missing 列出 ⇒ PARTIAL。
+    from mutation_manifest import REGISTERED_MUTATION_IDS
+    verdict, exit_code, counts2, detail = classify_evidence(
+        rows, list(REGISTERED_MUTATION_IDS))
     fail_detail = detail["fail_detail"]
     n_unresolved = detail["n_unresolved"]
 
+    # 额外核对：执行计划与登记清单是否一致（不一致不是失败，是登记没跟上）
+    plan_ids = [m[0] for m in MUTATIONS]
+    plan_vs_manifest_msgs = []
+    if sorted(plan_ids) != sorted(REGISTERED_MUTATION_IDS):
+        only_plan = sorted(set(plan_ids) - set(REGISTERED_MUTATION_IDS))
+        only_mani = sorted(set(REGISTERED_MUTATION_IDS) - set(plan_ids))
+        plan_vs_manifest_msgs.append(
+            "执行计划与登记清单不一致：仅计划有 %s；仅登记有 %s"
+            % (only_plan, only_mani))
+
     print("  证据状态：%s（共 %d 个变异）" % (verdict, len(rows)))
+    for m in plan_vs_manifest_msgs:
+        print("  ⚠ 登记核对：%s" % m)
+        print("    ⇒ 执行计划与登记清单不同步 ⇒ 证据不完整，不签 COMPLETE。")
     if fail_detail:
         print("    失败明细：%s" % fail_detail)
     if n_unresolved:
