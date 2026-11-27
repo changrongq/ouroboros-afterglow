@@ -480,10 +480,18 @@ def synthetic_ratios(store: RecoveryStore,
             continue
         attrition_ids.append(rid)
 
-        # ---- 谁搬的：按历史版本逐步比对来源字段
+        # ---- 纠正依据记录：按历史版本逐步比对来源字段
+        #
+        # ⚠ 2026-11-27 措辞更正（凌翼裁定回执 §一）：
+        #   此处原本写「谁搬的」。凌翼指出：
+        #     「to_id 指的是纠正所引用的依据记录，
+        #       不自动证明实际发起操作的是谁，
+        #       更不等于外部可信来源认证。」
+        #   ⇒ 本字段回答的是「引用了哪条记录作纠正依据」，
+        #     不是「谁下的手」，也不是「该来源可信」。
         #
         # hist 按写入顺序（revision 递增）。
-        # 找第一处「前一版是 first_person_report、这一版不是」的跃变，
+        # 找「前一版是 first_person_report、这一版不是」的跃变，
         # 该跃变对应的版本就是【把它搬出分母的那一版】。
         #
         # ⚠ 不能取 relation 列表首条：correct() 是追加边，
@@ -550,7 +558,9 @@ def synthetic_ratios(store: RecoveryStore,
             #   读者才知道「没有流失」与「分母本来就是 0」是一回事。
             "denominator_attrition": 0,
             "denominator_attrition_ids": [],
-            # Mion 回执第二封 §二（A2）：谁搬的。空范围内没有搬动。
+            # Mion 回执第二封 §二（A2）：纠正依据记录。空范围内没有搬动。
+            # ⚠ 措辞按凌翼 2026-11-27 §一：这是「引用了哪条作依据」，
+            #   不是操作者身份，也不等于来源可信。
             "denominator_attrition_cause": {},
             # 凌翼裁定回执 §一：归因未知的清单（空范围内自然为空）
             "denominator_attrition_unknown": [],
@@ -586,9 +596,17 @@ def synthetic_ratios(store: RecoveryStore,
         # ---- Mion 回执 §三：分母流失量
         "denominator_attrition": denominator_attrition,
         "denominator_attrition_ids": sorted(attrition_ids),
-        # Mion 回执第二封 §二（A2）：谁搬的
-        #   {被移出分母的记录 id: 那次 correct 的 correcting_record_id}
-        # ⚠ 2026-11-27 凌翼裁定后修正：多次纠正时按【历史版本跃变】定位，
+        # Mion 回执第二封 §二（A2）· 凌翼裁定 §一 措辞更正
+        #   {被移出分母的记录 id: 把 basis 搬出分母的那一版所引用的依据记录 id}
+        #
+        # ⚠ 2026-11-27 凌翼措辞更正：
+        #   「to_id 指的是纠正所引用的依据记录，
+        #     不自动证明实际发起操作的是谁，
+        #     更不等于外部可信来源认证。」
+        #   ⇒ 本表回答「引用了哪条作依据」，不回答「谁操作的」，
+        #     也不代表该来源可信。
+        #
+        # ⚠ 多次纠正时按【历史版本跃变】定位，
         #   不取 relation 列表首条（首条属于最早那次，可能没改变 basis）。
         # ⚠ 无法归因的记录，此表给 "ATTRIBUTION_UNKNOWN" 而不是缺键 ——
         #   凌翼：「应显式报告归因未知，不得静默给出错误 ID。」
@@ -612,6 +630,12 @@ def synthetic_ratios(store: RecoveryStore,
                           "不得当作真实历史中的比例；"
                           "不得把 unverifiable_ids 读作已识别名单；"
                           "两个比例分母不同，不得合并引用；"
+                          # 凌翼 2026-11-27 §一 措辞要求
+                          "denominator_attrition_cause 的值是【纠正引用的"
+                          "依据记录 id】，不是操作者身份，"
+                          "也不等于外部可信来源认证；"
+                          "不得仅凭 denominator_attrition 指控某条记录"
+                          "发生了不当改写（凌翼：判 B，汇总预警指标）；"
                           "本函数的取回范围与 importance_candidates 的"
                           "全库过滤不是同一对象，不得把两者输出"
                           "当同一请求的结果组合。"),
