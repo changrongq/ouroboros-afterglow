@@ -7,6 +7,13 @@
   "fail_detail": {},
   "n_unresolved": 0,
   "manifest_ok": true,
+  "manifest_check": "STRICT_EXPECTED_LIST",
+  "expected_n": 15,
+  "got_n": 15,
+  "missing": [],
+  "unexpected": [],
+  "duplicated": [],
+  "all_caught": true,
   "rows": [
     {
       "id": "I1",

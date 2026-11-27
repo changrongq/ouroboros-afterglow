@@ -28,6 +28,80 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TARGET = "afimportance.py"
 TEST_FILE = "test_importance_a3b3.py"
 
+#: 六类失败状态。⚠ 与 classify_evidence() 共用同一出处，
+#:   不允许测试文件另抄一份（知微 2026-11-27 第 3 条）。
+FAIL_STATES = ("MISSED", "INVALID", "TEST_DID_NOT_RUN", "TEST_CRASHED",
+               "TARGET_ERRORED", "NOT_ATTRIBUTABLE")
+
+
+def classify_evidence(rows, expected_ids=None):
+    """证据状态判定 —— **真实驱动与测试共用同一个函数**。
+
+    ⚠ 2026-11-27 抽出（知微第 3 条）：
+      原实现把判定写在 main() 里，而 test_evidence_state.py
+      另写了一份 classify 去「测它」。
+      ⇒ 两份实现，测的和跑的不是同一个东西。
+      ⇒ 知微实测：在真实驱动里删掉 TARGET_ERRORED，ES 仍 8/8。
+      ⇒ 现在抽成本函数，main() 与测试都调它。
+
+    规则（知微 2026-11-27 给定，互斥）：
+      1. 有失败 ⇒ EVIDENCE_FAIL（有失败又有未决时失败优先，两类明细均保留）
+      2. 无失败但有 UNRESOLVED，或应跑项缺失 ⇒ EVIDENCE_PARTIAL
+      3. 预期清单非空、唯一、明细按 ID 一一对应、全 CAUGHT ⇒ EVIDENCE_COMPLETE
+
+    ⚠ 第 3 条的身份核对（知微第 1 条）：
+      不能用 len(rows) == len(MUTATIONS) 判完备 ——
+      15 行、14 个不同 ID（末项被换成 I1 的副本）时，
+      两个长度都等于 15，判据会放过。
+      ⇒ 必须固定独立预期 ID 清单，逐个核对。
+
+    返回 (verdict, exit_code, counts, detail)
+    """
+    counts = {}
+    for _, _, st, _ in rows:
+        counts[st] = counts.get(st, 0) + 1
+
+    fail_detail = {st: counts.get(st, 0) for st in FAIL_STATES
+                   if counts.get(st, 0)}
+    n_fail_total = sum(fail_detail.values())
+    n_unresolved = counts.get("UNRESOLVED", 0)
+
+    got_ids = [r[0] for r in rows]
+    detail = {"fail_detail": fail_detail, "n_unresolved": n_unresolved}
+
+    if expected_ids is None:
+        # 未提供预期清单 ⇒ 只能做「非空 + 唯一」的最低检查
+        manifest_ok = bool(got_ids) and len(set(got_ids)) == len(got_ids)
+        detail.update({"manifest_ok": manifest_ok,
+                       "manifest_check": "DEGRADED_NO_EXPECTED_LIST"})
+    else:
+        exp = list(expected_ids)
+        exp_set, got_set = set(exp), set(got_ids)
+        missing = sorted(exp_set - got_set)
+        unexpected = sorted(got_set - exp_set)
+        duplicated = sorted({i for i in got_ids if got_ids.count(i) > 1})
+        manifest_ok = (bool(exp) and not missing and not unexpected
+                       and not duplicated)
+        detail.update({"manifest_ok": manifest_ok,
+                       "manifest_check": "STRICT_EXPECTED_LIST",
+                       "expected_n": len(exp), "got_n": len(got_ids),
+                       "missing": missing, "unexpected": unexpected,
+                       "duplicated": duplicated})
+
+    all_caught = bool(got_ids) and all(st == "CAUGHT"
+                                       for _, _, st, _ in rows)
+
+    if n_fail_total:
+        verdict, exit_code = "EVIDENCE_FAIL", 1
+    elif n_unresolved or not manifest_ok or not all_caught:
+        verdict, exit_code = "EVIDENCE_PARTIAL", 2
+    else:
+        verdict, exit_code = "EVIDENCE_COMPLETE", 0
+
+    detail["all_caught"] = all_caught
+    return verdict, exit_code, counts, detail
+
+
 def parse_case_results(out):
     """解析目标测试的实际 case 级结果：{case_id: "PASS"|"FAIL"|"ERR"}。
 
@@ -661,41 +735,18 @@ def main():
             print("  %-18s %d" % (st, counts[st]))
     print("=" * 84)
 
-    # ---- 证据状态三态（知微 2026-11-27 判定的互斥规则）
+    # ---- 证据状态三态（判定逻辑已抽到模块级 classify_evidence）
     #
-    # 1. 有失败（MISSED / INVALID / TEST_DID_NOT_RUN / TEST_CRASHED /
-    #    TARGET_ERRORED / NOT_ATTRIBUTABLE）⇒ EVIDENCE_FAIL
-    #    有失败又有未决时，失败优先；两类明细均保留。
-    # 2. 无失败但有 UNRESOLVED 或应跑项缺失 ⇒ EVIDENCE_PARTIAL
-    #    不签全项 PASS。预期清单为空、基线证据缺失、明细无法解析，
-    #    都不能凭「零个失败」升为 COMPLETE。
-    # 3. 固定预期清单非空、基线有效、明细按 ID 与清单一一对应、
-    #    每个登记项均 CAUGHT ⇒ EVIDENCE_COMPLETE
-    #
-    # ⚠ 这是【工程变异套件的证据状态】，不是判被测系统或科学假说失败。
-    FAIL_STATES = ("MISSED", "INVALID", "TEST_DID_NOT_RUN", "TEST_CRASHED",
-                   "TARGET_ERRORED", "NOT_ATTRIBUTABLE")
-    fail_detail = {st: counts.get(st, 0) for st in FAIL_STATES
-                   if counts.get(st, 0)}
-    n_fail_total = sum(fail_detail.values())
-    n_unresolved = counts.get("UNRESOLVED", 0)
-
-    # 条件 3 的额外要求：明细必须与登记清单一一对应
-    #   （本轮不满足的唯一可能是漏登记 —— 由 n_case / n_target 反映，
-    #     这里用「每个变异都产出了状态」近似，缺项由 INVALID 覆盖）
-    expected_n = len(MUTATIONS)
-    got_n = len(rows)
-    manifest_ok = (expected_n > 0 and got_n == expected_n)
-
-    if n_fail_total:
-        verdict = "EVIDENCE_FAIL"
-        exit_code = 1
-    elif n_unresolved or not manifest_ok:
-        verdict = "EVIDENCE_PARTIAL"
-        exit_code = 2
-    else:
-        verdict = "EVIDENCE_COMPLETE"
-        exit_code = 0
+    # ⚠ 2026-11-27 修正（知微第 1 条）：
+    #   原用 len(MUTATIONS) == len(rows) 判完备。
+    #   知微实测：15 行、14 个不同 ID（末项 I14 被换成 I1 的副本），
+    #   两个长度都等于 15 ⇒ manifest_ok=True / COMPLETE / 0。
+    #   ⇒ 条数不能代替身份。
+    #   ⇒ 现在传入【固定的预期 ID 清单】，逐一核对缺失/多余/重复。
+    expected_ids = [m[0] for m in MUTATIONS]
+    verdict, exit_code, counts2, detail = classify_evidence(rows, expected_ids)
+    fail_detail = detail["fail_detail"]
+    n_unresolved = detail["n_unresolved"]
 
     print("  证据状态：%s（共 %d 个变异）" % (verdict, len(rows)))
     if fail_detail:
@@ -720,9 +771,10 @@ def main():
         json.dump({"verdict": verdict,
                    "exit_code": exit_code,
                    "counts": counts,
-                   "fail_detail": fail_detail,
-                   "n_unresolved": n_unresolved,
-                   "manifest_ok": manifest_ok,
+                   # detail 已含 fail_detail / n_unresolved / manifest_ok /
+                   # manifest_check / missing / unexpected / duplicated /
+                   # all_caught —— 直接展开，不再重复引用局部变量
+                   **detail,
                    "rows": [{"id": a, "desc": b, "status": c, "evidence": d}
                             for a, b, c, d in rows]},
                   f, ensure_ascii=False, indent=2)
