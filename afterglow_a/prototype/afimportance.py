@@ -376,7 +376,10 @@ def synthetic_ratios(store: RecoveryStore,
             "basis": "empty",
             "allowed_use": "可用于断言「两个比例均无定义」（值为 None）。",
             "forbidden_use": ("不得把 None 写作 0；"
-                              "不得把空分母读作「全部可判定」。"),
+                              "不得把空分母读作「全部可判定」；"
+                              "本函数的取回范围与 importance_candidates 的"
+                              "全库过滤不是同一对象，不得把两者输出"
+                              "当同一请求的结果组合。"),
             "note": ("两个分母均为 0 ⇒ 两个比例都无定义（不是 0）。"
                      "unverifiable 与 record_only 的分母不同，见两个 "
                      "denominator_size 字段。"),

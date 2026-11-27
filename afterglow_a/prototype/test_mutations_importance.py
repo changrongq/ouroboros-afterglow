@@ -651,35 +651,83 @@ def main():
     counts = {}
     for _, _, st, _ in rows:
         counts[st] = counts.get(st, 0) + 1
+    # ⚠ 2026-11-27 修正（知微复验）：
+    #   原汇总只印 6 个状态，TARGET_ERRORED 不在其中
+    #   ⇒ JSON 有数、终端看不见。现全部列出。
     for st in ("CAUGHT", "UNRESOLVED", "MISSED", "INVALID",
-               "TEST_DID_NOT_RUN", "TEST_CRASHED", "NOT_ATTRIBUTABLE"):
+               "TEST_DID_NOT_RUN", "TEST_CRASHED", "TARGET_ERRORED",
+               "NOT_ATTRIBUTABLE"):
         if st in counts:
             print("  %-18s %d" % (st, counts[st]))
     print("=" * 84)
 
-    # 只有这几类算失败；UNRESOLVED 不计入（三态分离，E2）
-    bad = (counts.get("MISSED", 0) + counts.get("INVALID", 0)
-           + counts.get("TEST_DID_NOT_RUN", 0) + counts.get("TEST_CRASHED", 0)
-           + counts.get("NOT_ATTRIBUTABLE", 0))
-    verdict = "PASS" if bad == 0 else "FAIL"
-    print("  判定：%s（共 %d 个变异）" % (verdict, len(rows)))
-    if counts.get("UNRESOLVED", 0):
-        print("  ⚠ UNRESOLVED %d 条：变异未改变可观测行为/无法观测，" % counts["UNRESOLVED"])
-        print("    不计入 CAUGHT，也不计入 MISSED —— 三态不合并（E2）。")
+    # ---- 证据状态三态（知微 2026-11-27 判定的互斥规则）
+    #
+    # 1. 有失败（MISSED / INVALID / TEST_DID_NOT_RUN / TEST_CRASHED /
+    #    TARGET_ERRORED / NOT_ATTRIBUTABLE）⇒ EVIDENCE_FAIL
+    #    有失败又有未决时，失败优先；两类明细均保留。
+    # 2. 无失败但有 UNRESOLVED 或应跑项缺失 ⇒ EVIDENCE_PARTIAL
+    #    不签全项 PASS。预期清单为空、基线证据缺失、明细无法解析，
+    #    都不能凭「零个失败」升为 COMPLETE。
+    # 3. 固定预期清单非空、基线有效、明细按 ID 与清单一一对应、
+    #    每个登记项均 CAUGHT ⇒ EVIDENCE_COMPLETE
+    #
+    # ⚠ 这是【工程变异套件的证据状态】，不是判被测系统或科学假说失败。
+    FAIL_STATES = ("MISSED", "INVALID", "TEST_DID_NOT_RUN", "TEST_CRASHED",
+                   "TARGET_ERRORED", "NOT_ATTRIBUTABLE")
+    fail_detail = {st: counts.get(st, 0) for st in FAIL_STATES
+                   if counts.get(st, 0)}
+    n_fail_total = sum(fail_detail.values())
+    n_unresolved = counts.get("UNRESOLVED", 0)
+
+    # 条件 3 的额外要求：明细必须与登记清单一一对应
+    #   （本轮不满足的唯一可能是漏登记 —— 由 n_case / n_target 反映，
+    #     这里用「每个变异都产出了状态」近似，缺项由 INVALID 覆盖）
+    expected_n = len(MUTATIONS)
+    got_n = len(rows)
+    manifest_ok = (expected_n > 0 and got_n == expected_n)
+
+    if n_fail_total:
+        verdict = "EVIDENCE_FAIL"
+        exit_code = 1
+    elif n_unresolved or not manifest_ok:
+        verdict = "EVIDENCE_PARTIAL"
+        exit_code = 2
+    else:
+        verdict = "EVIDENCE_COMPLETE"
+        exit_code = 0
+
+    print("  证据状态：%s（共 %d 个变异）" % (verdict, len(rows)))
+    if fail_detail:
+        print("    失败明细：%s" % fail_detail)
+    if n_unresolved:
+        print("  ⚠ UNRESOLVED %d 条：变异未改变可观测行为/无法观测，" % n_unresolved)
+        print("    ⇒ 证据不完整（EVIDENCE_PARTIAL），不签全项 PASS。")
+    if counts.get("TARGET_ERRORED", 0):
+        print("  ⚠ TARGET_ERRORED %d 条：目标 case 抛异常而非断言失败" %
+              counts["TARGET_ERRORED"])
+        print("    ⇒ 不构成「按目标断言捕获」，计入失败。")
     if counts.get("NOT_ATTRIBUTABLE", 0):
-        print("  ⚠ NOT_ATTRIBUTABLE %d 条：行为变了但红的不是目标 case" % counts["NOT_ATTRIBUTABLE"])
-        print("    ⇒ 不能归因到本变异，不算捕获（知微定点复验要求）。")
+        print("  ⚠ NOT_ATTRIBUTABLE %d 条：行为变了但红的不是目标 case" %
+              counts["NOT_ATTRIBUTABLE"])
+        print("    ⇒ 不能归因到本变异，计入失败。")
+    print("  退出码：%d（COMPLETE=0 / FAIL=1 / PARTIAL=2）" % exit_code)
 
     out_dir = os.path.join(HERE, "reports")
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "mutations_importance_result.json"),
               "w", encoding="utf-8", newline="\n") as f:
-        json.dump({"verdict": verdict, "counts": counts,
+        json.dump({"verdict": verdict,
+                   "exit_code": exit_code,
+                   "counts": counts,
+                   "fail_detail": fail_detail,
+                   "n_unresolved": n_unresolved,
+                   "manifest_ok": manifest_ok,
                    "rows": [{"id": a, "desc": b, "status": c, "evidence": d}
                             for a, b, c, d in rows]},
                   f, ensure_ascii=False, indent=2)
     print("  结果已写入 reports/mutations_importance_result.json")
-    return 0 if bad == 0 else 1
+    return exit_code
 
 
 if __name__ == "__main__":
