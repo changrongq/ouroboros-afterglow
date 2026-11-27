@@ -872,6 +872,29 @@ def main():
     fail_detail = detail["fail_detail"]
     n_unresolved = detail["n_unresolved"]
 
+    # ---- 名册身份核对（凌翼 2026-11-27 §3.1）
+    #
+    # 知微第 5 条只说「预期清单不能与执行计划同源」，此处已换独立名册。
+    # 但凌翼第 3 条要求更严：
+    #   「固定经审查的 mutation manifest 身份，
+    #     防止应跑清单与执行计划同步缩水而不报警。」
+    # ⇒ 仅「有独立名册」不够 —— 名册本身被改（含同步删一项）也须报警。
+    # ⇒ 名册内容有 sha256 摘要，摘要冻结在 REVIEWED_MANIFEST_SHA256。
+    #    摘要不符 / 未初始化 / ID 重复 ⇒ 至多 PARTIAL。
+    from mutation_manifest import check_manifest_identity
+    mani_id = check_manifest_identity()
+    manifest_identity_msgs = []
+    if not mani_id["reviewed_initialized"]:
+        manifest_identity_msgs.append(mani_id["note"])
+    elif not mani_id["consistent"]:
+        manifest_identity_msgs.append(mani_id["note"])
+    if not mani_id["unique"]:
+        manifest_identity_msgs.append(
+            "名册 ID 重复：%s" % mani_id["duplicated"])
+
+    if manifest_identity_msgs and verdict != "EVIDENCE_FAIL":
+        verdict, exit_code = "EVIDENCE_PARTIAL", 2
+
     # 额外核对：执行计划与登记清单是否一致（不一致不是失败，是登记没跟上）
     plan_ids = [m[0] for m in MUTATIONS]
     plan_vs_manifest_msgs = []
@@ -883,6 +906,12 @@ def main():
             % (only_plan, only_mani))
 
     print("  证据状态：%s（共 %d 个变异）" % (verdict, len(rows)))
+    print("  名册身份：%s（%d 项，摘要 %s…）"
+          % ("一致" if mani_id["consistent"] else "不一致",
+             mani_id["n_items"], mani_id["current"][:12]))
+    for m in manifest_identity_msgs:
+        print("  ⚠ 名册身份：%s" % m)
+        print("    ⇒ 名册身份未固定/被改 ⇒ 证据不完整，不签 COMPLETE。")
     for m in plan_vs_manifest_msgs:
         print("  ⚠ 登记核对：%s" % m)
         print("    ⇒ 执行计划与登记清单不同步 ⇒ 证据不完整，不签 COMPLETE。")
@@ -914,6 +943,11 @@ def main():
         # manifest_check / missing / unexpected / duplicated /
         # all_caught —— 直接展开，不再重复引用局部变量
         **detail,
+        # 名册身份（凌翼 2026-11-27 §3.1）：摘要 + 冻结值 + 一致性
+        "manifest_identity": mani_id,
+        "manifest_identity_ok": (mani_id["consistent"]
+                                 and mani_id["unique"]),
+        "plan_vs_manifest": plan_vs_manifest_msgs,
         "rows": [{"id": a, "desc": b, "status": c, "evidence": d}
                  for a, b, c, d in rows]})
     return exit_code

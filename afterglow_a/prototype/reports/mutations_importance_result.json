@@ -1,7 +1,7 @@
 {
-  "run_id": "20261127T043934490418Z-124eb191",
-  "started_at": "2026-11-27T04:39:34.490418+00:00",
-  "commit": "38ba410715e11e1ab3d0bd052cd2346861a53d33",
+  "run_id": "20261127T060237841630Z-d544c461",
+  "started_at": "2026-11-27T06:02:37.841630+00:00",
+  "commit": "5fc17f27bc2bc49b6fc276bc064266c1e0f35712",
   "host_note": "本机（不跨机器成立）",
   "verdict": "EVIDENCE_COMPLETE",
   "exit_code": 0,
@@ -26,6 +26,18 @@
   "duplicated": [],
   "expected_duplicated": [],
   "all_caught": true,
+  "manifest_identity": {
+    "consistent": true,
+    "current": "e172ac40fa9cd73eb89019a7eadd5caeac59cacca08d72207319b53a83548dcd",
+    "reviewed": "e172ac40fa9cd73eb89019a7eadd5caeac59cacca08d72207319b53a83548dcd",
+    "reviewed_initialized": true,
+    "n_items": 15,
+    "unique": true,
+    "duplicated": [],
+    "note": ""
+  },
+  "manifest_identity_ok": true,
+  "plan_vs_manifest": [],
   "rows": [
     {
       "id": "I1",
