@@ -24,6 +24,18 @@
 
 ⚠ 本模块【不】做 baseline 的事（不跑测试、不探针）。
    它只回答一个问题：这份计划今天能不能执行。
+
+⚠ 本模块【不】校验经审查的名册摘要身份（凌翼 2026-11-27 第二次核对）：
+
+    「preflight 目前核对清单 ID 与锚点；
+      经过审查的清单摘要身份仍在变异执行后核对。
+      因此它不能被描述为完整的前置可信身份验证。」
+
+   ⇒ 本模块只比【ID 清单】与【锚点命中次数】。
+     名册内容的 sha256 身份由 mutation_manifest.check_manifest_identity()
+     在变异执行后核对，不在本模块。
+   ⇒ 不得把本模块描述为「完整前置可信身份验证」。
+     （test_attrition_preflight.py AP-15 用断言守着这条界限。）
 """
 from __future__ import annotations
 

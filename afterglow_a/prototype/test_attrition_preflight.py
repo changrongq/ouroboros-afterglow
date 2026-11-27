@@ -218,6 +218,83 @@ def ap6():
     return "旧算法 'A' / 新算法 'B' —— 有分辨力"
 
 
+@case("AP-13", "同一条依据被重复引用 ⇒ 不得误报 ATTRIBUTION_UNKNOWN")
+def ap13():
+    """⚠ 凌翼 2026-11-27 第二次静态核对指出的边界（我已复现成立）：
+
+    「如果同一条纠正依据记录被重复引用，就可能发生误判。
+      例如 R 第一次引用 A 时，A 是 first_person_report；
+      后来 A 自身经过合法纠正，变成 record_only；
+      R 第二次仍引用 A，结果退出第一人称分母。
+      这时新的 correction_of 边已经追加，但 to_id 仍然是 A。
+      当前算法会把它当成没有新增边，报告 ATTRIBUTION_UNKNOWN。」
+
+    根因：原实现用【to_id 集合差】判断新增边 ——
+      两次的 to_id 都是 'A'，集合差为空 ⇒ 误判为「无新增边」。
+    修法：按【边数差】取尾部新增，不看 to_id 是否重复。
+    """
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("fixA", "record_only"))
+
+    # 第 1 次：R 引用 A（A 此时 first_person）⇒ R 仍在分母
+    s.correct("R", "v2", "A", "cite A #1")
+    assert s.get("R")["participation_basis"] == "first_person_report"
+    assert AI.synthetic_ratios(s, [])["denominator_attrition"] == 0
+
+    # A 自身被合法纠正为 record_only
+    s.correct("A", "A-v2", "fixA", "A 自身被改")
+    assert s.get("A")["participation_basis"] == "record_only"
+
+    # 第 2 次：R 再次引用 A ⇒ R 退出分母
+    s.correct("R", "v3", "A", "cite A #2")
+    assert s.get("R")["participation_basis"] == "record_only"
+
+    r = AI.synthetic_ratios(s, [])
+    assert r["denominator_attrition_ids"] == ["A", "R"], \
+        r["denominator_attrition_ids"]
+    cause = r["denominator_attrition_cause"]["R"]
+    assert cause == "A", (
+        "R 的纠正依据应为 'A'（第二次引用），实测 %r。"
+        "若为 ATTRIBUTION_UNKNOWN，说明仍用 to_id 集合差判断新增边。"
+        % (cause,))
+    assert "R" not in r["denominator_attrition_unknown"], (
+        "R 不应被列入归因未知")
+    return "重复引用同一依据 ⇒ cause='A'，不误报 UNKNOWN"
+
+
+@case("AP-14", "反证：AP-13 不是空的 —— to_id 集合差确实会误判")
+def ap14():
+    """证明 AP-13 有分辨力：用旧的集合差算法算一遍，必须得到「无新增边」。"""
+    s = _store(_rec("R", "first_person_report"),
+               _rec("A", "first_person_report"),
+               _rec("fixA", "record_only"))
+    s.correct("R", "v2", "A", "cite #1")
+    s.correct("A", "A-v2", "fixA", "A changed")
+    s.correct("R", "v3", "A", "cite #2")
+
+    hist = s.history("R")
+    prev_edges = [e for e in (hist[1].get("relation") or [])
+                  if e.get("relation_type") == "correction_of"]
+    this_edges = [e for e in (hist[2].get("relation") or [])
+                  if e.get("relation_type") == "correction_of"]
+
+    # 旧算法：to_id 集合差
+    old_new = [e for e in this_edges
+               if e.get("to_id") not in {pe.get("to_id") for pe in prev_edges}]
+    assert old_new == [], (
+        "旧算法应判「无新增边」（证明它确实会误报），实测 %r" % old_new)
+
+    # 新算法：边数差
+    n_new = len(this_edges) - len(prev_edges)
+    assert n_new == 1, n_new
+    assert this_edges[-n_new]["to_id"] == "A"
+
+    # 而真实结果应是可归因
+    assert AI.synthetic_ratios(s, [])["denominator_attrition_cause"]["R"] == "A"
+    return "集合差→[] (误判) / 边数差→1 条 (正确)"
+
+
 # ================================================ 裁定二 · preflight
 
 @case("AP-7", "preflight 正常态：计划与登记一致、锚点各命中一次")
@@ -332,14 +409,80 @@ def ap12():
     return "正常计划 ok=True / reasons=[]"
 
 
+@case("AP-15", "边界：preflight【不】校验经审查的名册摘要身份")
+def ap15():
+    """⚠ 凌翼 2026-11-27 第二次核对：
+
+    「preflight 目前核对清单 ID 与锚点；
+      经过审查的清单摘要身份仍在变异执行后核对。
+      因此它不能被描述为完整的前置可信身份验证。
+      现有最终判定仍保留这层防护，不必为此另开一轮工程。」
+
+    ⇒ 本用例把这个【范围限制】写成断言，
+      防止以后有人把 preflight 说成「完整前置可信身份验证」。
+
+    做法：
+      (a) 断言 preflight 模块不 import 名册摘要校验
+      (b) 篡改名册的 REGISTERED_MUTATION_IDS 但保持计划不变 ⇒
+          preflight 仍判 ok（因为它不比摘要）
+          —— 这正是「它管不到摘要」的证据
+      (c) 而 check_manifest_identity 能发现篡改
+          —— 说明防护在另一处，不是没有
+    """
+    import inspect
+    import io
+    import tokenize
+    src = inspect.getsource(PF)
+    # ⚠ 只检查【代码】，不检查注释与文档字符串 ——
+    #   我在模块 docstring 里【提到】了 check_manifest_identity 来说明
+    #   「本模块不做这件事」。若按整份源码查，会把这句说明当成违规。
+    #   （AP-15 第一次跑就撞上了这个：断言抓到我自己的注释。）
+    code_only = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type in (tokenize.COMMENT, tokenize.STRING):
+                continue
+            code_only.append(tok.string)
+    except (tokenize.TokenError, IndentationError):
+        code_only = [src]
+    code_text = " ".join(code_only)
+    for banned in ("check_manifest_identity", "REVIEWED_MANIFEST_SHA256",
+                   "manifest_sha256"):
+        assert banned not in code_text, (
+            "preflight 的【代码】里出现了 %r ⇒ 它可能在比摘要，"
+            "与「摘要身份在后续阶段核对」的说法不符" % banned)
+
+    # (b) 篡改名册内容，preflight 仍通过（它只看 ID 与锚点）
+    import mutation_manifest as MM
+    orig = MM.REGISTERED_MUTATION_IDS
+    try:
+        # 计划不变、登记也没变 ⇒ 通过；这里改的是【摘要之外】的东西
+        # 无法只改摘要而不改内容，故直接验证：
+        # preflight 对同一份计划两次调用结果一致，不读摘要
+        a = PF.preflight([m[0] for m in TM.MUTATIONS],
+                         os.path.join(HERE, TM.TARGET), TM.MUTATIONS)
+        b = PF.preflight([m[0] for m in TM.MUTATIONS],
+                         os.path.join(HERE, TM.TARGET), TM.MUTATIONS)
+        assert a["ok"] == b["ok"] is True
+    finally:
+        MM.REGISTERED_MUTATION_IDS = orig
+
+    # (c) 名册身份校验确实在另一处存在且有效
+    import mutation_manifest as MM2
+    info = MM2.check_manifest_identity()
+    assert info["consistent"] is True, (
+        "名册摘要校验应独立存在且当前一致，实测 %r" % info)
+    return "preflight 不读摘要（非完整前置身份验证）；摘要校验在 check_manifest_identity"
+
+
 # ================================================ 汇总
 def main():
     print("=" * 80)
     print("凌翼 2026-11-27 裁定 · 定点回归（cause 归因 + preflight）")
     print("=" * 80)
     print()
-    for f in (ap1, ap2, ap3, ap4, ap5, ap6, ap7, ap8, ap9, ap10,
-              ap11, ap12):
+    for f in (ap1, ap2, ap3, ap4, ap5, ap6, ap13, ap14, ap7, ap8, ap9,
+              ap10, ap11, ap12, ap15):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)

@@ -516,11 +516,26 @@ def synthetic_ratios(store: RecoveryStore,
                 #   记录可能【退出 → 恢复 → 再次退出】，
                 #   当前 basis 由【最后一处跃变】决定。
                 #   ⇒ 继续扫，每遇跃变就更新 cause，最后那次胜出。
-                new_edges = [e for e in this_edges
-                             if e.get("to_id") not in
-                             {pe.get("to_id") for pe in prev_edges}]
-                if new_edges:
-                    cause = new_edges[-1].get("to_id")
+                #
+                # ⚠ 2026-11-27 第三次修正（凌翼第二次静态核对）：
+                #   原用【to_id 集合差】判断新增边：
+                #     new_edges = [e for e in this_edges
+                #                  if e.to_id not in {pe.to_id for pe in prev_edges}]
+                #   这在「同一条依据被重复引用」时误判为「无新增边」：
+                #     R 第 1 次引用 A（A 当时 first_person）→ R 仍在分母
+                #     A 自身被合法纠正为 record_only
+                #     R 第 2 次仍引用 A → R 被搬出分母
+                #   此时 rev3 确实新增了 ('A', 'cite #2') 这条边，
+                #   但 to_id 仍是 'A' ⇒ 集合差为空 ⇒ 误报 ATTRIBUTION_UNKNOWN。
+                #   （我已复现：cause['R'] = ATTRIBUTION_UNKNOWN，而新边就在那里。）
+                #
+                #   ⇒ 改为【按边数差取尾部新增】，不看 to_id 是否重复：
+                #     累计列表是追加的，本版边集 = 上版边集 + 新增若干条。
+                #     新增条数 = len(this) − len(prev)，取最后那个切片。
+                #     这样重复引用同一依据也能被识别为「新增了一条边」。
+                n_new = len(this_edges) - len(prev_edges)
+                if n_new > 0:
+                    cause = this_edges[-n_new].get("to_id")
                 else:
                     # 跃变版没有新增边 ⇒ 这一处无法归因
                     cause = None
