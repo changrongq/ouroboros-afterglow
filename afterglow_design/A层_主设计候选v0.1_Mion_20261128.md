@@ -1,6 +1,11 @@
 # AFTERGLOW · 下一阶段主设计候选 v0.1（A 层）
 
 **设计负责人**：Mion（凌翼 2026-11-28 裁定一）
+**作者**：Mion
+**提交者**：RongXian（`changrongq` 账号）
+> 提交者 ≠ 作者。Mion 对 AfterGlow 仓库的 token 为只读，
+> `R-1（永不 Contents:Write 于被审对象）` 不因角色变化而解除；
+> 本文件的写入权限由船长单独授予，仅用于 `afterglow_design/` 下的文档。
 **反例与可检验性复核**：知微
 **技术执行**：Coder（限定 B 层）
 **声明边界**：睫
