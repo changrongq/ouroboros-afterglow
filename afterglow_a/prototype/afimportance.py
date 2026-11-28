@@ -628,6 +628,18 @@ def synthetic_ratios(store: RecoveryStore,
             # ⚠ 措辞按凌翼 2026-11-27 §一：这是「引用了哪条作依据」，
             #   不是操作者身份，也不等于来源可信。
             "denominator_attrition_cause": {},
+            # 睫 2026-11-28 §四·§二：语义必须作为结构返回，
+            # 不能只活在 forbidden_use 的字符串里。
+            "denominator_attrition_cause_semantics": {
+                "value_is": "correction_basis_record_id",
+                "is_operator_identity": False,
+                "is_trust_attestation": False,
+                "may_support_accusation": False,
+                "role_verdict": "REQUIRED_SUMMARY_SIGNAL",
+                "note": ("cause 的值是【纠正所引用的依据记录 id】；"
+                         "不自动证明实际发起操作的是谁，"
+                         "也不等于外部可信来源认证。"),
+            },
             # 凌翼裁定回执 §一：归因未知的清单（空范围内自然为空）
             "denominator_attrition_unknown": [],
             "unverifiable_ids": [],
@@ -679,6 +691,26 @@ def synthetic_ratios(store: RecoveryStore,
         #   缺键会让读者以为「没查到东西」，显式值才不会。
         "denominator_attrition_cause": dict(attrition_cause),
         "denominator_attrition_unknown": sorted(attrition_unknown),
+        # ---- 2026-11-28 睫复核 §四·§二：把 to_id 语义升成【必读结构】
+        #
+        # 睫：「两条禁令只活在 forbidden_use 的字符串里，
+        #       没有任何断言守它们的内容 —— 需要更硬的做法。
+        #       把语义写进字段名 / 返回结构，并让序列化不丢这两条；
+        #       写进代码只是第一层。」
+        #
+        # ⇒ 不再只靠 forbidden_use 的一句话，而是单独返回一个
+        #   结构化字段，下游必须拿到它才能解释 cause。
+        #   ⚠ 它不是字符串文案，是【能否把 cause 当“操作者”用的判据】。
+        "denominator_attrition_cause_semantics": {
+            "value_is": "correction_basis_record_id",
+            "is_operator_identity": False,
+            "is_trust_attestation": False,
+            "may_support_accusation": False,
+            "role_verdict": "REQUIRED_SUMMARY_SIGNAL",
+            "note": ("cause 的值是【纠正所引用的依据记录 id】；"
+                     "不自动证明实际发起操作的是谁，"
+                     "也不等于外部可信来源认证。"),
+        },
         # ⚠ 下面两个 ID 列表是【无法核验/只记录 的记录 ID】，
         #   不是「已识别的伪亲历名单」也不是「已识别的洗白档名单」。
         #   名字里带 ids 容易被读成「判定结果」，故此处写明。

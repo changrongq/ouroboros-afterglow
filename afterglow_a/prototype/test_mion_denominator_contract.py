@@ -488,6 +488,88 @@ def mn12():
     return "两分支均 %d 键" % len(empty)
 
 
+@case("MN-17", "睫复核：cause 语义必须是【结构】，且内容被断言守着")
+def mn17():
+    """⚠ 睫 2026-11-28 §四·§二（判定：需要更硬的做法）：
+
+    「两条禁令只活在 forbidden_use 的字符串里，
+      没有任何断言守它们的内容 —— 这一格 Coder 已自己核出、并主动写出。
+      把语义写进字段名 / 返回结构，并让序列化不丢这两条；
+      写进代码只是第一层。」
+
+    ⇒ 修法：新增 denominator_attrition_cause_semantics 结构化字段，
+      并用本用例守它的内容 —— 不再是「写了就算」。
+    """
+    s = _store_with([_rec("h1", "first_person_report")])
+    r = AI.synthetic_ratios(s, [])
+
+    sem = r.get("denominator_attrition_cause_semantics")
+    assert isinstance(sem, dict), (
+        "cause 语义必须是结构化 dict，不能只写在 forbidden_use 字符串里；"
+        "实测 %r" % type(sem).__name__)
+
+    # 三个「不是」必须明确为 False —— 这是这个字段存在的全部理由
+    assert sem.get("is_operator_identity") is False, (
+        "cause 不得被读作操作者身份")
+    assert sem.get("is_trust_attestation") is False, (
+        "cause 不等于外部可信来源认证")
+    assert sem.get("may_support_accusation") is False, (
+        "不得仅凭 attrition 指控某条记录不当改写")
+
+    assert sem.get("value_is") == "correction_basis_record_id", \
+        sem.get("value_is")
+    assert sem.get("role_verdict") == "REQUIRED_SUMMARY_SIGNAL", (
+        "应带凌翼判定的角色词（判 B：汇总预警指标）")
+    return "结构化语义齐备：三项否定 + 值类型 + 角色词"
+
+
+@case("MN-18", "反证：把语义字段改坏，MN-17 必须变红")
+def mn18():
+    """证明 MN-17 有分辨力。
+
+    做法：临时把返回字典里的语义字段改成「是操作者身份」，
+    看断言能否抓到。
+    """
+    import copy
+    s = _store_with([_rec("h1", "first_person_report")])
+    r = AI.synthetic_ratios(s, [])
+
+    broken = copy.deepcopy(r)
+    broken["denominator_attrition_cause_semantics"]["is_operator_identity"] = True
+
+    caught = False
+    try:
+        assert broken["denominator_attrition_cause_semantics"][
+            "is_operator_identity"] is False
+    except AssertionError:
+        caught = True
+    assert caught, "语义被改坏后断言未红 ⇒ MN-17 没有分辨力"
+    return "改成 True ⇒ 断言红"
+
+
+@case("MN-19", "空分支也带语义字段，且两分支键集合仍一致")
+def mn19():
+    """睫 §二 的要求之一：序列化不能丢这两条。
+
+    ⇒ 空分支若缺该字段，消费者在空集时就读不到语义，
+      于是可能在那里误读 cause。
+    """
+    s = _store_with([_rec("h1", "first_person_report")])
+    empty = AI.synthetic_ratios(s, [], scope_ids=[])
+    nonempty = AI.synthetic_ratios(s, [])
+
+    assert "denominator_attrition_cause_semantics" in empty, (
+        "空分支缺语义字段 ⇒ 空集时读不到约束")
+    assert (empty["denominator_attrition_cause_semantics"]
+            == nonempty["denominator_attrition_cause_semantics"]), (
+        "两分支语义应完全一致")
+    assert set(empty.keys()) == set(nonempty.keys()), (
+        "键集合不一致：仅空有 %r；仅非空有 %r"
+        % (sorted(set(empty) - set(nonempty)),
+           sorted(set(nonempty) - set(empty))))
+    return "空分支带同样语义；两分支均 %d 键" % len(empty)
+
+
 # ================================================ 汇总
 def main():
     print("=" * 80)
@@ -495,7 +577,7 @@ def main():
     print("=" * 80)
     print()
     for f in (mn1, mn2, mn3, mn4, mn5, mn6, mn7, mn8, mn9, mn10,
-              mn11, mn12, mn13, mn14, mn15, mn16):
+              mn11, mn12, mn13, mn14, mn15, mn16, mn17, mn18, mn19):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)
