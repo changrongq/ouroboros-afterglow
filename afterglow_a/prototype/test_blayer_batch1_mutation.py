@@ -301,6 +301,104 @@ def main():
     mutate("M-10b", "往 lbjudge.py 注入真实 `if excluded:`", patch_t10b,
            unpatch_t10b, "t10")
 
+    # ---------------- T-11：新增一个未登记的生产调用点（E-25-1 必须红）
+    #   做真实的文件写入再还原 —— 这是 E-25 要抓的那件事本身。
+    probe = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "_e25_probe_prod.py")
+
+    def patch_t11():
+        with io.open(probe, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(
+                "# 临时探针：模拟一个【新增的生产调用点】\n"
+                "import lbjudge\n\n\n"
+                "def some_new_production_path():\n"
+                "    return lbjudge.judge_mechanism(\n"
+                "        r_a='BLUE', r_b='RED',\n"
+                "        pathway_registered_and_controlled=False,\n"
+                "        drift_control_explains=False,\n"
+                "        readout_has_resolution=True)\n"
+            )
+
+    def unpatch_t11():
+        if os.path.exists(probe):
+            os.remove(probe)
+    mutate("M-11", "新增一个未登记的生产调用点", patch_t11, unpatch_t11, "t11")
+
+    # ---------------- T-11 第二变异：扫描器返回空（断言会因「无对象」而红）
+    orig_cov = LB.check_call_site_coverage
+
+    def patch_t11b():
+        LB.check_call_site_coverage = lambda repo_root=None: {
+            "ok": True, "hits": [], "missing_from_registry": [],
+            "exemptions_applied": [], "registered_functions": []}
+    mutate("M-11b", "扫描器返回空（空扫描让断言永远绿）", patch_t11b,
+           lambda: setattr(LB, "check_call_site_coverage", orig_cov), "t11")
+
+    # ---------------- T-11 第三变异：造一条过期豁免（列了不存在的豁免）
+    orig_exempt = LB.CALL_SITE_EXEMPTIONS
+
+    def patch_t11c():
+        LB.CALL_SITE_EXEMPTIONS = list(orig_exempt) + [
+            ("lbjudge.py", "no_such_function_exists", "过期豁免")]
+    mutate("M-11c", "造一条过期豁免", patch_t11c,
+           lambda: setattr(LB, "CALL_SITE_EXEMPTIONS", orig_exempt), "t11")
+
+    # ---------------- T-12：三字段两两成立而第三项矛盾（E-24-2）
+    def patch_t12():
+        def bad_inv(result):
+            # 错误：只查前两项，不查 reason
+            if (result.get("EXCLUDED") is None) != bool(
+                    result.get("excluded_undetermined")):
+                raise ValueError("E-24-2 violated")
+        LB.check_e21_invariant = bad_inv
+    mutate("M-12", "不变量漏查 reason（允许两两成立而第三项矛盾）", patch_t12,
+           lambda: setattr(LB, "check_e21_invariant", _orig_inv), "t12")
+
+    # ---------------- T-12 第二变异：两种措辞合并成同一句（E-24-3）
+    orig_wording = LB.wording_for
+
+    def patch_t12b():
+        LB.wording_for = lambda reason, n_unexcluded=0: "无法判定是否已排除"
+    mutate("M-12b", "两种判不出措辞合并成同一句", patch_t12b,
+           lambda: setattr(LB, "wording_for", orig_wording), "t12")
+
+    # ---------------- T-12 第三变异：evaluate_excluded 出口漏 excluded_undetermined
+    orig_branch = LB._excl_branch
+
+    def patch_t12c():
+        def bad_branch(*a, **kw):
+            r = orig_branch(*a, **kw)
+            r.pop("excluded_undetermined", None)
+            return r
+        LB._excl_branch = bad_branch
+    mutate("M-12c", "evaluate_excluded 出口漏第三字段", patch_t12c,
+           lambda: setattr(LB, "_excl_branch", orig_branch), "t12")
+
+    # ---------------- T-13：BINDING 指向一个不存在的文档（E-27 那次事故本身）
+    import check_binding_docs as CBD
+    orig_binding = list(CBD.BINDING_DOCS)
+
+    def patch_t13():
+        CBD.BINDING_DOCS.append(
+            ("伪造", "____this_doc_never_existed____.md"))
+    mutate("M-13", "BINDING 列入一份从未存在的文档（E-27 事故复现）",
+           patch_t13,
+           lambda: setattr(CBD, "BINDING_DOCS", list(orig_binding)), "t13")
+
+    # ---------------- T-13 第二变异：清单变空（断言无对象，必须红）
+    def patch_t13b():
+        CBD.BINDING_DOCS = []
+    mutate("M-13b", "BINDING 清单变空", patch_t13b,
+           lambda: setattr(CBD, "BINDING_DOCS", list(orig_binding)), "t13")
+
+    # ---------------- T-13 第三变异：head_blob 恒返回假 sha（扫描失效）
+    orig_head_blob = CBD.head_blob
+
+    def patch_t13c():
+        CBD.head_blob = lambda rel, repo_root=None: "0" * 40
+    mutate("M-13c", "head_blob 恒返回假 sha", patch_t13c,
+           lambda: setattr(CBD, "head_blob", orig_head_blob), "t13")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])

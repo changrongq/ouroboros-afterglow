@@ -560,7 +560,8 @@ def t10():
 
     # ② 单项不满足时必须抛（不是静默通过）
     bad = {"EXCLUDED": False, "INDETERMINATE": True,
-           "remaining": [], "reason": "X"}
+           "excluded_undetermined": False,
+           "remaining": [], "reason": "ALTERNATIVES_ALL_EXCLUDED"}
     caught = False
     try:
         LB.check_e21_invariant(bad)
@@ -569,7 +570,8 @@ def t10():
     assert caught, "E-21-1 violated: 单向坏状态（False + flag=True）未被拒绝"
 
     bad2 = {"EXCLUDED": None, "INDETERMINATE": False,
-            "remaining": [], "reason": "X"}
+            "excluded_undetermined": True,
+            "remaining": [], "reason": "NO_ALTERNATIVES_REGISTERED"}
     caught2 = False
     try:
         LB.check_e21_invariant(bad2)
@@ -628,6 +630,199 @@ def t10():
     return "4 个出口双向不变量全通过；单项坏状态被拒；AST 无布尔化消费"
 
 
+# ============================================================ T-11（E-25）
+
+@case("T-11", "E-25 调用点覆盖：AST 扫全仓 vs STAGE_CALL_SITES 逐项比对")
+def t11():
+    """勘误006 E-25-1 / E-25-2。
+
+    ⚠ Mion 用我自己的话砍的一刀：
+      我写「纪律变成了机制」，但那句只对 ②（pathway=True 抛异常）成立。
+      ① 「代码评审必须同时改 STAGE_CALL_SITES」仍然是纪律。
+
+    ⇒ 本测试把它变成机制：多一个调用点就红。
+    ⚠ 用 AST 不用 grep —— 与 E-26-1 同一理由（文本层 vs 语法层）。
+    """
+    cov = LB.check_call_site_coverage()
+
+    # ① 不得有未登记的调用点
+    assert cov["ok"] is True, \
+        "E-25-1 violated: 存在未登记进 STAGE_CALL_SITES 的 judge_mechanism 调用点：%r" \
+        % (cov["missing_from_registry"],)
+
+    # ② 扫描确实扫到了东西（空扫描会让上一条永远绿 —— 那正是要防的）
+    assert cov["hits"], "E-25-1 violated: 扫描结果为空，断言无对象"
+    real_hits = [h for h in cov["hits"] if h[1] > 0]
+    assert len(real_hits) >= 2, \
+        "E-25-1 violated: 真实调用点少于 2 处，扫描可能失效，实测 %r" \
+        % (real_hits,)
+
+    # ③ 豁免必须显式且带理由（E-25-2）
+    for ef, en, why in LB.CALL_SITE_EXEMPTIONS:
+        assert why and why.strip(), \
+            "E-25-2 violated: 豁免 %r/%r 缺理由" % (ef, en)
+
+    # ④ 每一项豁免都必须在扫描里实际出现过（否则是过期豁免）
+    hit_funcs = {(h[0], h[2]) for h in cov["hits"]}
+    for ef, en, _why in LB.CALL_SITE_EXEMPTIONS:
+        matched = any(rel.endswith(ef) and fn == en for rel, fn in hit_funcs)
+        assert matched, \
+            "E-25-2 violated: 豁免 %r/%r 对应的调用点已不存在 —— 过期豁免" \
+            % (ef, en)
+
+    # ⑤ 无法解析的文件必须显式登记（不静默吞）
+    unparseable = [h for h in cov["hits"] if h[2] == "<UNPARSEABLE>"]
+    return ("调用点 %d 处，未登记 %d 处，豁免 %d 项，无法解析 %d 个"
+            % (len(cov["hits"]), len(cov["missing_from_registry"]),
+               len(cov["exemptions_applied"]), len(unparseable)))
+
+
+# ============================================================ T-12（E-24）
+
+@case("T-12", "E-24 三字段编码 + 两种判不出措辞必须分开")
+def t12():
+    """勘误006 E-24-1 / E-24-2 / E-24-3 / E-24-4。
+
+    E-24-2 三者同时成立：
+        excluded is None ⇔ excluded_undetermined is True
+                        ⇔ reason ∈ UNDETERMINED_REASONS
+    E-24-3 措辞分开：
+        没登记     ⇒「该夹具未登记任何替代解释，因此无法判定是否已排除」
+        没排干净   ⇒「已登记的解释中尚有 N 条未排除」
+
+    ⚠ 合并措辞会让「我们没想到」与「我们想到了但没排掉」变成同一句话。
+    """
+    # ① 三字段在真实返回里同时成立
+    #    ① a) evaluate_excluded 自身的出口（不是只验 judge_impact）
+    ex_cases = [
+        dict(negative_control_reproduced=False, alternative_terms=[],
+             excluded_terms=[], positive_control_ok=True),
+        dict(negative_control_reproduced=False,
+             alternative_terms=["a"], excluded_terms=["a"],
+             positive_control_ok=True),
+        dict(negative_control_reproduced=True,
+             alternative_terms=["a"], excluded_terms=[],
+             positive_control_ok=True),
+        dict(negative_control_reproduced=False,
+             alternative_terms=["a"], excluded_terms=[],
+             positive_control_ok=False),
+    ]
+    for i, kw in enumerate(ex_cases):
+        r = LB.evaluate_excluded(**kw)
+        assert "excluded_undetermined" in r, \
+            "E-24-1 violated（evaluate_excluded 出口 %d）：缺第三字段 " \
+            "excluded_undetermined，实测 keys=%r" % (i, sorted(r))
+        assert isinstance(r["excluded_undetermined"], bool), \
+            "E-24-2 violated（evaluate_excluded 出口 %d）：" \
+            "excluded_undetermined 必须是 bool，实测 %r" \
+            % (i, r["excluded_undetermined"])
+        assert "reason" in r and r["reason"], \
+            "E-24-1 violated（evaluate_excluded 出口 %d）：缺 reason" % (i,)
+        # 三者同时
+        assert (r["EXCLUDED"] is None) == r["excluded_undetermined"], \
+            "E-24-2 violated（evaluate_excluded 出口 %d）：EXCLUDED=%r 但 " \
+            "undetermined=%r" % (i, r["EXCLUDED"], r["excluded_undetermined"])
+
+    # ① b) judge_impact 的出口
+    d_none = LB.judge_impact(
+        {"delivered": True, "readout_valid": True, "delta": 0.3},
+        excluded=None, run="r", fixture="T-12", readout="o")
+    assert d_none["EXCLUDED"] is None
+    assert d_none["excluded_undetermined"] is True
+    assert d_none["reason"] in LB.UNDETERMINED_REASONS
+
+    d_false = LB.judge_impact(
+        {"delivered": True, "readout_valid": True, "delta": 0.3},
+        excluded=False, run="r", fixture="T-12", readout="o")
+    assert d_false["EXCLUDED"] is False
+    assert d_false["excluded_undetermined"] is False
+    assert d_false["reason"] not in LB.UNDETERMINED_REASONS
+
+    d_true = LB.judge_impact(
+        {"delivered": True, "readout_valid": True, "delta": 0.3},
+        excluded=True, run="r", fixture="T-12", readout="o")
+    assert d_true["EXCLUDED"] is True
+    assert d_true["excluded_undetermined"] is False
+    assert d_true["reason"] not in LB.UNDETERMINED_REASONS
+
+    # ② 两两成立而第三项不成立 ⇒ 必须被拒
+    bad = {"EXCLUDED": None, "INDETERMINATE": True,
+           "excluded_undetermined": True,
+           "reason": "ALTERNATIVES_ALL_EXCLUDED"}   # reason 与前两项矛盾
+    caught = False
+    try:
+        LB.check_e21_invariant(bad)
+    except ValueError as e:
+        caught = "E-24-2" in str(e)
+    assert caught, \
+        "E-24-2 violated: 两两成立而 reason 矛盾未被拒绝"
+
+    # ③ 措辞必须分开，且各能指认
+    w1 = LB.wording_for("NO_ALTERNATIVES_REGISTERED")
+    w2 = LB.wording_for("ALTERNATIVES_NOT_ALL_EXCLUDED", n_unexcluded=2)
+    assert w1 != w2, "E-24-3 violated: 两种判不出措辞相同"
+    assert "未登记" in w1 and "无法判定" in w1
+    assert "尚有" in w2 and "2" in w2
+    # 合并措辞的反面证据：w1 不得出现「未排除」
+    assert "未排除" not in w1, \
+        "E-24-3 violated: 「没登记」的措辞混入了「没排干净」的语义"
+
+    # ④ 未登记的 reason 必须报错（不许静默给默认措辞）
+    caught2 = False
+    try:
+        LB.wording_for("SOME_NEW_REASON")
+    except KeyError:
+        caught2 = True
+    assert caught2, "E-24-3 violated: 未登记 reason 未报错，可能静默合并措辞"
+
+    # ⑤ E-24-4：三字段编码的上限必须登记
+    assert LB.THREE_FIELD_ENCODING == "ACCEPTED_FOR_NOW, WATCHED", \
+        "E-24-4 violated: 三字段编码上限未登记"
+    return "三字段三者同时；矛盾状态被拒；两种措辞分开且不可合并"
+
+
+# ============================================================ T-13（E-27）
+
+@case("T-13", "E-27 BINDING 五份文档在 HEAD 中存在")
+def t13():
+    """勘误005 E-27。
+
+    由来：Mion 把「勘误005」当成已存在的文档引用了一整天，
+    写进 BINDING、被我按信里摘要实现并验收 —— 而那份文档【从未创建】。
+    ⇒ 所以本检查抓过一次真实事故，不是形式主义。
+
+    ⚠ 检查的是 HEAD（提交），不是工作区。
+      理由：BINDING 是给别的角色看的，他们看到的是提交。
+      工作区有而未提交的文件，对下游等于不存在 —— 这正是那一类事故。
+    """
+    import check_binding_docs as CBD
+
+    rep = CBD.check_binding_docs()
+
+    # ① 清单非空（空清单会让断言永远绿）
+    assert len(CBD.BINDING_DOCS) == 5, \
+        "E-27 violated: BINDING 清单应为 5 份，实测 %d 份" \
+        % len(CBD.BINDING_DOCS)
+
+    # ② 每份都能在 HEAD 取到 blob
+    missing = [(label, fn) for label, fn, blob in rep["results"]
+               if blob is None]
+    assert not missing, \
+        "E-27 violated: 以下 BINDING 文档在 HEAD 里不存在 ⇒ 下游引用悬空：%r" \
+        % (missing,)
+    assert rep["ok"] is True
+
+    # ③ 反向：取一个不存在的路径必须返回 None
+    assert CBD.head_blob("afterglow_design/____no_such_doc____.md") is None, \
+        "E-27 violated: head_blob 对不存在的路径未返回 None —— 扫描可能失效"
+
+    # ④ blob 必须是 40 位 sha（证明真取到了 git 对象，不是 shell 回显）
+    for label, fn, blob in rep["results"]:
+        assert blob and len(blob) == 40, \
+            "E-27 violated: %s 的 blob 不是 40 位 sha，实测 %r" % (label, blob)
+    return "五份 BINDING 文档全部在 HEAD 中存在（blob 均为 40 位 sha）"
+
+
 # ============================================================ 汇总
 
 REPORT_HEADER = """\
@@ -643,14 +838,16 @@ REPORT_HEADER = """\
 ④ 本层未使用真实角色历史；未实现任何重要性算法
 ⑤ B-SCOPE-1..4 的解释依据为「裁定二授权最小失败条件测试；
    不建待测对象则无法写测试」，由 Mion 判断，凌翼核定中。
-⑥ BINDING = v0.4（9031df2）+ 附录A + 勘误004（731f5a0）+ 勘误005（cc0b6fb）
+⑥ BINDING = v0.4（9031df2）+ 附录A + 勘误004（731f5a0）
+       + 勘误005（c39b07d，BACKFILLED）+ 勘误006（e9548dc）
    MECH_DETECTED = NOT_REACHABLE_IN_THIS_STAGE
-     （勘误004 E-19-3；【由 T-8/T-9 断言】，不是仅在此处声明）
+     （勘误004 E-19-3；【由 T-8/T-9 断言】）
      强制方式 = E-22-1：pathway=True ⇒ 抛 UnsupportedPremise（T-9）
-     覆盖穷尽性 = PARTIAL_FOR_REGISTERED_ENTRIES（E-22-3(b)，T-8 断言）
-   EXCLUDED 空清单 = INDETERMINATE（勘误004 E-18-1）
-   EXCLUDED 形状 = {True,False,None} + INDETERMINATE: bool（勘误005 E-21）
-   E-21-1 双向不变量（每个出口校验）；E-21-2 本层不布尔化消费（AST 检查，T-10）
+     覆盖 = E-25-1：AST 扫全仓调用点 vs 登记表（T-11）
+   EXCLUDED 形状 = excluded + excluded_undetermined + reason（E-24-1）
+     不变量 = E-21-1 双向 + E-24-2 三者同时（T-10 / T-12）
+     NOT_CHECKED_E21 = 别名化消费（E-26-2，AST 不做数据流）
+     ⇒ 只主张「本层不误用」，不主张「已防止误用」（E-26-3）
 ⑦ OPEN-EXISTING-1  test_mutations_gate.py  状态=OPEN（既有，非 B 层引入）
    现象：7 个基准变异里 3 个未让测试翻红（rc=0）；脚本自报基准不绿。
    归属：之前的收口范围。登记依据：勘误004 E-20-1 / E-20-2。
@@ -659,11 +856,12 @@ REPORT_HEADER = """\
 
 def main():
     print("=" * 80)
-    print("B 层第一批测试 · T-1..T-10（v0.4 + 勘误004/005 绑定，全正向断言）")
-    print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0) + 勘误005 (cc0b6fb)")
+    print("B 层第一批测试 · T-1..T-13（v0.4 + 勘误004/005/006 绑定）")
+    print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0)")
+    print("       + 勘误005 (c39b07d) + 勘误006 (e9548dc)")
     print("=" * 80)
     print()
-    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10):
+    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10, t11, t12, t13):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)

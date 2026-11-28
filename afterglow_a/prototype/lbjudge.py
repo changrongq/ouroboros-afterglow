@@ -33,6 +33,8 @@
 """
 from __future__ import annotations
 
+import io
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 # ============================================================ 常量（全部来自 A 层）
@@ -47,6 +49,25 @@ SCOPE_KEYS = ("this_run", "this_fixture", "this_readout")
 #: 勘误004 E-18-2：清单「确实没有替代解释」时，必须显式登记一个哨兵条目，
 #: 不得用空列表表达。
 NONE_KNOWN = "NONE_KNOWN"
+
+#: 勘误006 E-24-2：三个字段表达【同一件事】（判不出），必须三者同时成立。
+#:   excluded is None  ⇔  excluded_undetermined is True  ⇔  reason ∈ UNDETERMINED_REASONS
+#: 不得两两成立而第三项不成立。
+UNDETERMINED_REASONS = frozenset({
+    "NO_ALTERNATIVES_REGISTERED",     # 没登记（E-18-1）
+    "PATHWAY_NOT_CONTROLLED",         # 通路未受控（§六）
+})
+
+#: 勘误006 E-24-4：三字段编码表达一件事 —— 本阶段接受，但设上限并登记。
+#: 若将来出现第四个字段表达同一件事，说明形状该换了，不得继续加字段。
+THREE_FIELD_ENCODING = "ACCEPTED_FOR_NOW, WATCHED"
+
+#: 勘误006 E-26-2：AST 不做数据流，别名化消费查不到。
+#: 报告只许写「本层不误用」，不许写「已防止误用」。
+NOT_CHECKED_E21 = (
+    "别名化消费（如 x = excluded; if x:）—— AST 不做数据流分析，"
+    "此形态查不到。本阶段不要求数据流分析。"
+)
 
 #: 勘误005 E-22-1：本阶段不该被提出的前提。
 class UnsupportedPremise(Exception):
@@ -192,19 +213,30 @@ def judge_impact(b3_obs: Dict[str, Any],
     #   但语义相反：None=判不出 / False=判出了没排除成功）。
     #   ⇒ 必须显式三路。
     if excluded is None:
+        # 勘误006 E-24-2：三字段必须同时成立
         _require_scope(scope)
         return {"B3-OBS": obs, "B3-CLAIM": "SUPPORTED",
                 "B4": "INDETERMINATE", "scope": scope,
-                "unexcluded": True,
-                "excluded_undetermined": True}
+                "EXCLUDED": None,
+                "excluded_undetermined": True,
+                "reason": "NO_ALTERNATIVES_REGISTERED",
+                "wording": wording_for("NO_ALTERNATIVES_REGISTERED"),
+                "unexcluded": True}
     if excluded is True:
         return {"B3-OBS": obs, "B3-CLAIM": "SUPPORTED",
-                "B4": "ESTABLISHED", "scope": scope}
+                "B4": "ESTABLISHED", "scope": scope,
+                "EXCLUDED": True,
+                "excluded_undetermined": False,
+                "reason": "ALTERNATIVES_ALL_EXCLUDED"}
 
     # delta != 0 且 EXCLUDED = FALSE ⇒ SUPPORTED / INDETERMINATE（列未排除项）
     _require_scope(scope)
     return {"B3-OBS": obs, "B3-CLAIM": "SUPPORTED",
             "B4": "INDETERMINATE", "scope": scope,
+            "EXCLUDED": False,
+            "excluded_undetermined": False,
+            "reason": "ALTERNATIVES_NOT_ALL_EXCLUDED",
+            "wording": wording_for("ALTERNATIVES_NOT_ALL_EXCLUDED"),
             "unexcluded": True}
 
 
@@ -252,22 +284,30 @@ def evaluate_excluded(negative_control_reproduced: bool,
 
 def _excl_branch(negative_control_reproduced, alternative_terms,
                  excluded_terms, positive_control_ok) -> Dict[str, Any]:
-    """evaluate_excluded 的分支计算（不含不变量校验）。"""
+    """evaluate_excluded 的分支计算（不含不变量校验）。
+
+    ⚠ 勘误006 E-24-1：每个出口都必须带齐三字段
+      （excluded / excluded_undetermined / reason），
+      否则 E-24-2 的「三者同时」在 evaluate_excluded 这一层就无从校验。
+    """
     # 正对照失灵 ⇒ 不算 EXCLUDED（调用方应先走 INDETERMINATE 出口）
     if not positive_control_ok:
         return {"EXCLUDED": False, "INDETERMINATE": False,
+                "excluded_undetermined": False,
                 "remaining": list(alternative_terms),
                 "reason": "POSITIVE_CONTROL_FAILED"}
 
     # 空跑对照重现了差值 ⇒ 不足以归因
     if negative_control_reproduced:
         return {"EXCLUDED": False, "INDETERMINATE": False,
+                "excluded_undetermined": False,
                 "remaining": list(alternative_terms),
                 "reason": "NEGATIVE_CONTROL_REPRODUCED_DRIFT"}
 
     # E-18-1：清单为空 ⇒ INDETERMINATE（不是 TRUE）
     if not alternative_terms:
         return {"EXCLUDED": None, "INDETERMINATE": True,
+                "excluded_undetermined": True,
                 "remaining": [],
                 "reason": "NO_ALTERNATIVES_REGISTERED"}
 
@@ -277,11 +317,13 @@ def _excl_branch(negative_control_reproduced, alternative_terms,
 
     if remaining:
         return {"EXCLUDED": False, "INDETERMINATE": False,
+                "excluded_undetermined": False,
                 "remaining": remaining,
                 "reason": "ALTERNATIVES_NOT_ALL_EXCLUDED"}
 
     # E-18-3：非空清单且逐条排除 ⇒ 这时才允许 TRUE
     return {"EXCLUDED": True, "INDETERMINATE": False,
+            "excluded_undetermined": False,
             "remaining": [], "reason": "ALTERNATIVES_ALL_EXCLUDED"}
 
 
@@ -455,6 +497,126 @@ def assert_unsupported_premise_raises() -> List[Tuple[str, bool]]:
     return out
 
 
+# ============================================================ E-25 调用点覆盖
+
+#: 勘误006 E-25-2：确属调用点但【不应】进清单的，必须显式豁免并写明理由。
+#: 格式：(文件后缀, 所在函数名, 理由)
+#:
+#: ⚠ 这里【不】放 judge_mechanism 的定义处 ——
+#:   定义是 ast.FunctionDef，不是 ast.Call，扫描器根本不会命中它。
+#:   写一条永远匹配不上的豁免，正是本表 TEST T-11 ④ 要抓的「过期豁免」。
+CALL_SITE_EXEMPTIONS: List[Tuple[str, str, str]] = [
+    (
+        "lbjudge.py", "scan_stage_call_sites",
+        "扫描器自身；它调用的就是 STAGE_CALL_SITES 里的入口",
+    ),
+    (
+        "lbjudge.py", "assert_unsupported_premise_raises",
+        "验证 pathway=True 抛异常的辅助函数（走同一张表）",
+    ),
+]
+
+
+def scan_judge_mechanism_calls(repo_root: Optional[str] = None
+                               ) -> List[Tuple[str, int, str]]:
+    """勘误006 E-25-1：用 AST 扫全仓 `judge_mechanism(` 的调用点。
+
+    返回 [(相对路径, 行号, 所在函数名)]
+    ⚠ 不用文本 grep —— grep 分不清注释、字符串与真实调用（E-26 的同一教训）。
+    ⚠ 只扫本仓 .py 文件；不扫虚拟环境与 reports。
+    """
+    import ast as _ast
+
+    if repo_root is None:
+        # lbjudge.py 位于 <root>/afterglow_a/prototype/
+        repo_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    skip_dirs = {".git", "__pycache__", "node_modules", "reports",
+                 ".venv", "venv", "2.6", "models"}
+    hits: List[Tuple[str, int, str]] = []
+
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, repo_root).replace("\\", "/")
+            try:
+                with io.open(full, encoding="utf-8") as fh:
+                    tree = _ast.parse(fh.read(), filename=full)
+            except (SyntaxError, UnicodeDecodeError):
+                # 无法解析的文件不参与比对；单独登记，不静默吞
+                hits.append((rel, -1, "<UNPARSEABLE>"))
+                continue
+
+            # 建立 节点 → 所在函数 的映射
+            owner: Dict[int, str] = {}
+
+            def _walk(node, current="<module>"):
+                for child in _ast.iter_child_nodes(node):
+                    nxt = current
+                    if isinstance(child, (_ast.FunctionDef,
+                                          _ast.AsyncFunctionDef)):
+                        nxt = child.name
+                    owner[id(child)] = nxt
+                    _walk(child, nxt)
+
+            _walk(tree)
+            for node in _ast.walk(tree):
+                if not isinstance(node, _ast.Call):
+                    continue
+                f = node.func
+                name = None
+                if isinstance(f, _ast.Name):
+                    name = f.id
+                elif isinstance(f, _ast.Attribute):
+                    name = f.attr
+                if name == "judge_mechanism":
+                    hits.append((rel, node.lineno,
+                                 owner.get(id(node), "?")))
+    return hits
+
+
+def check_call_site_coverage(repo_root: Optional[str] = None
+                             ) -> Dict[str, Any]:
+    """勘误006 E-25-1：AST 调用点 vs STAGE_CALL_SITES 逐项比对。
+
+    ⚠ 上一版这一半是【纪律】（"代码评审必须同时改清单"）。
+      本函数把它变成【机制】：多一个调用点就红。
+
+    返回 { ok, hits, missing_from_registry, exemptions_applied }
+    """
+    hits = scan_judge_mechanism_calls(repo_root)
+    registered_funcs = {name for name, _k, _w in STAGE_CALL_SITES}
+
+    exemptions_applied = []
+    missing = []
+    for rel, lineno, func in hits:
+        # 定义处、扫描器自身、辅助验证函数 ⇒ 显式豁免（E-25-2）
+        exempted = any(
+            rel.endswith(ef) and (func == en or func == "?")
+            for ef, en, _why in CALL_SITE_EXEMPTIONS
+        )
+        if exempted:
+            exemptions_applied.append((rel, lineno, func))
+            continue
+        # 测试文件里的调用：允许，但必须能指认到某个登记入口
+        #   （测试是用登记入口的行为做断言，不是新增生产调用点）
+        if rel.startswith("afterglow_a/prototype/test_"):
+            continue
+        missing.append((rel, lineno, func))
+
+    return {
+        "ok": not missing,
+        "hits": hits,
+        "missing_from_registry": missing,
+        "exemptions_applied": exemptions_applied,
+        "registered_functions": sorted(registered_funcs),
+    }
+
+
 # ============================================================ A 层条款 → 断言映射
 
 CLAUSE_MAP: List[Tuple[str, str, str]] = [
@@ -470,7 +632,20 @@ CLAUSE_MAP: List[Tuple[str, str, str]] = [
     ("E-18-3", "空列表永不产生 TRUE（三态补齐）", "勘误004 E-18-3"),
     ("E-21-1", "双向不变量：EXCLUDED is None ⇔ INDETERMINATE is True",
      "勘误005 E-21-1"),
-    ("E-21-2", "本层内不得布尔化消费 EXCLUDED", "勘误005 E-21-2"),
+    ("E-21-2", "本层内不得布尔化消费 EXCLUDED（AST 检查）",
+     "勘误005 E-21-2 + 勘误006 E-26-1"),
+    ("E-24-1", "EXCLUDED 三字段编码：excluded / excluded_undetermined / reason",
+     "勘误006 E-24-1"),
+    ("E-24-2", "三字段同时成立（不得两两）", "勘误006 E-24-2"),
+    ("E-24-3", "两种判不出措辞分开", "勘误006 E-24-3"),
+    ("E-24-4", "三字段编码设上限，不许加第四个", "勘误006 E-24-4"),
+    ("E-25-1", "AST 扫调用点 vs 登记表逐项比对（覆盖从纪律变机制）",
+     "勘误006 E-25-1"),
+    ("E-25-2", "豁免必须显式且写明理由", "勘误006 E-25-2"),
+    ("E-26-1", "AST 取代 grep（文本层 vs 语法层）", "勘误006 E-26-1"),
+    ("E-26-2", "别名化消费记 NOT_CHECKED_E21", "勘误006 E-26-2"),
+    ("E-26-3", "只许写「本层不误用」，不许写「已防止误用」",
+     "勘误006 E-26-3"),
     ("ORDER-4", "四步顺序不许跳", "v0.4 §4.5"),
     ("TEXT-STATE", "文本干预与状态干预分开", "v0.4 §4.6"),
     ("E-16-1", "INDETERMINATE 返回值必须含 scope 三项", "v0.4 §4.7"),
@@ -490,25 +665,40 @@ NOT_CHECKED: List[Tuple[str, str]] = [
     ("真实历史", "只用合成夹具；未读取任何真实角色历史"),
     ("B1/B2", "被保存 / 被检索不在本层；本层只判 B3/B4/MECH"),
     ("SCAN 表外的新调用点",
-     "scan_stage_call_sites 只覆盖 STAGE_CALL_SITES 列出的入口；"
-     "新增调用点未登记进该表时，不可达性断言不覆盖它（E-19-2 已知边界）"),
+     "E-25-1 已用 AST 扫全仓并逐项比对 ⇒ 新增调用点会红。"
+     "但仍有一条不覆盖：E-26-2 的别名化消费（AST 不做数据流）。"),
+    ("别名化消费 E-21-2",
+     NOT_CHECKED_E21),
 ]
 
 
 def check_e21_invariant(result: Dict[str, Any]) -> None:
-    """勘误005 E-21-1：双向不变量（可执行校验）。
+    """勘误005 E-21-1 + 勘误006 E-24-2：三字段同时成立的不变量。
 
+    E-21-1（两字段，本版仍保留）：
         EXCLUDED is None          ⇔  INDETERMINATE is True
         EXCLUDED in {True, False}  ⇒  INDETERMINATE is False
 
-    ⚠ 为什么必须【双向】：
+    E-24-2（三字段，本版加强）：
+        excluded is None
+          ⇔  excluded_undetermined is True
+          ⇔  reason ∈ UNDETERMINED_REASONS
+        ⇒ 不得两两成立而第三项不成立。
+
+    ⚠ 为什么必须【双向】且【三者同时】：
       单向（None ⇒ flag=True）允许 flag=True 而 value=False 的坏状态存在。
-      ⇒ 那会让「判不出」标记挂在一个已判定的值上，读的人无从判断哪个对。
+      两两成立允许「excluded is None 且 undetermined=True，但 reason 写着
+      一个"已排除"的原因」这种自相矛盾存在 —— 那时读的人不知道信哪个。
+
+    ⚠ 勘误006 E-24-4：三字段表达同一件事，本阶段接受但设上限。
+      若将来要加第四个字段表达同一件事，说明形状该换 —— 不许继续加。
     """
     value = result.get("EXCLUDED")
     flag = result.get("INDETERMINATE")
+    undetermined = result.get("excluded_undetermined")
+    reason = result.get("reason")
 
-    # 必须是三态之一，不是别的
+    # ① 必须是三态之一，不是别的
     if value not in (True, False, None):
         raise ValueError(
             "E-21-1 violated: EXCLUDED 必须 ∈ {True, False, None}，实测 %r"
@@ -516,13 +706,59 @@ def check_e21_invariant(result: Dict[str, Any]) -> None:
     if not isinstance(flag, bool):
         raise ValueError(
             "E-21-1 violated: INDETERMINATE 必须是 bool，实测 %r" % (flag,))
+    if not isinstance(undetermined, bool):
+        raise ValueError(
+            "E-24-2 violated: excluded_undetermined 必须是 bool，实测 %r"
+            % (undetermined,))
 
+    # ② E-21-1：两字段双向
     is_none = (value is None)
     if is_none != flag:
         raise ValueError(
             "E-21-1 violated（双向）：EXCLUDED is None=%r 但 "
             "INDETERMINATE=%r；两者必须同时成立或同时不成立"
             % (is_none, flag))
+
+    # ③ E-24-2：第三项（undetermined 字段）也必须同时
+    if is_none != undetermined:
+        raise ValueError(
+            "E-24-2 violated：EXCLUDED is None=%r 但 "
+            "excluded_undetermined=%r；三者必须同时成立"
+            % (is_none, undetermined))
+
+    # ④ E-24-2：reason 也必须同时（判不出 ↔ reason 属于判不出的原因集）
+    reason_in_undetermined = (reason in UNDETERMINED_REASONS)
+    if is_none != reason_in_undetermined:
+        raise ValueError(
+            "E-24-2 violated：EXCLUDED is None=%r 但 reason=%r"
+            "（是否属于判不出原因集=%r）；三者必须同时成立"
+            % (is_none, reason, reason_in_undetermined))
+
+
+#: E-24-3：两种「判不出」在报告里的措辞必须分开。
+UNDETERMINED_WORDING = {
+    # 没登记 ⇒ 「该夹具未登记任何替代解释，因此无法判定是否已排除」
+    "NO_ALTERNATIVES_REGISTERED":
+        "该夹具未登记任何替代解释，因此无法判定是否已排除",
+    # 没排干净 ⇒ 「已登记的解释中尚有 N 条未排除」
+    #   ⚠ 这条不是「判不出」的 reason（它对应 EXCLUDED=False），
+    #     单独登记以防两种措辞被合并。
+    "ALTERNATIVES_NOT_ALL_EXCLUDED":
+        "已登记的解释中尚有 {n} 条未排除",
+}
+
+
+def wording_for(reason: str, n_unexcluded: int = 0) -> str:
+    """E-24-3：按 reason 给出【分开的】措辞。
+
+    ⚠ 合并措辞会让「我们没想到」（没登记）与
+      「我们想到了但没排掉」（没排干净）变成同一句话 ——
+      而它们的补救方式完全不同。
+    """
+    tpl = UNDETERMINED_WORDING.get(reason)
+    if tpl is None:
+        raise KeyError("E-24-3: reason %r 没有登记措辞" % (reason,))
+    return tpl.format(n=n_unexcluded)
 
 
 def describe() -> Dict[str, Any]:
@@ -545,6 +781,11 @@ def describe() -> Dict[str, Any]:
         "coverage": COVERAGE,
         "coverage_how_miss_is_found": COVERAGE_HOW_MISS_IS_FOUND,
         "excluded_empty_list": "INDETERMINATE（勘误004 E-18-1）",
-        "excluded_shape": "EXCLUDED ∈ {True,False,None} + INDETERMINATE: bool",
-        "excluded_invariant": "E-21-1 双向：None ⇔ flag=True",
+        "excluded_shape": ("excluded ∈ {True,False,None} + excluded_undetermined: bool"
+                           " + reason（勘误006 E-24-1）"),
+        "excluded_invariant": ("E-21-1 双向 + E-24-2 三者同时："
+                               "None ⇔ undetermined=True ⇔ reason ∈ 判不出原因集"),
+        "three_field_encoding": THREE_FIELD_ENCODING,
+        "not_checked_e21": NOT_CHECKED_E21,
+        "call_site_coverage": "E-25-1 AST 扫全仓 judge_mechanism( vs 登记表",
     }
