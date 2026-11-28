@@ -221,6 +221,86 @@ def main():
     mutate("M-8c", "从枚举里删掉 DETECTED（E-19-1）", patch_t8c,
            lambda: setattr(LB, "MECH", orig_mech_set), "t8")
 
+    # ---------------- T-8 第四变异：覆盖不标 PARTIAL（E-22-3 沉默）
+    def patch_t8d():
+        def bad_scan():
+            return {"results": [("x", "INDETERMINATE")],
+                    "detected_reachable": False,
+                    "coverage": "EXHAUSTIVE"}   # 无依据却声称穷尽
+        LB.scan_stage_call_sites = bad_scan
+    mutate("M-8d", "无依据却声称穷尽覆盖（E-22-3 沉默的反面）", patch_t8d,
+           lambda: setattr(LB, "scan_stage_call_sites", orig_scan), "t8")
+
+    # ---------------- T-9：pathway=True 退回旧行为（返回 INDETERMINATE 不抛）
+    def patch_t9():
+        def bad(r_a, r_b, pathway_registered_and_controlled, **kw):
+            return {"MECH": "INDETERMINATE",
+                    "scope": LB._scope("r", "f", "o"),
+                    "reasons": ["PATHWAY_NOT_CONTROLLED"]}
+        LB.judge_mechanism = bad
+    mutate("M-9", "pathway=True 静默返回 INDETERMINATE（不抛）", patch_t9,
+           lambda: setattr(LB, "judge_mechanism", orig_mech), "t9")
+
+    # ---------------- T-9 第二变异：抛 ValueError 而非 UnsupportedPremise
+    def patch_t9b():
+        class WrongErr(ValueError):
+            pass
+
+        def bad(r_a, r_b, pathway_registered_and_controlled, **kw):
+            if pathway_registered_and_controlled:
+                raise WrongErr("pathway not supported")
+            return orig_mech(r_a, r_b, pathway_registered_and_controlled, **kw)
+        LB.judge_mechanism = bad
+        LB.UnsupportedPremise = WrongErr   # 让 except LB.UnsupportedPremise 也命中
+    _saved_up = LB.UnsupportedPremise
+    mutate("M-9b", "pathway=True 抛 ValueError 子类", patch_t9b,
+           lambda: (setattr(LB, "judge_mechanism", orig_mech),
+                    setattr(LB, "UnsupportedPremise", _saved_up)), "t9")
+
+    # ---------------- T-10：单向不变量（None ⇒ flag=True，但反向不成立）
+    def patch_t10():
+        # 错误：允许 flag=True 而 value=False
+        def bad_inv(result):
+            if result.get("EXCLUDED") is None and result.get("INDETERMINATE") is not True:
+                raise ValueError("E-21-1 violated")
+        LB.check_e21_invariant = bad_inv
+    _orig_inv = LB.check_e21_invariant
+    mutate("M-10", "不变量改成单向（允许 False + flag=True）", patch_t10,
+           lambda: setattr(LB, "check_e21_invariant", _orig_inv), "t10")
+
+    # ---------------- T-10 第二变异：往 lbjudge.py 注入布尔化消费
+    #   ⚠ 这需要临时改源码，故用文件内容替换 + 还原。
+    lb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "lbjudge.py")
+
+    def patch_t10b():
+        with io.open(lb_path, encoding="utf-8") as fh:
+            src = fh.read()
+        # 在 _branch_unreachable 之前插入一个真实（非注释）的布尔化消费
+        marker = "def _branch_unreachable("
+        inject = (
+            "def _e21_bad_consumer(excluded):\n"
+            "    if excluded:\n"
+            "        return 'whatever'\n"
+            "    return None\n\n\n"
+        )
+        with io.open(lb_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(src.replace(marker, inject + marker, 1))
+
+    def unpatch_t10b():
+        with io.open(lb_path, encoding="utf-8") as fh:
+            src = fh.read()
+        inject = (
+            "def _e21_bad_consumer(excluded):\n"
+            "    if excluded:\n"
+            "        return 'whatever'\n"
+            "    return None\n\n\n"
+        )
+        with io.open(lb_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(src.replace(inject, "", 1))
+    mutate("M-10b", "往 lbjudge.py 注入真实 `if excluded:`", patch_t10b,
+           unpatch_t10b, "t10")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])

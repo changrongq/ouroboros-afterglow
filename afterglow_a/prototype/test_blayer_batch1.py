@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import ast
+import io
 import os
 import sys
 
@@ -129,10 +131,16 @@ def t2():
 
 @case("T-3", "一臂注入 E 向量 ⇒ MECH=INDETERMINATE（即使有差值）")
 def t3():
-    """v0.4 §六 + §8.4 T-3。
+    """v0.4 §六 + §8.4 T-3 + 勘误005 E-22-1。
 
     ⇒ r_A != r_B，但输入通路未受控 ⇒ MECH = INDETERMINATE。
     本阶段通路受控不可验（UNTESTABLE-1）⇒ DETECTED 分支【不可达】。
+
+    ⚠ 上一版这里还有一条「反向证明」：传 pathway=True 应得 DETECTED。
+      勘误005 E-22-1 之后，传 True 改为抛 UnsupportedPremise，
+      ⇒ 那条反向证明【走不通了】，而且必须走不通 ——
+        因为「通路受控」在本阶段不是能成立的输入。
+      ⇒ 判据完整性改由 _branch_unreachable 单独承载（见 T-9 与 E-19-1）。
     """
     d = LB.judge_mechanism(
         r_a="BLUE", r_b="RED",                    # 确实有差值
@@ -147,15 +155,13 @@ def t3():
     assert "PATHWAY_NOT_CONTROLLED" in d["reasons"], \
         "INDETERMINATE 应给出理由 PATHWAY_NOT_CONTROLLED，实测 %r" % d["reasons"]
 
-    # 反向证明：把通路改成"受控"才可能得到 DETECTED
-    d2 = LB.judge_mechanism(
-        r_a="BLUE", r_b="RED", pathway_registered_and_controlled=True,
-        drift_control_explains=False, readout_has_resolution=True,
-        run="run-1", fixture="T-3", readout="readout-1")
-    assert d2["MECH"] == "DETECTED", \
-        "通路受控且有差值应 DETECTED（这是判据完整性检验，本阶段不可达）"
+    # 判据完整性：DETECTED 分支的定义仍存在（E-19-1 不删除），
+    # 但只能从 _branch_unreachable 取到 —— 不经 judge_mechanism。
+    assert LB._branch_unreachable("BLUE", "RED")["MECH"] == "DETECTED", \
+        "判据定义里 DETECTED 必须仍可表达（供将来通路受控时使用）"
+    assert LB._branch_unreachable("BLUE", "BLUE")["MECH"] == "NOT_DETECTED"
 
-    # 但本阶段的默认参数（通路未受控）下，DETECTED 不可达
+    # 而本阶段的公开入口不允许得到 DETECTED（E-22-1 兜住）
     assert LB.describe()["mech_detected_reachable_in_this_stage"] is False
     return "r_A!=r_B + 通路未受控 ⇒ INDETERMINATE(PATHWAY_NOT_CONTROLLED)"
 
@@ -410,43 +416,216 @@ def t7():
 
 # ============================================================ T-8（E-19-2）
 
-@case("T-8", "E-19-2 不可达性断言：本阶段任何调用路径都不产生 DETECTED")
+@case("T-8", "E-19-2 / E-22-2 不可达性断言：登记入口都不产生 DETECTED")
 def t8():
-    """勘误004 E-19-2。
+    """勘误004 E-19-2 + 勘误005 E-22-2 / E-22-3。
 
-    ⚠ Mion 原话：「现在『不可达』是你在报告里说的，不是测试断言的。」
-    ⇒ 本测试把「不可达」变成可验的。
+    ⚠ Mion：「现在『不可达』是你在报告里说的，不是测试断言的。」
+    ⚠ Mion 追一层：「『已登记的都测了』在没有穷尽性依据时价值等于零。」
 
     E-19-1：DETECTED 保留在枚举里（不删）。
-    E-19-2：扫描本阶段全部已知调用入口，断言无一产生 DETECTED。
+    E-22-2：入口逐个点名，逐个断言抛同一异常。
+    E-22-3：本表覆盖【不穷尽】，COVERAGE 标 PARTIAL_FOR_REGISTERED_ENTRIES。
     """
     # E-19-1：枚举里必须有 DETECTED
     assert "DETECTED" in LB.MECH, \
         "E-19-1 violated: DETECTED 不得从枚举里删除"
 
     scan = LB.scan_stage_call_sites()
-    assert scan["results"], "扫描表不得为空，否则断言无对象"
+    assert scan["results"], "扫描表不得为空"
     assert scan["detected_reachable"] is False, \
-        "E-19-2 violated: 本阶段调用路径产生了 DETECTED，实测 %r" \
-        % (scan["results"],)
+        "E-22 violated: 登记入口产生了 DETECTED，实测 %r" % (scan["results"],)
 
-    # 每个入口都必须是 INDETERMINATE
+    # 每个登记入口都必须收敛到 INDETERMINATE
     for name, m in scan["results"]:
         assert m == "INDETERMINATE", \
             "入口 %r 产出 %r，本阶段应全部收敛到 INDETERMINATE" % (name, m)
 
+    # E-22-2：逐个断言 pathway=True 抛【同一个】UnsupportedPremise
+    raises = LB.assert_unsupported_premise_raises()
+    assert len(raises) == len(LB.STAGE_CALL_SITES), \
+        "E-22-2 violated: 逐项断言数与登记入口数不一致"
+    for name, ok in raises:
+        assert ok is True, \
+            "E-22-2 violated: 入口 %r 传 pathway=True 未抛 UnsupportedPremise" \
+            % (name,)
+
+    # 逐个入口点名（不是只说"4 个"）
+    names = [n for n, _m in scan["results"]]
+    assert names == [n for n, _k, _w in LB.STAGE_CALL_SITES], \
+        "登记入口必须与扫描结果一一对应，实测 %r vs %r" % (
+            names, [n for n, _k, _w in LB.STAGE_CALL_SITES])
+
+    # E-22-3：不许沉默 —— 必须显式标覆盖不穷尽
+    assert scan["coverage"] == "PARTIAL_FOR_REGISTERED_ENTRIES", \
+        "E-22-3 violated: 未给穷尽性依据时必须标 PARTIAL，实测 %r" \
+        % (scan["coverage"],)
+    assert LB.COVERAGE_HOW_MISS_IS_FOUND.strip(), \
+        "E-22-3(b) violated: 标了 PARTIAL 却没说明「漏的怎么被发现」"
+
     # 关键一条：即使 r_A != r_B 也不得 DETECTED
     d = LB.judge_mechanism(
-        r_a="BLUE", r_b="RED",
-        pathway_registered_and_controlled=False,
+        r_a="BLUE", r_b="RED", pathway_registered_and_controlled=False,
         drift_control_explains=False, readout_has_resolution=True,
         run="r", fixture="T-8", readout="o")
     assert d["MECH"] != "DETECTED"
+    return ("%d 个登记入口全部 INDETERMINATE + 全部抛 UnsupportedPremise；"
+            "覆盖标 PARTIAL" % len(scan["results"]))
 
-    # 扫描表必须逐项能指认依据（不是随手写的组合）
-    for name, _kw, why in LB.STAGE_CALL_SITES:
-        assert why and why.strip(), "入口 %r 缺依据说明" % (name,)
-    return "本阶段 %d 个调用入口，无一路径产生 DETECTED" % len(scan["results"])
+
+# ============================================================ T-9（E-22-1）
+
+@case("T-9", "E-22-1 pathway=True ⇒ 抛 UnsupportedPremise（不是 ValueError）")
+def t9():
+    """勘误005 E-22-1。
+
+    ⚠ Mion 的理由：
+      ValueError 读作「你传错了值」，意味着调用方改一下就能对。
+      而 pathway=True 在本阶段不是值的问题，是【这个前提本身不存在】。
+      ⇒ 区别在于谁来修。
+
+    上一版我靠「没有调用方会传 True」保证不可达 ——
+    那是纪律，不是机制。新调用方传 True 就能拿到 DETECTED，没有任何东西阻止。
+    """
+    # ① 必须是 UnsupportedPremise
+    caught_type = None
+    try:
+        LB.judge_mechanism(
+            r_a="BLUE", r_b="RED",
+            pathway_registered_and_controlled=True,
+            drift_control_explains=False, readout_has_resolution=True,
+            run="r", fixture="T-9", readout="o")
+    except LB.UnsupportedPremise:
+        caught_type = "UnsupportedPremise"
+    except ValueError:
+        caught_type = "ValueError"
+    except Exception as e:
+        caught_type = type(e).__name__
+
+    assert caught_type == "UnsupportedPremise", \
+        "E-22-1 violated: 应抛 UnsupportedPremise，实测 %r" % (caught_type,)
+
+    # ② 它不是 ValueError 的子类（否则 except ValueError 也会吞掉，语义混了）
+    assert not issubclass(LB.UnsupportedPremise, ValueError), \
+        "UnsupportedPremise 不应是 ValueError 子类 —— 否则两类错误无法区分"
+
+    # ③ 即使 r_A == r_B 也要抛（前提不存在与结果无关）
+    caught2 = False
+    try:
+        LB.judge_mechanism(
+            r_a="BLUE", r_b="BLUE",
+            pathway_registered_and_controlled=True,
+            drift_control_explains=False, readout_has_resolution=True,
+            run="r", fixture="T-9", readout="o")
+    except LB.UnsupportedPremise:
+        caught2 = True
+    assert caught2, "E-22-1: 前提不存在时，无论 r_A/r_B 如何都必须抛"
+    return "pathway=True ⇒ UnsupportedPremise（非 ValueError 子类），r_A==r_B 时同样抛"
+
+
+# ============================================================ T-10（E-21）
+
+@case("T-10", "E-21-1 双向不变量 + E-21-2 本层不布尔化消费 EXCLUDED")
+def t10():
+    """勘误005 E-21-1 / E-21-2。
+
+    E-21-1 双向：
+        EXCLUDED is None      ⇔  INDETERMINATE is True
+        EXCLUDED in {T,F}      ⇒  INDETERMINATE is False
+    ⚠ 必须双向：单向（None ⇒ flag=True）允许 flag=True 而 value=False 的坏状态。
+
+    E-21-2 本层内不得布尔化消费：
+        反例源码 grep `if excluded:` / `bool(excluded)` / `excluded or`
+    """
+    # ① 四个出口全部满足双向不变量
+    cases = [
+        dict(negative_control_reproduced=False, alternative_terms=[],
+             excluded_terms=[], positive_control_ok=True),          # None/True
+        dict(negative_control_reproduced=False,
+             alternative_terms=["a"], excluded_terms=["a"],
+             positive_control_ok=True),                             # True/False
+        dict(negative_control_reproduced=True,
+             alternative_terms=["a"], excluded_terms=[],
+             positive_control_ok=True),                             # False/False
+        dict(negative_control_reproduced=False,
+             alternative_terms=["a"], excluded_terms=[],
+             positive_control_ok=False),                            # False/False
+    ]
+    for i, kw in enumerate(cases):
+        r = LB.evaluate_excluded(**kw)
+        is_none = (r["EXCLUDED"] is None)
+        assert is_none == r["INDETERMINATE"], \
+            "E-21-1 violated（出口 %d）：EXCLUDED=%r 但 INDETERMINATE=%r" \
+            % (i, r["EXCLUDED"], r["INDETERMINATE"])
+
+    # ② 单项不满足时必须抛（不是静默通过）
+    bad = {"EXCLUDED": False, "INDETERMINATE": True,
+           "remaining": [], "reason": "X"}
+    caught = False
+    try:
+        LB.check_e21_invariant(bad)
+    except ValueError as e:
+        caught = "E-21-1" in str(e)
+    assert caught, "E-21-1 violated: 单向坏状态（False + flag=True）未被拒绝"
+
+    bad2 = {"EXCLUDED": None, "INDETERMINATE": False,
+            "remaining": [], "reason": "X"}
+    caught2 = False
+    try:
+        LB.check_e21_invariant(bad2)
+    except ValueError as e:
+        caught2 = "E-21-1" in str(e)
+    assert caught2, "E-21-1 violated: 反向坏状态（None + flag=False）未被拒绝"
+
+    # ③ E-21-2：本层源码不得出现布尔化消费
+    #    ⚠ 不能用文本 grep —— 第一版我用 grep，结果命中的是
+    #      一条【注释】里写的反例（"`if excluded:` 会把 None 和 False 混在一起"）。
+    #      文本 grep 分不清代码与注释，会把说明文字当成违规。
+    #      ⇒ 改用 AST：只看真实语法树里的 If 判断与 Call 实参。
+    src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "lbjudge.py")
+    with io.open(src_path, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read(), filename=src_path)
+
+    def _is_excluded_name(node):
+        return isinstance(node, ast.Name) and node.id == "excluded"
+
+    violations = []
+
+    for node in ast.walk(tree):
+        # (a) if excluded:  /  elif excluded:
+        if isinstance(node, ast.If) and _is_excluded_name(node.test):
+            violations.append(("if excluded:", node.lineno))
+        # (b) bool(excluded)
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "bool"
+                and len(node.args) == 1
+                and _is_excluded_name(node.args[0])):
+            violations.append(("bool(excluded)", node.lineno))
+        # (c) excluded or <default>
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+            if any(_is_excluded_name(v) for v in node.values):
+                violations.append(("excluded or ...", node.lineno))
+
+    assert not violations, \
+        "E-21-2 violated: lbjudge.py 出现布尔化消费 %r —— " \
+        "None 与 False 在布尔语境相同但语义相反" % (violations,)
+
+    # 正向：AST 里必须出现 `excluded is None` / `excluded is True` 显式三路
+    has_none_cmp = False
+    has_true_cmp = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare) and _is_excluded_name(node.left):
+            for op, comp in zip(node.ops, node.comparators):
+                if isinstance(op, ast.Is) and isinstance(comp, ast.Constant):
+                    if comp.value is None:
+                        has_none_cmp = True
+                    elif comp.value is True:
+                        has_true_cmp = True
+    assert has_none_cmp, "E-21-2 violated: 未用显式 `excluded is None` 三路判断"
+    assert has_true_cmp, "E-21-2 violated: 未用显式 `excluded is True` 三路判断"
+    return "4 个出口双向不变量全通过；单项坏状态被拒；AST 无布尔化消费"
 
 
 # ============================================================ 汇总
@@ -464,10 +643,14 @@ REPORT_HEADER = """\
 ④ 本层未使用真实角色历史；未实现任何重要性算法
 ⑤ B-SCOPE-1..4 的解释依据为「裁定二授权最小失败条件测试；
    不建待测对象则无法写测试」，由 Mion 判断，凌翼核定中。
-⑥ BINDING = v0.4（9031df2）+ 附录A + 勘误004（731f5a0）
-   MECH_DETECTED = NOT_REACHABLE_IN_THIS_STAGE（勘误004 E-19-3，
-     【由 T-8 断言】，不是仅在此处声明）
+⑥ BINDING = v0.4（9031df2）+ 附录A + 勘误004（731f5a0）+ 勘误005（cc0b6fb）
+   MECH_DETECTED = NOT_REACHABLE_IN_THIS_STAGE
+     （勘误004 E-19-3；【由 T-8/T-9 断言】，不是仅在此处声明）
+     强制方式 = E-22-1：pathway=True ⇒ 抛 UnsupportedPremise（T-9）
+     覆盖穷尽性 = PARTIAL_FOR_REGISTERED_ENTRIES（E-22-3(b)，T-8 断言）
    EXCLUDED 空清单 = INDETERMINATE（勘误004 E-18-1）
+   EXCLUDED 形状 = {True,False,None} + INDETERMINATE: bool（勘误005 E-21）
+   E-21-1 双向不变量（每个出口校验）；E-21-2 本层不布尔化消费（AST 检查，T-10）
 ⑦ OPEN-EXISTING-1  test_mutations_gate.py  状态=OPEN（既有，非 B 层引入）
    现象：7 个基准变异里 3 个未让测试翻红（rc=0）；脚本自报基准不绿。
    归属：之前的收口范围。登记依据：勘误004 E-20-1 / E-20-2。
@@ -476,11 +659,11 @@ REPORT_HEADER = """\
 
 def main():
     print("=" * 80)
-    print("B 层第一批测试 · T-1..T-8（v0.4 + 勘误004 绑定，全正向断言）")
-    print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0)")
+    print("B 层第一批测试 · T-1..T-10（v0.4 + 勘误004/005 绑定，全正向断言）")
+    print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0) + 勘误005 (cc0b6fb)")
     print("=" * 80)
     print()
-    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8):
+    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)
