@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
-"""B 层第一批测试 —— T-1..T-6 + T-5c + T-6e（共 8 条）
+"""B 层第一批测试 —— T-1..T-6e（共 8 条），v0.4 绑定，全部正向断言
 
-绑定：v0.3 (0d159cb) + 勘误001 (0251ee8) + 勘误002 (cbd6ea4)
+绑定：A层_主设计候选v0.4_合并定稿 (9031df2) + 附录A
 
-⚠ E-12 报告开头固定四行（见文件末尾 REPORT_HEADER）
+⚠ 上一轮（v0.3 绑定）的 T-2/T-3/T-5/T-6 写成了【负向断言】
+  （"本层不应产出 B3-*/MECH 字段"）。那是范围错误：
+  B-SCOPE-1 明列了 B3-OBS / B3-CLAIM / B4 / MECH / EXCLUDED。
+  Mion 已撤回"改标 N/A"的处置（d59a440 §〇）。
+  ⇒ 本文件把四条改为【正向断言，有具体预期值】。
 
-每条测试都必须能【真的变红】。本文件末尾有变异验证：
-对每条断言注入对应的实现错误，断言必须失败。
+⚠ 每条测试都必须能【真的变红】：
+  见 test_blayer_batch1_mutation.py。
+
+报告开头固定四行见文件末尾 REPORT_HEADER。
 """
 from __future__ import annotations
 
@@ -16,6 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bfjudge as BJ
+import lbjudge as LB
 
 RESULTS = []
 
@@ -38,7 +45,7 @@ def case(cid, name):
 
 
 def rec(**kw):
-    """合成记录。未给的字段为 None。"""
+    """合成记录（L-A 侧）。未给的字段为 None。"""
     base = {
         "record_id": "r1", "content": "x",
         "source_kind": "user_utterance", "source_ref": "utt/r1",
@@ -58,76 +65,108 @@ def _open_fail(ref):
     return False
 
 
-# ============================================================ T-1
+# ============================================================ T-1（L-A）
 
-@case("T-1", "A3 事件不匹配 ⇒ PASS + NOT_COVERED，admitted 不受影响")
+@case("T-1", "A3 事件不匹配 ⇒ A3=PASS + NOT_COVERED + multi_ref")
 def t1():
-    """勘误001 E-1：§2.1 的旧半句「指向本条记录所涉事件」已删除。
+    """v0.4 §3.3 + §3.4 + §8.4 T-1。
 
-    ⚠ 若实现按旧半句写，这个夹具会得到 UNKNOWN。
-      本测试就是用来抓那个残留的。
+    A3 窄口径只签「存在一条可打开的引用」。
+    ⇒ 即使引用指向的是别的记录（事件不匹配），A3 仍 PASS。
+    ⇒ 报告必须同时写 match 与 multi_ref 两个值。
     """
     r = rec(observed_origin="human_input", basis_conflict="none",
             source_ref="utt/r1", _event="E8")  # 记录谈 E7，引用指向 E8
     d = BJ.decide_admission(r, opener=_open_ok)
 
-    assert d["per_rule"]["A3"]["verdict"] == "PASS", \
-        "A3 应 PASS（窄口径只判能打开），实测 %r" % d["per_rule"]["A3"]
-    assert d["per_rule"]["A3"]["match"] == "NOT_COVERED", \
-        "A3.match 应为 NOT_COVERED"
-    assert d["admitted"] is True, "A1/A2/A3 全 PASS ⇒ admitted 应为 True"
-    return "A3=PASS + match=NOT_COVERED，admitted=True"
+    a3 = d["per_rule"]["A3"]
+    assert a3["verdict"] == "PASS", \
+        "A3 应 PASS（窄口径只判能打开），实测 %r" % (a3,)
+    assert a3["match"] == "NOT_COVERED", \
+        "A3.match 应为 NOT_COVERED（事件匹配本版不做，§3.3）"
+    assert a3["multi_ref"] == "NOT_TRIGGERABLE_BY_TYPE", \
+        "A3.multi_ref 应为 NOT_TRIGGERABLE_BY_TYPE（§3.4 C1-TYPE-2）"
+    assert d["admitted"] is True
+    assert d["unknowns"] == []
+    return "A3=PASS + match=NOT_COVERED + multi_ref=NOT_TRIGGERABLE_BY_TYPE"
 
 
-# ============================================================ T-2
+# ============================================================ T-2（L-B）
 
-@case("T-2", "两臂同蓝 ⇒ B3-CLAIM = NOT_DETECTED（本层不实现，仅验契约字段可表达）")
+@case("T-2", "两臂同蓝、替代未排 ⇒ delta=0 / NOT_DETECTED / B4=INDETERMINATE")
 def t2():
-    """v0.3 §3.2/§3.3 + 勘误002 E-8 CROSS-6。
+    """v0.4 §4.2 判定表 + §8.4 T-2。
 
-    ⚠ 本判定层【不实现】B3-OBS / B3-CLAIM / B4 —— 它们属机制侧。
-      本测试只验证：本层的输出里不出现任何机制侧主张，
-      且 reason_summary 不带「影响/没有影响」。
+    夹具：delivered=true, readout_valid=true, delta=0, EXCLUDED=false
+    期望：B3-CLAIM == NOT_DETECTED
+          B4 == INDETERMINATE
+          措辞字段只许说「此次对照、该读出」—— 不是「没有影响」
     """
-    r = rec(observed_origin="human_input", basis_conflict="none")
-    d = BJ.decide_admission(r, opener=_open_ok)
+    obs = {"delivered": True, "readout_valid": True, "delta": 0}
+    d = LB.judge_impact(obs, excluded=False,
+                        run="run-1", fixture="T-2", readout="readout-1")
 
-    s = d["reason_summary"]
-    for banned in ("影响", "没有影响", "影响输出"):
-        assert banned not in s, (
-            "reason_summary 出现机制侧措辞 %r ⇒ 越过了本层范围" % banned)
+    assert d["B3-OBS"] == {"delta": 0, "delivered": True, "readout_valid": True}, \
+        "B3-OBS 应逐字段等于输入，实测 %r" % (d["B3-OBS"],)
+    assert d["B3-CLAIM"] == "NOT_DETECTED", \
+        "delta=0 ⇒ B3-CLAIM=NOT_DETECTED，实测 %r" % d["B3-CLAIM"]
+    assert d["B4"] == "INDETERMINATE", \
+        "delta=0 ⇒ B4=INDETERMINATE（§4.2 表），实测 %r" % d["B4"]
 
-    # 本层不产出机制侧字段
-    for k in ("B3-OBS", "B3-CLAIM", "B4", "MECH"):
-        assert k not in d, "本层不应产出 %r（属机制侧）" % k
-    return "reason_summary 无机制侧措辞；无 B3-*/MECH 字段"
+    # §4.2 措辞纪律：B3-CLAIM 不是「没有影响」
+    assert "没有影响" not in d["B3-CLAIM"]
+    assert "NOT_DETECTED" != "NO_EFFECT", \
+        "NOT_DETECTED 是「未检出」，不是「无影响」"
+
+    # INDETERMINATE 出口必须带 scope（§4.7 E-16-1）
+    for k in LB.SCOPE_KEYS:
+        assert d["scope"].get(k) is not None, \
+            "E-16-1 violated: scope 缺 %r" % k
+    return "delta=0 ⇒ NOT_DETECTED / B4=INDETERMINATE / scope 齐全"
 
 
-# ============================================================ T-3
+# ============================================================ T-3（L-B MECH）
 
-@case("T-3", "MECH 三态不在本层 ⇒ 本层不得声称能判机制")
+@case("T-3", "一臂注入 E 向量 ⇒ MECH=INDETERMINATE（即使有差值）")
 def t3():
-    """勘误002 E-8 / CROSS-6。
+    """v0.4 §六 + §8.4 T-3。
 
-    ⇒ 本层只做到「准入」层。MECH 属机制侧，本层不实现。
-      本测试断言：本层输出中不存在任何可被读成 MECH 的字段。
+    ⇒ r_A != r_B，但输入通路未受控 ⇒ MECH = INDETERMINATE。
+    本阶段通路受控不可验（UNTESTABLE-1）⇒ DETECTED 分支【不可达】。
     """
-    r = rec(observed_origin="human_input", basis_conflict="none")
-    d = BJ.decide_admission(r, opener=_open_ok)
-    assert "MECH" not in str(d.keys()), "本层不得产出 MECH"
-    assert "INDETERMINATE" not in str(d.values()), \
-        "本层不得产出 INDETERMINATE（那是机制侧三态之一）"
-    return "本层无 MECH / INDETERMINATE 字段"
+    d = LB.judge_mechanism(
+        r_a="BLUE", r_b="RED",                    # 确实有差值
+        pathway_registered_and_controlled=False,  # 通路未受控
+        drift_control_explains=False,
+        readout_has_resolution=True,
+        run="run-1", fixture="T-3", readout="readout-1")
+
+    assert d["MECH"] == "INDETERMINATE", \
+        "通路未受控 ⇒ MECH 必为 INDETERMINATE（即使 r_A != r_B），实测 %r" \
+        % d["MECH"]
+    assert "PATHWAY_NOT_CONTROLLED" in d["reasons"], \
+        "INDETERMINATE 应给出理由 PATHWAY_NOT_CONTROLLED，实测 %r" % d["reasons"]
+
+    # 反向证明：把通路改成"受控"才可能得到 DETECTED
+    d2 = LB.judge_mechanism(
+        r_a="BLUE", r_b="RED", pathway_registered_and_controlled=True,
+        drift_control_explains=False, readout_has_resolution=True,
+        run="run-1", fixture="T-3", readout="readout-1")
+    assert d2["MECH"] == "DETECTED", \
+        "通路受控且有差值应 DETECTED（这是判据完整性检验，本阶段不可达）"
+
+    # 但本阶段的默认参数（通路未受控）下，DETECTED 不可达
+    assert LB.describe()["mech_detected_reachable_in_this_stage"] is False
+    return "r_A!=r_B + 通路未受控 ⇒ INDETERMINATE(PATHWAY_NOT_CONTROLLED)"
 
 
-# ============================================================ T-4
+# ============================================================ T-4（L-A）
 
 @case("T-4", "Q7a：system_dispatch ⇒ A1=UNKNOWN, A2=FAIL, A3=PASS, unknowns=['A1']")
 def t4():
-    """v0.3 §2.6 Q7a + 勘误002 E-10。这是 B-REQ-1 的主战场。
+    """v0.4 §3.6 Q7a + §8.4 T-4。B-REQ-1 的主战场。
 
-    ⚠ 只断言 admitted=false 是不够的 ——
-      把 A2 错写成 PASS 也照样绿（S-10 / 知微原话）。
+    ⚠ 只断言 admitted=false 不够 —— 把 A2 错写成 PASS 也照样绿（§3.5 S5）。
     """
     r = rec(observed_origin="system_dispatch",
             basis_conflict="asserted_contradicts_observed",
@@ -146,134 +185,200 @@ def t4():
     # S5：三项全部产出
     assert set(d["per_rule"]) == {"A1", "A2", "A3"}, \
         "S5 violated: per_rule 未产出全部三项"
-    return "A1=UNKNOWN(DISPATCH_NOT_QUALIFIED) / A2=FAIL / A3=PASS / unknowns=['A1']"
+    # ▲ v0.4 新增：A3 也要有 multi_ref（即使 PASS 也要写值）
+    assert d["per_rule"]["A3"]["multi_ref"] == "NOT_TRIGGERABLE_BY_TYPE"
+    return "A1=UNKNOWN(DISPATCH_NOT_QUALIFIED)/A2=FAIL/A3=PASS/unknowns=['A1']"
 
 
-# ============================================================ T-5
+# ============================================================ T-5（L-B）
 
-@case("T-5", "delta=null 落点 —— 本层不产 delta，但需验字段缺席不冒充 0")
+@case("T-5", "delta=null 落点 ⇒ readout_valid=false / delta=null / 两个 INDETERMINATE")
 def t5():
-    """勘误001 E-3（B3 侧）。
+    """v0.4 §4.3 D-1..D-3 + §8.4 T-5。
 
-    ⚠ delta 属机制侧，本层不产出。
-      本测试验证：本层输出中【不存在】任何可被读成数值差异的字段，
-      因此不会被误读成 delta=0。
+    readout_valid=false ⇒ delta 必为 null ⇒ B3-CLAIM 与 B4 都 INDETERMINATE。
     """
-    r = rec(observed_origin="human_input", basis_conflict="none")
-    d = BJ.decide_admission(r, opener=_open_ok)
-    for k in ("delta", "B3-OBS", "delta_value"):
-        assert k not in d, "本层不应产出 %r" % k
+    obs = {"delivered": True, "readout_valid": False, "delta": None}
+    d = LB.judge_impact(obs, excluded=False,
+                        run="run-1", fixture="T-5", readout="readout-1")
 
-    # 反向：本层不得用 0 表达「未测」
-    assert "0" not in str(d.get("unknowns", [])), "未知不得用 0 表达"
-    return "本层无 delta 字段；未知用 UNKNOWN 列表表达，不用 0"
+    assert d["B3-OBS"]["delta"] is None, "delta 应为 null"
+    assert d["B3-OBS"]["readout_valid"] is False
+    assert d["B3-CLAIM"] == "INDETERMINATE", \
+        "readout_valid=false ⇒ B3-CLAIM=INDETERMINATE，实测 %r" % d["B3-CLAIM"]
+    assert d["B4"] == "INDETERMINATE"
 
-
-# ============================================================ T-5c
-
-@case("T-5c", "反证：把 UNKNOWN 当数值比较 ⇒ 必须出错（None != 0 的坑）")
-def t5c():
-    """勘误001 E-3 + 我提的 T-5c。
-
-    Python 里 None != 0 为 True。
-    若实现用 `if delta != 0:` 判「有差异」，None 会被判成「有差异」。
-
-    ⇒ 本测试把这条【实现错误】变成【测试红】：
-      断言「拿 None 做数值比较」必须抛 TypeError。
-      若将来有人把它写成 `!= 0` 且不抛错，说明他改了语义。
-    """
-    none_val = None
-    raised = False
-    try:
-        _ = (none_val > 0)
-    except TypeError:
-        raised = True
-    assert raised, "None > 0 应抛 TypeError；若不抛，说明 None 被当成了数值"
-
-    # 而 None != 0 是 True —— 这正是坑
-    assert (none_val != 0) is True, "None != 0 应为 True（这是坑本身）"
-
-    # 正确写法示范：必须显式判 None
-    def is_nonzero(v):
-        if v is None:
-            raise ValueError("null 不参与数值比较")
-        return v != 0
-
-    raised2 = False
-    try:
-        is_nonzero(None)
-    except ValueError:
-        raised2 = True
-    assert raised2, "正确处理必须显式拒绝 None"
-    return "None>0 抛 TypeError；None!=0 为 True（坑）；正确处理须显式拒绝"
-
-
-# ============================================================ T-6
-
-@case("T-6", "对照跑过 ≠ 排除成功（本层验不冒充）")
-def t6():
-    """勘误001 E-4。
-
-    ⚠ EXCLUDED 属机制侧，本层不产出。
-      本测试验证：本层输出中不存在任何可被读成「已排除」的字段。
-    """
-    r = rec(observed_origin="human_input", basis_conflict="none")
-    d = BJ.decide_admission(r, opener=_open_ok)
-    for k in ("EXCLUDED", "excluded_ok", "control_passed"):
-        assert k not in d, "本层不应产出 %r（属机制侧）" % k
-    return "本层无 EXCLUDED 字段"
-
-
-# ============================================================ T-6e
-
-@case("T-6e", "反证：谓词恒 False 也能通过 —— 必须另有 True 分支")
-def t6e():
-    """勘误001 E-4 + 我提的 T-6e。
-
-    「只测 False 分支」的谓词，改成恒 False 也能全绿。
-    ⇒ 必须同时存在一个 True 分支，才能证明谓词有分辨力。
-
-    本测试用一个最小谓词示范：
-        pred(x) = x is None
-    · 有 False 分支（x=0）
-    · 有 True 分支（x=None）
-    ⇒ 若把 pred 改成恒 False，True 分支会红。
-    """
-    pred = lambda x: x is None
-
-    # False 分支
-    assert pred(0) is False
-    # True 分支 —— 没有这条，pred 恒 False 也能过
-    assert pred(None) is True, \
-        "必须有 True 分支，否则恒 False 的谓词也能通过"
-
-    # 反证：把 pred 改成恒 False，True 分支必红
-    broken = lambda x: False
+    # D-1 反向：readout_valid=False 却给 delta=0.5 ⇒ 必须抛错
     caught = False
     try:
-        assert broken(None) is True
-    except AssertionError:
-        caught = True
-    assert caught, "恒 False 谓词未被抓住 ⇒ 本反证无效"
-    return "谓词有 True/False 两分支；恒 False 会被 True 分支抓红"
+        LB.judge_impact({"delivered": True, "readout_valid": False,
+                         "delta": 0.5}, excluded=False,
+                        run="r", fixture="T-5", readout="o")
+    except ValueError as e:
+        caught = "D-1" in str(e)
+    assert caught, "D-1 violated: readout_valid=False 时 delta 非 null 必须抛错"
+
+    # D-1 另一反向：readout_valid=True 却给 delta=None ⇒ 必须抛错
+    caught2 = False
+    try:
+        LB.judge_impact({"delivered": True, "readout_valid": True,
+                         "delta": None}, excluded=False,
+                        run="r", fixture="T-5", readout="o")
+    except ValueError as e:
+        caught2 = "D-1" in str(e)
+    assert caught2, "D-1 violated: readout_valid=True 时 delta 为 null 必须抛错"
+    return "readout_valid=false + delta=null ⇒ 两个 INDETERMINATE；D-1 双向可执行"
+
+
+# ============================================================ T-5c（L-B）
+
+@case("T-5c", "反证：None 被当数值比较 ⇒ 必须抛错或走错分支")
+def t5c():
+    """v0.4 §4.3 D-2 + §8.4 T-5c。
+
+    Python 里 None != 0 为 True；None > 0 抛 TypeError。
+    ⇒ 若实现用 `if delta != 0:` 判「有差异」，null 会被判成「有差异」。
+    ⇒ 本测试把这条【实现错误】变成【测试红】。
+    """
+    # ① 语言层的坑存在
+    assert (None != 0) is True, "None != 0 应为 True（这是坑本身）"
+    raised = False
+    try:
+        _ = (None > 0)
+    except TypeError:
+        raised = True
+    assert raised, "None > 0 应抛 TypeError"
+
+    # ② 本实现不踩这个坑：null + readout_valid=true 会先被 D-1 拦下
+    caught = False
+    try:
+        LB.judge_impact({"delivered": True, "readout_valid": True,
+                         "delta": None}, excluded=False,
+                        run="r", fixture="T-5c", readout="o")
+    except ValueError as e:
+        caught = "D-1" in str(e)
+    assert caught, "本实现必须显式拒绝 null，不得让它进到 delta != 0 的比较"
+
+    # ③ 变异样本：把判据写成 `delta != 0` 的坏实现会被 T-5 抓红
+    def broken(delta):
+        # 故意错：不判 null
+        return "HAS_DIFF" if delta != 0 else "NO_DIFF"
+
+    assert broken(None) == "HAS_DIFF", \
+        "坏实现会把 null 判成有差异 —— 这正是 T-5 要抓的（此处断言坏实现的行为）"
+    # 而正确实现断言：null 不得以任何形式参与判断 ⇒ T-5 的 D-1 已覆盖
+    return "None!=0 为 True（坑确实存在）；本实现由 D-1 显式拒绝"
+
+
+# ============================================================ T-6（L-B EXCLUDED）
+
+@case("T-6", "空跑重现漂移 ⇒ EXCLUDED=FALSE / delta 保留非零 / B4=INDETERMINATE")
+def t6():
+    """v0.4 §4.4 + §8.4 T-6。
+
+    夹具：delta != 0，空跑对照重现了差值，替代解释清单未排除完
+    期望：EXCLUDED == FALSE
+          delta 保留非零（不被清零、不被抹掉）
+          B4 == INDETERMINATE
+          列出未排除项
+    """
+    alternatives = ["seasonal_drift", "readout_calibration"]
+    ex = LB.evaluate_excluded(
+        negative_control_reproduced=True,   # 空跑重现了
+        alternative_terms=alternatives,
+        excluded_terms=[],                  # 一条都没排除
+        positive_control_ok=True)
+    assert ex["EXCLUDED"] is False, "空跑重现 ⇒ EXCLUDED 必为 False"
+    assert ex["reason"] == "NEGATIVE_CONTROL_REPRODUCED_DRIFT", ex["reason"]
+
+    d = LB.judge_impact(
+        {"delivered": True, "readout_valid": True, "delta": 0.3},
+        excluded=ex["EXCLUDED"],
+        run="run-1", fixture="T-6", readout="readout-1")
+
+    assert d["B3-OBS"]["delta"] == 0.3, \
+        "delta 必须保留非零原值（不得清零），实测 %r" % d["B3-OBS"]["delta"]
+    assert d["B3-CLAIM"] == "SUPPORTED", d["B3-CLAIM"]
+    assert d["B4"] == "INDETERMINATE", \
+        "EXCLUDED=False ⇒ B4 必为 INDETERMINATE，实测 %r" % d["B4"]
+    assert d.get("unexcluded") is True, "必须标出「列未排除项」"
+    # 未排除项要能被列出（§4.4「列未排除项」）
+    assert ex["remaining"] == alternatives, \
+        "未排除项应逐条列出，实测 %r" % ex["remaining"]
+    return "EXCLUDED=FALSE / delta 保留 0.3 / B4=INDETERMINATE / 未排除项逐条列出"
+
+
+# ============================================================ T-6e（L-B EXCLUDED）
+
+@case("T-6e", "对照跑过且确实排除 ⇒ EXCLUDED=TRUE / B4=ESTABLISHED")
+def t6e():
+    """v0.4 §4.4 + §8.4 T-6e。
+
+    夹具：delta=0.3，空跑未重现，替代解释清单逐条排除完毕，正对照有效
+    期望：EXCLUDED == TRUE；B4 == ESTABLISHED
+
+    ⇒ 没有这条，EXCLUDED 恒 False 也能全绿。
+    """
+    alternatives = ["seasonal_drift", "readout_calibration"]
+    ex = LB.evaluate_excluded(
+        negative_control_reproduced=False,   # 空跑未重现
+        alternative_terms=alternatives,
+        excluded_terms=alternatives,         # 逐条已排除
+        positive_control_ok=True)
+    assert ex["EXCLUDED"] is True, \
+        "三条同时成立 ⇒ EXCLUDED 必为 True，实测 reason=%r" % ex["reason"]
+    assert ex["remaining"] == []
+
+    d = LB.judge_impact(
+        {"delivered": True, "readout_valid": True, "delta": 0.3},
+        excluded=ex["EXCLUDED"],
+        run="run-1", fixture="T-6e", readout="readout-1")
+    assert d["B3-CLAIM"] == "SUPPORTED"
+    assert d["B4"] == "ESTABLISHED", \
+        "delta!=0 且 EXCLUDED=TRUE ⇒ B4=ESTABLISHED，实测 %r" % d["B4"]
+
+    # 反例：清单里有一条没排除 ⇒ EXCLUDED 必须翻回 False
+    ex2 = LB.evaluate_excluded(
+        negative_control_reproduced=False,
+        alternative_terms=alternatives,
+        excluded_terms=[alternatives[0]],   # 只排除一条
+        positive_control_ok=True)
+    assert ex2["EXCLUDED"] is False, \
+        "有未排除项 ⇒ EXCLUDED 必为 False（否则「逐条排除」形同虚设）"
+    assert ex2["remaining"] == [alternatives[1]]
+
+    # 反例：正对照失灵 ⇒ 不得 EXCLUDED
+    ex3 = LB.evaluate_excluded(
+        negative_control_reproduced=False,
+        alternative_terms=alternatives,
+        excluded_terms=alternatives,
+        positive_control_ok=False)
+    assert ex3["EXCLUDED"] is False
+    assert ex3["reason"] == "POSITIVE_CONTROL_FAILED"
+    return "EXCLUDED=TRUE ⇒ B4=ESTABLISHED；漏一条/正对照失灵均必须翻 False"
 
 
 # ============================================================ 汇总
 
 REPORT_HEADER = """\
 ① 本层实现了哪些 A 层定义的字段：
-   admitted / per_rule(A1{verdict,reason}, A2{verdict}, A3{verdict,match})
-   / origin_attribution{value,evidence} / unknowns / reason_summary
+   L-A: admitted / per_rule(A1{verdict,reason}, A2{verdict},
+        A3{verdict,match,multi_ref}) / origin_attribution{value,evidence}
+        / unknowns / reason_summary
+   L-B: B3-OBS{delta,delivered,readout_valid} / B3-CLAIM / B4 / MECH
+        / EXCLUDED / scope{this_run,this_fixture,this_readout}
 ② 这些字段在 B 层之前【不存在】（已核：afcore/afrecover/afimportance 全无）
 ③ 本层只验「判据的触发条件」，不验「真实机制产生行为影响」
 ④ 本层未使用真实角色历史；未实现任何重要性算法
+⑤ B-SCOPE-1..4 的解释依据为「裁定二授权最小失败条件测试；
+   不建待测对象则无法写测试」，由 Mion 判断，凌翼核定中。
 """
 
 
 def main():
     print("=" * 80)
-    print("B 层第一批测试 · T-1..T-6 + T-5c + T-6e")
-    print("  绑定 v0.3 (0d159cb) + 勘误001 (0251ee8) + 勘误002 (cbd6ea4)")
+    print("B 层第一批测试 · T-1..T-6 + T-5c + T-6e（v0.4 绑定，全正向断言）")
+    print("  绑定 v0.4 (9031df2) + 附录A")
     print("=" * 80)
     print()
     for f in (t1, t2, t3, t4, t5, t5c, t6, t6e):

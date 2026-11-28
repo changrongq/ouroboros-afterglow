@@ -1,141 +1,187 @@
 # -*- coding: utf-8 -*-
-"""变异验证：证明第一批 8 条测试真的会红
+"""B 层第一批 · 变异验证 —— 证明 8 条测试【真的会变红】
 
-⚠ Mion 的要求：「如果某条测试对你来说『随便怎么写都能过』，那条测试是我写坏了。」
-⚠ 我的承诺：如果某条测试无论怎么改实现都绿，我标 BROKEN_TEST 报她。
+绑定：v0.4 (9031df2)
 
-本文件对每条测试注入【对应的实现错误】，断言必须变红。
-若某条注入后仍绿 ⇒ 该测试无分辨力 ⇒ 报 BROKEN_TEST。
+做法：对每条断言，注入对应的实现错误（monkeypatch），
+      断言该测试必须失败。若某个变异下测试仍然绿，说明那条测试没有分辨力。
+
+⚠ 这不是"再跑一遍测试"。这是【反证测试本身有效】。
+   上一轮的教训：把"没写断言"当成"测试通过"。
+   本文件对每条 T 都给出至少一个变异。
 """
 from __future__ import annotations
 
 import os
 import sys
+import io
+import contextlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bfjudge as BJ
-import test_blayer_batch1 as TB
+import lbjudge as LB
+import test_blayer_batch1 as T
 
-RESULTS = []
+OUT = []
 
 
-def check(tid, desc, mutated_fn, expected_case):
-    """注入变异后跑测试，断言它变红。"""
-    orig = getattr(BJ, "_a3", None)
-    # 用 monkeypatch 的方式：临时替换 BJ 内的私有函数
+def _run_one(name):
+    """跑单条测试函数，返回 True=通过 / False=失败。"""
+    fn = getattr(T, name)
+    T.RESULTS.clear()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        fn()
+    return bool(T.RESULTS and T.RESULTS[0][2]), (T.RESULTS[0][3] if T.RESULTS else "")
+
+
+def mutate(cid, desc, patch, unpatch, test_name):
+    """注入变异 → 断言该测试变红 → 还原。"""
+    patch()
     try:
-        mutated_fn()
-        TB.RESULTS.clear()
-        expected_case()
-        r = TB.RESULTS[-1]
-        ok = (r[2] is False)
-        RESULTS.append((tid, desc, ok, str(r[3])[:100]))
-        print("  [%s] %s — %s" % ("OK  " if ok else "BROKEN", tid, desc))
-        print("        实测：%s" % str(r[3])[:100])
+        ok, detail = _run_one(test_name)
     finally:
-        pass
+        unpatch()
+    # 变异生效后测试必须【失败】
+    passed = (ok is False)
+    OUT.append((cid, desc, test_name, passed, detail))
+    print("  [%s] %s | 变异：%s | 测试 %s %s"
+          % ("OK  " if passed else "MISS", cid, desc, test_name,
+             "翻红" if ok is False else "仍然绿（无分辨力）"))
+    return passed
 
 
 def main():
     print("=" * 80)
-    print("变异验证 · 第一批 8 条测试是否有分辨力")
+    print("变异验证 —— 每条测试注入实现错误后必须变红")
     print("=" * 80)
     print()
 
-    # ---------- T-1 的变异：A3 恢复旧半句（要求事件匹配） ----------
-    print("[T-1 变异] 把 A3 改回「指向本条记录所涉事件」的旧半句")
+    # ---------------- T-1：A3 空引用判 FAIL（v0.3 旧行为）+ 缺 multi_ref
     orig_a3 = BJ._a3
-    def broken_a3_event_match(rec, opener=None):
-        r = orig_a3(rec, opener)
-        # 旧半句：若事件不匹配则 UNKNOWN
-        if rec.get("_event") and rec.get("_expected_event"):
-            if rec["_event"] != rec["_expected_event"]:
-                return {"verdict": "UNKNOWN", "match": "NOT_COVERED"}
-        return r
-    BJ._a3 = broken_a3_event_match
-    try:
-        TB.RESULTS.clear(); TB.t1()
-        r = TB.RESULTS[-1]
-        ok = r[2] is False
-        print("  [%s] T-1 能否抓到「A3 残留事件匹配」" % ("OK  " if ok else "BROKEN"))
-        if ok:
-            print("        %s" % str(r[3])[:100])
-    finally:
-        BJ._a3 = orig_a3
-    print()
 
-    # ---------- T-4 的变异：A2 恒 PASS（S-10 场景） ----------
-    print("[T-4 变异] 把 A2 改成恒 PASS —— 这正是 S-10 要防的")
+    def patch_t1():
+        def bad_a3(rec, opener=None):
+            d = orig_a3(rec, opener)
+            d.pop("multi_ref", None)   # 删除 multi_ref ⇒ T-1 断言失败
+            return d
+        BJ._a3 = bad_a3
+    mutate("M-1a", "A3 返回值缺 multi_ref", patch_t1,
+           lambda: setattr(BJ, "_a3", orig_a3), "t1")
+
+    def patch_t1b():
+        def bad_a3(rec, opener=None):
+            d = orig_a3(rec, opener)
+            d["match"] = "MATCHED"     # 谎称做了事件匹配
+            return d
+        BJ._a3 = bad_a3
+    mutate("M-1b", "A3.match 谎称 MATCHED", patch_t1b,
+           lambda: setattr(BJ, "_a3", orig_a3), "t1")
+
+    # ---------------- T-2：delta=0 判成 SUPPORTED / B4 写成 ESTABLISHED
+    orig_judge = LB.judge_impact
+
+    def patch_t2():
+        def bad(obs, excluded, **kw):
+            d = orig_judge(obs, excluded, **kw)
+            if d["B3-OBS"]["delta"] == 0:
+                d["B3-CLAIM"] = "SUPPORTED"   # delta=0 当成有影响
+                d["B4"] = "ESTABLISHED"
+            return d
+        LB.judge_impact = bad
+    mutate("M-2", "delta=0 判 SUPPORTED/ESTABLISHED", patch_t2,
+           lambda: setattr(LB, "judge_impact", orig_judge), "t2")
+
+    # ---------------- T-3：MECH 无视通路控制
+    orig_mech = LB.judge_mechanism
+
+    def patch_t3():
+        def bad(r_a, r_b, pathway_registered_and_controlled, **kw):
+            # 错误：只看差值，不看通路
+            m = "NOT_DETECTED" if r_a == r_b else "DETECTED"
+            return {"MECH": m, "scope": LB._scope("r", "f", "o"), "reasons": []}
+        LB.judge_mechanism = bad
+    mutate("M-3", "MECH 无视通路受控（有差值就 DETECTED）", patch_t3,
+           lambda: setattr(LB, "judge_mechanism", orig_mech), "t3")
+
+    # ---------------- T-4：A2 恒 PASS（只断言 admitted 会漏）
     orig_a2 = BJ._a2
-    BJ._a2 = lambda rec: {"verdict": "PASS"}
-    try:
-        TB.RESULTS.clear(); TB.t4()
-        r = TB.RESULTS[-1]
-        ok = r[2] is False
-        print("  [%s] T-4 能否抓到「A2 恒 PASS」" % ("OK  " if ok else "BROKEN"))
-        if ok:
-            print("        %s" % str(r[3])[:100])
-    finally:
-        BJ._a2 = orig_a2
-    print()
 
-    # ---------- T-4 的变异2：A1 的 reason 写错 ----------
-    print("[T-4 变异2] 把 A1 reason 从 DISPATCH_NOT_QUALIFIED 改成 ORIGIN_UNDETERMINED")
-    orig_a1 = BJ._a1
-    def broken_a1(rec):
-        r = orig_a1(rec)
-        if r["reason"] == "DISPATCH_NOT_QUALIFIED":
-            return {"verdict": "UNKNOWN", "reason": "ORIGIN_UNDETERMINED"}
-        return r
-    BJ._a1 = broken_a1
-    try:
-        TB.RESULTS.clear(); TB.t4()
-        r = TB.RESULTS[-1]
-        ok = r[2] is False
-        print("  [%s] T-4 能否抓到「system_dispatch 与 unknown 混为一谈」"
-              % ("OK  " if ok else "BROKEN"))
-        if ok:
-            print("        %s" % str(r[3])[:100])
-    finally:
-        BJ._a1 = orig_a1
-    print()
+    def patch_t4():
+        BJ._a2 = lambda rec: {"verdict": "PASS"}
+    mutate("M-4a", "A2 恒 PASS", patch_t4,
+           lambda: setattr(BJ, "_a2", orig_a2), "t4")
 
-    # ---------- T-5c 的变异：把 None 当 0 ----------
-    print("[T-5c 变异] 若把 None 当 0 处理，T-5c 应抓到")
-    # T-5c 本身测的是 Python 语义，变异方式是构造一个
-    # 「None 被静默当 0」的谓词，看断言是否成立
-    def bad_is_nonzero(v):
-        return (v or 0) != 0
-    caught = (bad_is_nonzero(None) is False)
-    print("  [%s] bad_is_nonzero(None) = %r （应为 False，说明它把 None 当 0）"
-          % ("OK  " if caught else "BROKEN", bad_is_nonzero(None)))
-    print("        ⇒ T-5c 的 is_nonzero 会对这种写法抛 ValueError")
-    print()
+    def patch_t4b():
+        def bad_a1(rec):
+            d = _orig_a1(rec)
+            if d["reason"] == "DISPATCH_NOT_QUALIFIED":
+                d["reason"] = "ORIGIN_UNDETERMINED"  # 混了「不合格」与「不知道」
+            return d
+        _orig_a1 = BJ._a1
+        BJ._a1 = bad_a1
+    _saved_a1 = BJ._a1
+    mutate("M-4b", "A1 把 DISPATCH 写成 UNDETERMINED", patch_t4b,
+           lambda: setattr(BJ, "_a1", _saved_a1), "t4")
 
-    # ---------- T-6e 的变异：恒 False 谓词 ----------
-    print("[T-6e 变异] 恒 False 谓词 —— 已在 T-6e 内部验证")
-    TB.RESULTS.clear(); TB.t6e()
-    r = TB.RESULTS[-1]
-    print("  [%s] T-6e 自含恒 False 反证" % ("OK  " if r[2] else "BROKEN"))
-    print()
+    # ---------------- T-5：readout_valid=false 时给出 delta 并判 NOT_DETECTED
+    def patch_t5():
+        def bad(obs, excluded, **kw):
+            if not obs.get("readout_valid"):
+                # 错误：忽略 readout_valid，直接按 delta 判
+                d = {"B3-OBS": {"delta": 0, "delivered": True,
+                                "readout_valid": False},
+                     "B3-CLAIM": "NOT_DETECTED", "B4": "INDETERMINATE",
+                     "scope": LB._scope("r", "f", "o")}
+                return d
+            return orig_judge(obs, excluded, **kw)
+        LB.judge_impact = bad
+    mutate("M-5", "readout_valid=false 仍判 NOT_DETECTED", patch_t5,
+           lambda: setattr(LB, "judge_impact", orig_judge), "t5")
 
+    # ---------------- T-5c：D-1 校验失效（不拒绝 null）
+    orig_check = LB._check_delta_contract
+
+    def patch_t5c():
+        LB._check_delta_contract = lambda delta, readout_valid: None
+    mutate("M-5c", "去掉 D-1/D-2 校验（null 可进比较）", patch_t5c,
+           lambda: setattr(LB, "_check_delta_contract", orig_check), "t5c")
+
+    # ---------------- T-6：空跑重现也判 EXCLUDED=True
+    orig_excl = LB.evaluate_excluded
+
+    def patch_t6():
+        def bad(negative_control_reproduced, alternative_terms,
+                excluded_terms, positive_control_ok):
+            # 错误：只看正对照，不看空跑与清单
+            return {"EXCLUDED": bool(positive_control_ok),
+                    "remaining": [], "reason": "BAD"}
+        LB.evaluate_excluded = bad
+    mutate("M-6", "空跑重现也判 EXCLUDED=True", patch_t6,
+           lambda: setattr(LB, "evaluate_excluded", orig_excl), "t6")
+
+    # ---------------- T-6e：EXCLUDED 恒 False（T-6 全绿也测不出来）
+    def patch_t6e():
+        def bad(**kw):
+            return {"EXCLUDED": False, "remaining": [], "reason": "ALWAYS_FALSE"}
+        LB.evaluate_excluded = bad
+    mutate("M-6e", "EXCLUDED 恒 False", patch_t6e,
+           lambda: setattr(LB, "evaluate_excluded", orig_excl), "t6e")
+
+    # ---------------- 汇总
+    total = len(OUT)
+    ok = sum(1 for r in OUT if r[3])
+    print()
     print("=" * 80)
-    print("结论")
-    print("  T-1   在「A3 残留事件匹配」下变红      ✓")
-    print("  T-4   在「A2 恒 PASS」下变红            ✓")
-    print("  T-4   在「A1 reason 混淆」下变红        ✓")
-    print("  T-5c  Python 语义层的坑已被显式化       ✓")
-    print("  T-6e  自含恒 False 反证                 ✓")
-    print()
-    print("  ⚠ T-2 / T-3 / T-5 / T-6 是【负向断言】")
-    print("    （断言本层不产出某类字段）")
-    print("    ⇒ 它们的变异方式是「让本层多产出该字段」，")
-    print("       已在各自函数内以 NOT_CHECKED 说明。")
-    print("    ⇒ 但严格说，这四条的分辨力弱于 T-1/T-4。")
-    print("       我不把它们标成 BROKEN，但也不宣称它们与 T-1 同等。")
+    print("变异总数 %d  被抓住 %d  漏网 %d" % (total, ok, total - ok))
     print("=" * 80)
-    return 0
+    if ok != total:
+        print("\n⚠ 以下变异未被抓住（对应测试无分辨力）：")
+        for cid, desc, tname, passed, detail in OUT:
+            if not passed:
+                print("  %s | %s | 测试 %s" % (cid, desc, tname))
+    return 0 if ok == total else 1
 
 
 if __name__ == "__main__":
