@@ -484,6 +484,44 @@ def main():
            lambda: setattr(LB, "scan_judge_mechanism_calls", orig_scan_calls),
            "t11")
 
+    # ---------------- M-17：把前置条件改回 assert（违反 C-3）
+    #   ⚠ Mion 0173c69 §三 的第三类：【文档】不能单独红，
+    #      所以必须用 raise 而不是 assert —— 否则它会被计入通过数。
+    t_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "test_blayer_batch1.py")
+
+    def patch_t17():
+        with io.open(t_path, encoding="utf-8") as fh:
+            src = fh.read()
+        old = (
+            '    if not cov["hits"]:              # 前置条件；不计数、不单独作为防线\n'
+            '        raise RuntimeError(\n'
+            '            "前置条件不成立：扫描结果为空。"\n'
+            '            "注意本条不是断言 —— 若它先于下面两条触发，说明扫描器坏了。")\n'
+        )
+        new = (
+            '    assert cov["hits"], "E-25-1 violated: 扫描结果为空，断言无对象"\n'
+        )
+        with io.open(t_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(src.replace(old, new, 1))
+
+    def unpatch_t17():
+        with io.open(t_path, encoding="utf-8") as fh:
+            src = fh.read()
+        old = (
+            '    assert cov["hits"], "E-25-1 violated: 扫描结果为空，断言无对象"\n'
+        )
+        new = (
+            '    if not cov["hits"]:              # 前置条件；不计数、不单独作为防线\n'
+            '        raise RuntimeError(\n'
+            '            "前置条件不成立：扫描结果为空。"\n'
+            '            "注意本条不是断言 —— 若它先于下面两条触发，说明扫描器坏了。")\n'
+        )
+        with io.open(t_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(src.replace(old, new, 1))
+    mutate("M-17", "前置条件改回 assert（被蕴含项混入通过数）", patch_t17,
+           unpatch_t17, "t14")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])

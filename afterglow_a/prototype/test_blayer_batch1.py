@@ -650,14 +650,25 @@ def t11():
         "E-25-1 violated: 存在未登记进 STAGE_CALL_SITES 的 judge_mechanism 调用点：%r" \
         % (cov["missing_from_registry"],)
 
-    # ② 扫描确实扫到了东西
-    #    ⚠ 定位说明（勘误无，属实现内部；Mion 90fd957 §二 的「冗余 vs 纵深」）：
-    #      以下三条里，只有后两条是【防线】，第一条是被蕴含的：
-    #        · 探针被命中      ⇒ hits 必然非空
-    #        · real_hits >= 2  ⇒ hits 必然非空
-    #      ⇒ 「hits 非空」永远不是第一个红的，它不是独立防线。
-    #        留在这里是为了向读代码的人说明意图，不是第三层保护。
-    assert cov["hits"], "E-25-1 violated: 扫描结果为空，断言无对象"
+    # ────────────────────────────────────────────────────────────────
+    # 前置条件（不是断言）—— Mion 0173c69 §二 的第三类「文档」
+    #
+    #   REQUIRE_HITS = cov["hits"] 必须非空
+    #
+    #   ⚠ 它不是断言，因为它【不能单独红】：
+    #      · 探针被命中      ⇒ hits 必然非空
+    #      · real_hits >= 2  ⇒ hits 必然非空
+    #      ⇒ 它永远不是第一个红的，成立与否完全由下面两条决定。
+    #   ⇒ 它没有分辨力，只有说明力。
+    #   ⇒ 所以：不叫 assert、不计入通过数、与真实防线分开写。
+    #     保留它的唯一理由 = 读代码的人看到这里就知道前提是什么。
+    # ────────────────────────────────────────────────────────────────
+    if not cov["hits"]:              # 前置条件；不计数、不单独作为防线
+        raise RuntimeError(
+            "前置条件不成立：扫描结果为空。"
+            "注意本条不是断言 —— 若它先于下面两条触发，说明扫描器坏了。")
+
+    # ② 防线 1：真实调用点数量（可单独红）
     real_hits = [h for h in cov["hits"] if h[1] > 0]
     assert len(real_hits) >= 2, \
         "E-25-1 violated: 真实调用点少于 2 处，扫描可能失效，实测 %r" \
@@ -896,6 +907,77 @@ def t13():
             "E-27 violated: %s 的 blob 不是 40 位 sha，实测 %r" % (label, blob)
     return "五份 BINDING 文档全部在 HEAD 中存在（blob 均为 40 位 sha）"
 
+# ============================================================ T-14（C-3 守护）
+
+@case("T-14", "C-3 守护：被蕴含的东西不得以 assert 形式混在用例里")
+def t14():
+    """Mion 0173c69 §二 / §三 / §四 C-3。
+
+    第三类：【文档】—— 不能单独红，只有说明力。
+    ⇒ 处置四条（缺一不可）：
+        ① 名字里不得含 assert / check 前缀
+        ② 不得计入「通过 N 条」
+        ③ 必须与真实防线分开写
+        ④ 保留理由 = 读代码的人知道前提是什么
+
+    ⚠ 本测试是这条规则【自己会失效】的断言：
+      若将来有人又在 case 里写一条被蕴含的 assert，本测试必须红。
+    """
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    src_path = os.path.join(repo_dir, "test_blayer_batch1.py")
+    with io.open(src_path, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read(), filename=src_path)
+
+    # 已知的被蕴含项（必须是 raise，不能是 assert）
+    #   判据：它成立与否完全由同函数里的别的断言决定
+    KNOWN_IMPLIED = {
+        # (测试函数名, 内容标识)
+        ("t11", "hits 非空"),
+    }
+
+    violations = []
+
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        is_case = any(
+            isinstance(d, ast.Call) and getattr(d.func, "id", None) == "case"
+            for d in node.decorator_list)
+        if not is_case:
+            continue
+
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Assert):
+                continue
+            # 取 assert 的 msg（第三个字段 / msg 关键字）
+            msg = ""
+            if len(sub.msg.__class__.__mro__) > 0 and isinstance(
+                    sub.msg, ast.Constant):
+                msg = str(sub.msg.value)
+            elif isinstance(sub.msg, ast.BinOp):
+                try:
+                    msg = ast.unparse(sub.msg)
+                except Exception:
+                    msg = ""
+
+            # 违规模式：断言「结果非空」—— 它通常被后一条蕴含
+            if "扫描结果为空" in msg or "断言无对象" in msg:
+                violations.append((node.name, msg[:40], sub.lineno))
+
+    assert not violations, (
+        "C-3 violated: 以下 assert 是【被蕴含的】，应改为前置条件（raise）"
+        "而不是 assert —— 它们不能单独红，却会被计入通过数：%r"
+        % (violations,))
+
+    # 正向：前置条件必须是 raise 形式，且带说明
+    assert "前置条件不成立" in io.open(
+        src_path, encoding="utf-8").read(), \
+        "C-3 violated: 未找到前置条件（raise）的写法 —— 可能被改回 assert 了"
+
+    # ② 不计入通过数：summary 用的是 case 数，不是 assert 数
+    assert len(RESULTS) <= 15, \
+        "C-3 violated: RESULTS 条目多于 case 数，说明计数口径变了"
+    return "无被蕴含的 assert；前置条件用 raise；计数口径 = case 数"
 
 # ============================================================ 汇总
 
@@ -933,12 +1015,12 @@ REPORT_HEADER = """\
 
 def main():
     print("=" * 80)
-    print("B 层第一批测试 · T-1..T-13（v0.4 + 勘误004/005/006 绑定）")
+    print("B 层第一批测试 · T-1..T-14（v0.4 + 勘误004/005/006 绑定）")
     print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0)")
     print("       + 勘误005 (c39b07d) + 勘误006 (e9548dc)")
     print("=" * 80)
     print()
-    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10, t11, t12, t13):
+    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10, t11, t12, t13, t14):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)
