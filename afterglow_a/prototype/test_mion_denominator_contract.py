@@ -549,10 +549,20 @@ def mn18():
 
 @case("MN-19", "空分支也带语义字段，且两分支键集合仍一致")
 def mn19():
-    """睫 §二 的要求之一：序列化不能丢这两条。
+    """空分支若缺该字段，消费者在空集时就读不到语义。
 
-    ⇒ 空分支若缺该字段，消费者在空集时就读不到语义，
-      于是可能在那里误读 cause。
+    ⚠ 2026-11-28 修正（凌翼裁定时指出，我核后确认他完全正确）：
+
+      本用例原来的 docstring 写的是
+        「睫 §二 的要求之一：序列化不能丢这两条」
+      —— 但测试里【一行序列化都没有】，只比了内存里的 dict。
+
+      ⇒ 这是我在测试层犯的同一形状的错：
+        测试的名字说它验的东西，和它实际验的东西，不是一回事。
+
+      ⇒ 现在：
+        · 本用例只声明它实际验的（空分支一致 + 键集合一致）
+        · 真正的序列化往返由 MN-20 单独验，并单独命名
     """
     s = _store_with([_rec("h1", "first_person_report")])
     empty = AI.synthetic_ratios(s, [], scope_ids=[])
@@ -570,6 +580,87 @@ def mn19():
     return "空分支带同样语义；两分支均 %d 键" % len(empty)
 
 
+@case("MN-20", "序列化往返：JSON 序列化后语义字段不得丢失或降级")
+def mn20():
+    """⚠ 凌翼 2026-11-28 裁定二指出：
+
+    「序列化保持。MN-19 目前验证了返回字典的字段一致性，
+      不能直接当成真实序列化、反序列化后的契约已通过。」
+
+    ⇒ 本用例单独验这一层，并把名字写成它实际验的东西。
+
+    验什么：
+      1. 返回结构可 JSON 序列化（不抛异常）
+      2. 往返后语义字段仍在
+      3. 往返后三项否定仍为 False（不是被 JSON 变成字符串或丢失）
+      4. 往返后值类型仍是 dict，不是被压成字符串
+
+    ⚠ 它【不】验：下游是否强制读取。那是 MN-21 之外的事，
+      且当前做不到（凌翼裁定二已登记为开放边界）。
+    """
+    import json
+
+    for label, scope in (("非空", None), ("空", [])):
+        s = _store_with([_rec("h1", "first_person_report")])
+        r = AI.synthetic_ratios(s, [], scope_ids=scope)
+
+        try:
+            blob = json.dumps(r, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            raise AssertionError(
+                "%s分支不可 JSON 序列化：%s" % (label, e))
+
+        back = json.loads(blob)
+        assert "denominator_attrition_cause_semantics" in back, (
+            "%s分支序列化往返后丢了语义字段" % label)
+
+        sem = back["denominator_attrition_cause_semantics"]
+        assert isinstance(sem, dict), (
+            "%s分支往返后语义被压成 %r（应为 dict）"
+            % (label, type(sem).__name__))
+
+        for k in ("is_operator_identity", "is_trust_attestation",
+                  "may_support_accusation"):
+            assert sem.get(k) is False, (
+                "%s分支往返后 %s = %r（应为 False）"
+                % (label, k, sem.get(k)))
+
+        assert sem.get("value_is") == "correction_basis_record_id"
+        assert sem.get("role_verdict") == "REQUIRED_SUMMARY_SIGNAL"
+    return "两分支 JSON 往返后语义完整，三项否定仍为 False"
+
+
+@case("MN-21", "边界：本套件【不】验下游消费 —— 明确不验，而非验了没过")
+def mn21():
+    """⚠ 凌翼 2026-11-28 裁定二：
+
+    「下游强制消费。返回结果包含限制字段，
+      不等于下游消费者必然读取、理解并遵守限制。
+      …在正式消费接口建立前，这条登记为开放边界。」
+
+    ⇒ 本用例的作用是【把这个边界写成代码里的断言】，
+      而不是假装验过。
+
+    它断言的是：
+      · 当前仓库里没有正式下游消费者（若有，此断言会红并提醒去验）
+      · 因此「下游强制同读」不能宣称成立
+    """
+    import os
+
+    # 正式消费者应出现在这里；当前为空
+    consumer_paths = [
+        os.path.join(HERE, "afconsumer.py"),
+        os.path.join(HERE, "downstream_consumer.py"),
+    ]
+    existing = [p for p in consumer_paths if os.path.exists(p)]
+    assert not existing, (
+        "出现了正式下游消费者 %r ⇒ 必须补一条"
+        "「消费者同时读取数值与语义字段」的断言，"
+        "不能沿用本用例的「无消费者」前提" % existing)
+
+    return "当前无正式下游消费者 ⇒ 下游强制同读不宣称成立（开放边界）"
+
+
 # ================================================ 汇总
 def main():
     print("=" * 80)
@@ -577,7 +668,8 @@ def main():
     print("=" * 80)
     print()
     for f in (mn1, mn2, mn3, mn4, mn5, mn6, mn7, mn8, mn9, mn10,
-              mn11, mn12, mn13, mn14, mn15, mn16, mn17, mn18, mn19):
+              mn11, mn12, mn13, mn14, mn15, mn16, mn17, mn18, mn19,
+              mn20, mn21):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)
