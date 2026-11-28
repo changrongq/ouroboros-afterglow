@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """B 层 L-B 判定层 —— 影响与因果（按 A 层 v0.4 §4 / §6 实现）
 
-绑定（唯一）：
+绑定（唯一，三件不可只引其一）：
     A层_主设计候选v0.4_合并定稿_Mion_20261128.md     commit 9031df2
+    + 附录A（沙盘证据录入）
+    + A层_v0.4_勘误004_Mion_20261128.md              commit 731f5a0
+      E-18  EXCLUDED 空清单 ⇒ INDETERMINATE（三态补齐）
+      E-19  MECH = DETECTED 保留 + 不可达性测试
+      E-20  既有红灯必须登记为 OPEN
 
 实现范围（v0.4 §8.1 B-SCOPE-1 明列的字段）：
     B3-OBS    { delta, delivered, readout_valid }
@@ -38,6 +43,10 @@ MECH = {"DETECTED", "NOT_DETECTED", "INDETERMINATE"}
 
 #: v0.4 §4.7 E-16-1：INDETERMINATE 的 scope 必须三项齐全
 SCOPE_KEYS = ("this_run", "this_fixture", "this_readout")
+
+#: 勘误004 E-18-2：清单「确实没有替代解释」时，必须显式登记一个哨兵条目，
+#: 不得用空列表表达。
+NONE_KNOWN = "NONE_KNOWN"
 
 
 # ============================================================ scope（§4.7）
@@ -183,32 +192,53 @@ def evaluate_excluded(negative_control_reproduced: bool,
     ⚠ 「对照跑过」不等于「排除成功」。
       本函数按【清单逐条已被排除】判定，不按「跑过对照」判定。
 
-    返回 { EXCLUDED, remaining: [...], reason }
+    ⚠ 勘误004 E-18（本版更正，上一版实现为 TRUE）：
+      「替代解释清单为空」在现有字段上有两种不可区分的情形：
+        (a) 确实没有替代解释   ⇒ 「逐条排除」平凡成立
+        (b) 没有人登记过       ⇒ 我们不知道有没有
+      ⇒ 空清单产生 TRUE，会让 EXCLUDED 在「我们没想过」的时候变成 TRUE。
+        那正是 §4.4 要防的同类错误：把「没登记」当成「不存在」。
+      ⇒ E-18-1 清单为空 ⇒ EXCLUDED = INDETERMINATE，
+                       reason = NO_ALTERNATIVES_REGISTERED
+      ⇒ E-18-2 若确实没有替代解释，必须显式登记哨兵条目 NONE_KNOWN，
+               不得用空列表表达
+      ⇒ E-18-3 空列表的唯一含义是「没人登记」，因此【永远不能产生 TRUE】
+
+    返回 { EXCLUDED: True|False|None, INDETERMINATE: bool,
+           remaining: [...], reason }
+    ⇒ ⚠ 三态表达：EXCLUDED 为 None 且 INDETERMINATE=True 表示「判不出」。
+      调用方若只看真假，会把「判不出」读成「FALSE」，所以两个字段都要看。
     """
     # 正对照失灵 ⇒ 不算 EXCLUDED（调用方应先走 INDETERMINATE 出口）
     if not positive_control_ok:
-        return {"EXCLUDED": False, "remaining": list(alternative_terms),
+        return {"EXCLUDED": False, "INDETERMINATE": False,
+                "remaining": list(alternative_terms),
                 "reason": "POSITIVE_CONTROL_FAILED"}
 
     # 空跑对照重现了差值 ⇒ 不足以归因
     if negative_control_reproduced:
-        return {"EXCLUDED": False, "remaining": list(alternative_terms),
+        return {"EXCLUDED": False, "INDETERMINATE": False,
+                "remaining": list(alternative_terms),
                 "reason": "NEGATIVE_CONTROL_REPRODUCED_DRIFT"}
+
+    # E-18-1：清单为空 ⇒ INDETERMINATE（不是 TRUE）
+    if not alternative_terms:
+        return {"EXCLUDED": None, "INDETERMINATE": True,
+                "remaining": [],
+                "reason": "NO_ALTERNATIVES_REGISTERED"}
 
     # 清单里未被排除的项
     excluded_set = set(excluded_terms)
     remaining = [t for t in alternative_terms if t not in excluded_set]
 
-    # 清单为空 ⇒ 没有替代解释需要排除；此时空跑未重现 + 正对照有效 ⇒ EXCLUDED
-    # ⚠ 但「清单为空」与「清单已被逐条排除」是两件事，
-    #    报告里必须分开写（见 reason）。
-    if alternative_terms and remaining:
-        return {"EXCLUDED": False, "remaining": remaining,
+    if remaining:
+        return {"EXCLUDED": False, "INDETERMINATE": False,
+                "remaining": remaining,
                 "reason": "ALTERNATIVES_NOT_ALL_EXCLUDED"}
 
-    return {"EXCLUDED": True, "remaining": [],
-            "reason": ("ALTERNATIVES_ALL_EXCLUDED" if alternative_terms
-                       else "NO_ALTERNATIVES_REGISTERED")}
+    # E-18-3：非空清单且逐条排除 ⇒ 这时才允许 TRUE
+    return {"EXCLUDED": True, "INDETERMINATE": False,
+            "remaining": [], "reason": "ALTERNATIVES_ALL_EXCLUDED"}
 
 
 # ============================================================ MECH（§六）
@@ -261,6 +291,70 @@ def judge_mechanism(r_a: Any, r_b: Any,
     return {"MECH": "DETECTED", "scope": scope, "reasons": []}
 
 
+# ============================================================ E-19-2 不可达性
+
+#: 本阶段调用方【实际可能】传入的 MECH 参数组合。
+#:
+#: ⚠ E-19-2 要求「断言本阶段任何调用路径都不产生 DETECTED」。
+#:   但「任何调用路径」不能靠枚举全部可能的参数组合（那是数学上无限的），
+#:   只能靠【枚举本阶段实际存在的调用入口】—— 即下面这张表。
+#:
+#: ⇒ 这张表的每一项都必须能指认到本仓库里的一处真实调用点。
+#:   若某天新增了一个调用点而没有加进这张表，
+#:   那不可达性断言就不再覆盖它 —— 这是本表的已知边界，写在 NOT_CHECKED 里。
+#:
+#: 每一项 = (调用点名称, 参数 dict, 依据)
+STAGE_CALL_SITES: List[Tuple[str, Dict[str, Any], str]] = [
+    (
+        "T-3 默认路径",
+        {"r_a": "BLUE", "r_b": "RED",
+         "pathway_registered_and_controlled": False,
+         "drift_control_explains": False,
+         "readout_has_resolution": True},
+        "本阶段通路受控不可验（UNTESTABLE-1）⇒ 恒传 False",
+    ),
+    (
+        "无差值 + 通路未受控",
+        {"r_a": "BLUE", "r_b": "BLUE",
+         "pathway_registered_and_controlled": False,
+         "drift_control_explains": False,
+         "readout_has_resolution": True},
+        "同上；验 NOT_DETECTED 也走不到",
+    ),
+    (
+        "有差值 + 漂移可解释",
+        {"r_a": "BLUE", "r_b": "RED",
+         "pathway_registered_and_controlled": False,
+         "drift_control_explains": True,
+         "readout_has_resolution": True},
+        "空跑漂移先收敛到 INDETERMINATE",
+    ),
+    (
+        "有差值 + 读出无分辨力",
+        {"r_a": "BLUE", "r_b": "RED",
+         "pathway_registered_and_controlled": False,
+         "drift_control_explains": False,
+         "readout_has_resolution": False},
+        "读出无分辨力先收敛到 INDETERMINATE",
+    ),
+]
+
+
+def scan_stage_call_sites() -> Dict[str, Any]:
+    """E-19-2：逐一跑本阶段每个已知调用入口，收集 MECH 取值。
+
+    返回 { results: [(name, MECH)], detected_reachable: bool }
+    ⇒ detected_reachable 必须为 False。
+    ⇒ 这是【测试断言的依据】，不是报告里的说明文字。
+    """
+    results = []
+    for name, kwargs, _why in STAGE_CALL_SITES:
+        d = judge_mechanism(run="scan", fixture=name, readout="scan", **kwargs)
+        results.append((name, d["MECH"]))
+    reachable = any(m == "DETECTED" for _n, m in results)
+    return {"results": results, "detected_reachable": reachable}
+
+
 # ============================================================ A 层条款 → 断言映射
 
 CLAUSE_MAP: List[Tuple[str, str, str]] = [
@@ -271,12 +365,17 @@ CLAUSE_MAP: List[Tuple[str, str, str]] = [
     ("D-3", "readout_valid 判定在 delta 之前", "v0.4 §4.3 D-3"),
     ("EXCL-3", "EXCLUDED 三条同时成立才算", "v0.4 §4.4"),
     ("EXCL-NOT-RUN", "「对照跑过」≠「排除成功」", "v0.4 §4.4"),
+    ("E-18-1", "清单为空 ⇒ EXCLUDED=INDETERMINATE",
+     "勘误004 E-18-1"),
+    ("E-18-3", "空列表永不产生 TRUE（三态补齐）", "勘误004 E-18-3"),
     ("ORDER-4", "四步顺序不许跳", "v0.4 §4.5"),
     ("TEXT-STATE", "文本干预与状态干预分开", "v0.4 §4.6"),
     ("E-16-1", "INDETERMINATE 返回值必须含 scope 三项", "v0.4 §4.7"),
     ("E-16-2", "scope 三项不全按实现错误处理", "v0.4 §4.7"),
     ("MECH-DETECTED", "DETECTED 仅在通路受控时可用", "v0.4 §六"),
-    ("MECH-CONVERGE", "本阶段通路不可控 ⇒ DETECTED 不可达", "v0.4 §六"),
+    ("E-19-1", "DETECTED 保留在枚举里（不删除）", "勘误004 E-19-1"),
+    ("E-19-2", "本阶段任何调用路径都不产生 DETECTED（测试断言）",
+     "勘误004 E-19-2"),
 ]
 
 NOT_CHECKED: List[Tuple[str, str]] = [
@@ -284,12 +383,19 @@ NOT_CHECKED: List[Tuple[str, str]] = [
     ("归属性", "只检出存在性，不检出「是哪一条」（v0.4 §六）"),
     ("真实历史", "只用合成夹具；未读取任何真实角色历史"),
     ("B1/B2", "被保存 / 被检索不在本层；本层只判 B3/B4/MECH"),
+    ("SCAN 表外的新调用点",
+     "scan_stage_call_sites 只覆盖 STAGE_CALL_SITES 列出的入口；"
+     "新增调用点未登记进该表时，不可达性断言不覆盖它（E-19-2 已知边界）"),
 ]
 
 
 def describe() -> Dict[str, Any]:
     return {
-        "binding": ["9031df2 (v0.4 合并定稿)"],
+        "binding": [
+            "9031df2 (v0.4 合并定稿)",
+            "附录A",
+            "731f5a0 (勘误004: E-18 / E-19 / E-20)",
+        ],
         "fields_implemented": [
             "B3-OBS{delta,delivered,readout_valid}",
             "B3-CLAIM", "B4", "MECH", "EXCLUDED", "scope",
@@ -298,4 +404,6 @@ def describe() -> Dict[str, Any]:
         "not_checked": NOT_CHECKED,
         "mech_detected_reachable_in_this_stage": False,
         "mech_detected_reason": "通路受控前提不成立且不可验（UNTESTABLE-1）",
+        "mech_detected_assertion": "test_blayer_batch1.py::t_mech_unreachable",
+        "excluded_empty_list": "INDETERMINATE（勘误004 E-18-1，本版更正）",
     }

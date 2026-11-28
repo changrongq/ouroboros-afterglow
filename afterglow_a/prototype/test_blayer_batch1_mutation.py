@@ -169,6 +169,58 @@ def main():
     mutate("M-6e", "EXCLUDED 恒 False", patch_t6e,
            lambda: setattr(LB, "evaluate_excluded", orig_excl), "t6e")
 
+    # ---------------- T-7：回到上一版行为（空清单 → TRUE）
+    def patch_t7():
+        def bad(negative_control_reproduced, alternative_terms,
+                excluded_terms, positive_control_ok):
+            # 上一版 6b4e3e5 的实现：空清单 ⇒ TRUE
+            if not positive_control_ok:
+                return {"EXCLUDED": False, "INDETERMINATE": False,
+                        "remaining": list(alternative_terms),
+                        "reason": "POSITIVE_CONTROL_FAILED"}
+            if negative_control_reproduced:
+                return {"EXCLUDED": False, "INDETERMINATE": False,
+                        "remaining": list(alternative_terms),
+                        "reason": "NEGATIVE_CONTROL_REPRODUCED_DRIFT"}
+            if not alternative_terms:
+                return {"EXCLUDED": True, "INDETERMINATE": False,
+                        "remaining": [], "reason": "NO_ALTERNATIVES_REGISTERED"}
+            return orig_excl(negative_control_reproduced, alternative_terms,
+                             excluded_terms, positive_control_ok)
+        LB.evaluate_excluded = bad
+    mutate("M-7", "空清单判 TRUE（回到上一版行为）", patch_t7,
+           lambda: setattr(LB, "evaluate_excluded", orig_excl), "t7")
+
+    # ---------------- T-8：DETECTED 变得可达（删掉通路检查）
+    def patch_t8():
+        def bad(r_a, r_b, pathway_registered_and_controlled, **kw):
+            # 错误：删掉通路受控检查 ⇒ 有差值就 DETECTED
+            m = "NOT_DETECTED" if r_a == r_b else "DETECTED"
+            return {"MECH": m, "scope": LB._scope("r", "f", "o"), "reasons": []}
+        LB.judge_mechanism = bad
+    mutate("M-8", "删掉通路受控检查 ⇒ DETECTED 可达", patch_t8,
+           lambda: setattr(LB, "judge_mechanism", orig_mech), "t8")
+
+    # ---------------- T-8 第二变异：只改扫描表的某一路径可达
+    #   （验 T-8 的断言不只依赖「r_A != r_B 那一条」）
+    orig_scan = LB.scan_stage_call_sites
+
+    def patch_t8b():
+        def bad_scan():
+            return {"results": [("伪造入口", "DETECTED")],
+                    "detected_reachable": True}
+        LB.scan_stage_call_sites = bad_scan
+    mutate("M-8b", "扫描表报告某入口 DETECTED", patch_t8b,
+           lambda: setattr(LB, "scan_stage_call_sites", orig_scan), "t8")
+
+    # ---------------- T-8 第三变异：把 DETECTED 从枚举里删掉（E-19-1）
+    orig_mech_set = LB.MECH
+
+    def patch_t8c():
+        LB.MECH = {"NOT_DETECTED", "INDETERMINATE"}
+    mutate("M-8c", "从枚举里删掉 DETECTED（E-19-1）", patch_t8c,
+           lambda: setattr(LB, "MECH", orig_mech_set), "t8")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])

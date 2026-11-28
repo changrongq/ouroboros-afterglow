@@ -358,6 +358,97 @@ def t6e():
     return "EXCLUDED=TRUE ⇒ B4=ESTABLISHED；漏一条/正对照失灵均必须翻 False"
 
 
+# ============================================================ T-7（E-18）
+
+@case("T-7", "E-18 清单为空 ⇒ EXCLUDED=INDETERMINATE（不是 TRUE）")
+def t7():
+    """勘误004 E-18-1 / E-18-3。
+
+    上一版（6b4e3e5）我把「清单为空」判成 TRUE（NO_ALTERNATIVES_REGISTERED）。
+    Mion 更正：空清单有两种不可区分的情形 ——
+      (a) 确实没有替代解释 / (b) 没有人登记过
+    ⇒ TRUE 会让「没登记」变成「不存在」，与 §4.4 要防的是同类错。
+
+    E-18-3：空列表【永远不能产生 TRUE】。
+    """
+    # 三条前置全成立，唯独清单为空
+    ex = LB.evaluate_excluded(
+        negative_control_reproduced=False,
+        alternative_terms=[],          # 空
+        excluded_terms=[],
+        positive_control_ok=True)
+
+    assert ex["EXCLUDED"] is not True, \
+        "E-18-3 violated: 空清单产出了 TRUE，实测 %r" % (ex["EXCLUDED"],)
+    assert ex["EXCLUDED"] is None, \
+        "E-18-1：空清单时 EXCLUDED 应为 None（三态里的「判不出」），实测 %r" \
+        % (ex["EXCLUDED"],)
+    assert ex["INDETERMINATE"] is True, \
+        "必须另有 INDETERMINATE 标记，否则只看真假会把判不出读成 FALSE"
+    assert ex["reason"] == "NO_ALTERNATIVES_REGISTERED", ex["reason"]
+
+    # E-18-2：确实没有替代解释时，必须显式登记哨兵条目
+    ex2 = LB.evaluate_excluded(
+        negative_control_reproduced=False,
+        alternative_terms=[LB.NONE_KNOWN],   # 显式哨兵
+        excluded_terms=[LB.NONE_KNOWN],
+        positive_control_ok=True)
+    assert ex2["EXCLUDED"] is True, \
+        "E-18-2：显式登记 NONE_KNOWN 并排除后应得到 TRUE，实测 %r" % (ex2,)
+    assert ex2["reason"] == "ALTERNATIVES_ALL_EXCLUDED"
+
+    # 反例：登记了 NONE_KNOWN 却没排除 ⇒ 也不得 TRUE
+    ex3 = LB.evaluate_excluded(
+        negative_control_reproduced=False,
+        alternative_terms=[LB.NONE_KNOWN],
+        excluded_terms=[],
+        positive_control_ok=True)
+    assert ex3["EXCLUDED"] is False, \
+        "登记了却没排除 ⇒ 必须 FALSE，实测 %r" % (ex3["EXCLUDED"],)
+    return "空清单 ⇒ None + INDETERMINATE；NONE_KNOWN 哨兵才可达 TRUE"
+
+
+# ============================================================ T-8（E-19-2）
+
+@case("T-8", "E-19-2 不可达性断言：本阶段任何调用路径都不产生 DETECTED")
+def t8():
+    """勘误004 E-19-2。
+
+    ⚠ Mion 原话：「现在『不可达』是你在报告里说的，不是测试断言的。」
+    ⇒ 本测试把「不可达」变成可验的。
+
+    E-19-1：DETECTED 保留在枚举里（不删）。
+    E-19-2：扫描本阶段全部已知调用入口，断言无一产生 DETECTED。
+    """
+    # E-19-1：枚举里必须有 DETECTED
+    assert "DETECTED" in LB.MECH, \
+        "E-19-1 violated: DETECTED 不得从枚举里删除"
+
+    scan = LB.scan_stage_call_sites()
+    assert scan["results"], "扫描表不得为空，否则断言无对象"
+    assert scan["detected_reachable"] is False, \
+        "E-19-2 violated: 本阶段调用路径产生了 DETECTED，实测 %r" \
+        % (scan["results"],)
+
+    # 每个入口都必须是 INDETERMINATE
+    for name, m in scan["results"]:
+        assert m == "INDETERMINATE", \
+            "入口 %r 产出 %r，本阶段应全部收敛到 INDETERMINATE" % (name, m)
+
+    # 关键一条：即使 r_A != r_B 也不得 DETECTED
+    d = LB.judge_mechanism(
+        r_a="BLUE", r_b="RED",
+        pathway_registered_and_controlled=False,
+        drift_control_explains=False, readout_has_resolution=True,
+        run="r", fixture="T-8", readout="o")
+    assert d["MECH"] != "DETECTED"
+
+    # 扫描表必须逐项能指认依据（不是随手写的组合）
+    for name, _kw, why in LB.STAGE_CALL_SITES:
+        assert why and why.strip(), "入口 %r 缺依据说明" % (name,)
+    return "本阶段 %d 个调用入口，无一路径产生 DETECTED" % len(scan["results"])
+
+
 # ============================================================ 汇总
 
 REPORT_HEADER = """\
@@ -366,22 +457,30 @@ REPORT_HEADER = """\
         A3{verdict,match,multi_ref}) / origin_attribution{value,evidence}
         / unknowns / reason_summary
    L-B: B3-OBS{delta,delivered,readout_valid} / B3-CLAIM / B4 / MECH
-        / EXCLUDED / scope{this_run,this_fixture,this_readout}
+        / EXCLUDED（三态：True/False/None+INDETERMINATE）
+        / scope{this_run,this_fixture,this_readout}
 ② 这些字段在 B 层之前【不存在】（已核：afcore/afrecover/afimportance 全无）
 ③ 本层只验「判据的触发条件」，不验「真实机制产生行为影响」
 ④ 本层未使用真实角色历史；未实现任何重要性算法
 ⑤ B-SCOPE-1..4 的解释依据为「裁定二授权最小失败条件测试；
    不建待测对象则无法写测试」，由 Mion 判断，凌翼核定中。
+⑥ BINDING = v0.4（9031df2）+ 附录A + 勘误004（731f5a0）
+   MECH_DETECTED = NOT_REACHABLE_IN_THIS_STAGE（勘误004 E-19-3，
+     【由 T-8 断言】，不是仅在此处声明）
+   EXCLUDED 空清单 = INDETERMINATE（勘误004 E-18-1）
+⑦ OPEN-EXISTING-1  test_mutations_gate.py  状态=OPEN（既有，非 B 层引入）
+   现象：7 个基准变异里 3 个未让测试翻红（rc=0）；脚本自报基准不绿。
+   归属：之前的收口范围。登记依据：勘误004 E-20-1 / E-20-2。
 """
 
 
 def main():
     print("=" * 80)
-    print("B 层第一批测试 · T-1..T-6 + T-5c + T-6e（v0.4 绑定，全正向断言）")
-    print("  绑定 v0.4 (9031df2) + 附录A")
+    print("B 层第一批测试 · T-1..T-8（v0.4 + 勘误004 绑定，全正向断言）")
+    print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0)")
     print("=" * 80)
     print()
-    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e):
+    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)
