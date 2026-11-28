@@ -460,6 +460,30 @@ def main():
     mutate("M-15", "唯一产出点漏第三字段（结构修复被破坏）", patch_t12d,
            lambda: setattr(LB, "_pack_excluded", orig_pack), "t12")
 
+    # ---------------- M-16：扫描器漏扫某个文件（自制检查器失效）
+    #   ⚠ 这是 Mion 2026-11-28 §三 要求的那条：
+    #      「凡自制检查器，必须有一条【它自己会失效】的断言」。
+    #      探针文件含真实调用，扫描器却不命中它 ⇒ T-11 ②b 必须红。
+    #   ⇒ 若这条抓不住，说明我的自失效断言只是摆设。
+    orig_scan_calls = LB.scan_judge_mechanism_calls
+
+    def patch_t16():
+        def bad_scan(repo_root=None):
+            # 错误：悄悄跳过文件名里带 probe 的文件
+            return [h for h in orig_scan_calls(repo_root)
+                    if "probe" not in h[0]]
+        LB.scan_judge_mechanism_calls = bad_scan
+    mutate("M-16", "扫描器漏扫探针文件（自失效断言必须红）", patch_t16,
+           lambda: setattr(LB, "scan_judge_mechanism_calls", orig_scan_calls),
+           "t11")
+
+    # ---------------- M-16b：扫描器对所有文件都漏扫（更彻底）
+    def patch_t16b():
+        LB.scan_judge_mechanism_calls = lambda repo_root=None: []
+    mutate("M-16b", "扫描器返回空（彻底失效）", patch_t16b,
+           lambda: setattr(LB, "scan_judge_mechanism_calls", orig_scan_calls),
+           "t11")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])

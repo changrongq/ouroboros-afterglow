@@ -650,12 +650,50 @@ def t11():
         "E-25-1 violated: 存在未登记进 STAGE_CALL_SITES 的 judge_mechanism 调用点：%r" \
         % (cov["missing_from_registry"],)
 
-    # ② 扫描确实扫到了东西（空扫描会让上一条永远绿 —— 那正是要防的）
+    # ② 扫描确实扫到了东西
+    #    ⚠ 定位说明（勘误无，属实现内部；Mion 90fd957 §二 的「冗余 vs 纵深」）：
+    #      以下三条里，只有后两条是【防线】，第一条是被蕴含的：
+    #        · 探针被命中      ⇒ hits 必然非空
+    #        · real_hits >= 2  ⇒ hits 必然非空
+    #      ⇒ 「hits 非空」永远不是第一个红的，它不是独立防线。
+    #        留在这里是为了向读代码的人说明意图，不是第三层保护。
     assert cov["hits"], "E-25-1 violated: 扫描结果为空，断言无对象"
     real_hits = [h for h in cov["hits"] if h[1] > 0]
     assert len(real_hits) >= 2, \
         "E-25-1 violated: 真实调用点少于 2 处，扫描可能失效，实测 %r" \
         % (real_hits,)
+
+    # ② b) 自制检查器必须有【它自己会失效】的断言（Mion 2026-11-28 §三）
+    #      ⚠ 前面 ②只验「扫到了东西」，没验「会不会漏扫某个文件」。
+    #        若某文件因 skip_dirs 被误跳过，hits 仍非空 ⇒ ② 依然绿。
+    #      ⇒ 做法：在扫描范围里放一个已知含调用的探针文件，
+    #        断言扫描器【必须】命中它。命中不了 ⇒ 扫描器坏了，不是仓库干净。
+    probe_dir = os.path.dirname(os.path.abspath(__file__))
+    probe_path = os.path.join(probe_dir, "_selfcheck_e25_probe.py")
+    wrote_probe = False
+    try:
+        with io.open(probe_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(
+                "# 自制检查器自失效探针 —— 由 T-11 临时创建并删除\n"
+                "import lbjudge\n\n\n"
+                "def _selfcheck_probe():\n"
+                "    return lbjudge.judge_mechanism(\n"
+                "        r_a=0, r_b=0,\n"
+                "        pathway_registered_and_controlled=False,\n"
+                "        drift_control_explains=False,\n"
+                "        readout_has_resolution=True)\n"
+            )
+        wrote_probe = True
+        probe_hits = LB.scan_judge_mechanism_calls()
+        probe_found = [h for h in probe_hits
+                       if h[0].endswith("_selfcheck_e25_probe.py")]
+        assert probe_found, \
+            "E-25 violated（自制检查器自失效断言）：探针文件含一条真实调用，" \
+            "扫描器却没命中它 ⇒ 扫描器失效，不是仓库干净。hit 文件=%r" \
+            % (sorted({h[0] for h in probe_hits}),)
+    finally:
+        if wrote_probe and os.path.exists(probe_path):
+            os.remove(probe_path)
 
     # ③ 豁免必须显式且带理由（E-25-2）
     for ef, en, why in LB.CALL_SITE_EXEMPTIONS:
