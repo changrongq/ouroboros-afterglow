@@ -68,7 +68,13 @@ def check_c3():
 
 
 def check_c2():
-    """C-2：所有已知缺口已登记为 OPEN。"""
+    """C-2：所有已知缺口已登记为 OPEN。
+
+    ⚠ v0.5 E-28：三处必须分开核对，不得混算
+        OPEN         已知未修
+        NOT_CHECKED  能力边界（做不到）
+        WITHDRAWN    误登记已撤销
+    """
     reg_path = os.path.join(HERE, "..", "..", "afterglow_design",
                             "OPEN条目登记表.md")
     reg_path = os.path.normpath(reg_path)
@@ -77,19 +83,25 @@ def check_c2():
                 "entries": []}
 
     text = io.open(reg_path, encoding="utf-8").read()
-    entries = re.findall(r"^##\s+(OPEN-[\w\-]+)", text, re.M)
 
-    # NOT_CHECKED 表里登记的东西 —— 它们不是 OPEN，是「本阶段不检查」，
-    # 必须与 OPEN 分开，不能混算
+    # 按 WITHDRAWN 分节切开，只在 OPEN 那一节里数
+    open_section, sep, withdrawn_section = text.partition(
+        "## 撤销记录（WITHDRAWN）")
+    entries = re.findall(r"^##\s+(OPEN-[\w\-]+)", open_section, re.M)
+    withdrawn = re.findall(r"^###\s+(WITHDRAWN-[\w\-]+)", withdrawn_section, re.M)
+
     import lbjudge as LB
     not_checked = [k for k, _v in LB.NOT_CHECKED]
+    withdrawn_in_code = [n for n, _w, _c in LB.WITHDRAWN]
 
     return {
-        "ok": bool(entries),
+        "ok": bool(entries) and bool(sep),
         "entries": entries,
+        "withdrawn_entries": withdrawn,
+        "withdrawn_in_code": withdrawn_in_code,
         "not_checked_entries": not_checked,
-        "note": "NOT_CHECKED 是「本阶段不检查」，OPEN 是「已知未修」；"
-                "两者不得混算",
+        "note": ("三处分开：OPEN=已知未修 / NOT_CHECKED=能力边界 / "
+                 "WITHDRAWN=误登记已撤销。只有 OPEN 计入「未修数」。"),
     }
 
 
@@ -117,9 +129,11 @@ def main():
 
     c2 = check_c2()
     print()
-    print("[C-2] 已知缺口已登记为 OPEN")
-    print("  OPEN 条目：%r" % (c2["entries"],))
-    print("  NOT_CHECKED（本阶段不检查，不算 OPEN）：%r"
+    print("[C-2] 已知缺口已登记为 OPEN（三处分开，不混算）")
+    print("  OPEN（已知未修，计入未修数）：%r" % (c2["entries"],))
+    print("  WITHDRAWN（误登记已撤销，不计入）：登记表 %r / 代码 %r"
+          % (c2["withdrawn_entries"], c2["withdrawn_in_code"]))
+    print("  NOT_CHECKED（能力边界，不计入）：%r"
           % (c2["not_checked_entries"],))
     print("  结果：%s" % ("PASS" if c2["ok"] else "FAIL"))
 

@@ -35,7 +35,22 @@ import subprocess
 import sys
 
 #: BINDING 清单（逐项）
+#:
+#: v0.5（2df4517）起绑定从六份收回到【一份】：
+#:   v0.4 + 附录A + 勘误004 + 005 + 006 已全部合并进 v0.5 正文。
+#:   BINDING = A层_主设计v0.5_合并定稿_收口版_Mion_20261128.md（唯一）
+#:
+#: ⚠ 旧版文件仍在仓库里保留（Mion 明写「旧版全部保留、不覆盖」），
+#:   但它们【不是】BINDING 的一部分。
+#:   ⇒ 本清单只列 BINDING 实际指向的文件。
+#:   ⇒ 若有人把旧勘误又列回来，本检查不会自动发现 ——
+#:     那需要另一条「BINDING 只允许一份」的断言（见 T-13 ①）。
 BINDING_DOCS = [
+    ("v0.5", "A层_主设计v0.5_合并定稿_收口版_Mion_20261128.md"),
+]
+
+#: 已被合并进 BINDING、不得再单独列为 BINDING 的文件（保留在仓库，但不是绑定物）
+SUPERSEDED_DOCS = [
     ("v0.4", "A层_主设计候选v0.4_合并定稿_Mion_20261128.md"),
     ("附录A", "附录A_沙盘证据搬录_Mion_20261128.md"),
     ("勘误004", "A层_v0.4_勘误004_Mion_20261128.md"),
@@ -102,7 +117,8 @@ def main() -> int:
         print("   ⇒ BINDING 指向不存在的路径，所有下游引用悬空。")
         print("=" * 78)
         return 1
-    print("五份 BINDING 文档全部存在（%d 份）" % len(rep["results"]))
+    print("%d 份 BINDING 文档全部存在（v0.5 起绑定只有一份）"
+          % len(rep["results"]))
     print("=" * 78)
     return 0
 

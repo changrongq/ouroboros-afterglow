@@ -868,26 +868,43 @@ def t12():
 
 # ============================================================ T-13（E-27）
 
-@case("T-13", "E-27 BINDING 五份文档在 HEAD 中存在")
+@case("T-13", "E-27 BINDING 在 HEAD 中存在（v0.5 起只有一份）")
 def t13():
-    """勘误005 E-27。
+    """E-27（v0.5 §七）+ v0.5 §〇 的绑定收回。
 
     由来：Mion 把「勘误005」当成已存在的文档引用了一整天，
     写进 BINDING、被我按信里摘要实现并验收 —— 而那份文档【从未创建】。
     ⇒ 所以本检查抓过一次真实事故，不是形式主义。
 
     ⚠ 检查的是 HEAD（提交），不是工作区。
-      理由：BINDING 是给别的角色看的，他们看到的是提交。
-      工作区有而未提交的文件，对下游等于不存在 —— 这正是那一类事故。
+    ⚠ v0.5（2df4517）起：v0.4 + 附录A + 勘误004/005/006 已合并进 v0.5，
+      BINDING 从六份收回到【一份】。
+      旧版全部保留在仓库（Mion 明写「不覆盖」），但【不是】BINDING。
     """
     import check_binding_docs as CBD
 
     rep = CBD.check_binding_docs()
 
-    # ① 清单非空（空清单会让断言永远绿）
-    assert len(CBD.BINDING_DOCS) == 5, \
-        "E-27 violated: BINDING 清单应为 5 份，实测 %d 份" \
-        % len(CBD.BINDING_DOCS)
+    # ① v0.5 起 BINDING 只有一份
+    assert len(CBD.BINDING_DOCS) == 1, \
+        "v0.5 violated: BINDING 应只有一份，实测 %d 份：%r" \
+        % (len(CBD.BINDING_DOCS), CBD.BINDING_DOCS)
+    assert CBD.BINDING_DOCS[0][0] == "v0.5", \
+        "v0.5 violated: BINDING 唯一一份应为 v0.5，实测 %r" \
+        % (CBD.BINDING_DOCS[0],)
+
+    # ① b) 被合并的旧版不得再出现在 BINDING 清单里
+    binding_names = {fn for _l, fn in CBD.BINDING_DOCS}
+    for label, fn in CBD.SUPERSEDED_DOCS:
+        assert fn not in binding_names, \
+            "v0.5 violated: 已合并进 v0.5 的 %s 仍被列为 BINDING（%r）" \
+            % (label, fn)
+
+    # ① c) 被合并的旧版仍须在仓库存在（Mion 明写「旧版全部保留」）
+    for label, fn in CBD.SUPERSEDED_DOCS:
+        assert CBD.head_blob("afterglow_design/%s" % fn) is not None, \
+            "v0.5 violated: %s（%s）应保留在仓库，实际 HEAD 里不存在" \
+            % (label, fn)
 
     # ② 每份都能在 HEAD 取到 blob
     missing = [(label, fn) for label, fn, blob in rep["results"]
@@ -901,11 +918,72 @@ def t13():
     assert CBD.head_blob("afterglow_design/____no_such_doc____.md") is None, \
         "E-27 violated: head_blob 对不存在的路径未返回 None —— 扫描可能失效"
 
-    # ④ blob 必须是 40 位 sha（证明真取到了 git 对象，不是 shell 回显）
+    # ④ blob 必须是 40 位 sha（证明真取到 git 对象，不是 shell 回显）
     for label, fn, blob in rep["results"]:
         assert blob and len(blob) == 40, \
             "E-27 violated: %s 的 blob 不是 40 位 sha，实测 %r" % (label, blob)
-    return "五份 BINDING 文档全部在 HEAD 中存在（blob 均为 40 位 sha）"
+    return "BINDING = v0.5 一份；旧版 %d 份保留在仓库但不在 BINDING" \
+        % len(CBD.SUPERSEDED_DOCS)
+
+
+# ============================================================ T-15（E-28）
+
+@case("T-15", "E-28 三个登记区必须分开：OPEN / NOT_CHECKED / WITHDRAWN")
+def t15():
+    """A 层 v0.5（2df4517）§七 E-28。
+
+    ⚠ Mion 的裁定：
+      · 删除过期的 NOT_CHECKED，【不得】在 OPEN 表里留 CLOSED 记录
+        理由：OPEN 的语义是「已知未修」，混进去会让「未修数」失去分母意义
+      · 但也【不得什么都不留】—— 留一条撤销记录，单独一处，
+        写清：哪一条 / 为什么撤销 / 被什么覆盖
+
+    ⇒ 三处分开：
+        OPEN         已知未修
+        NOT_CHECKED  能力边界（做不到）
+        WITHDRAWN    误登记已撤销
+
+    ⚠ 我上一轮的做法是「直接删干净」—— 漏了留痕这一步。
+      本测试是那条裁定的落地断言。
+    """
+    # ① 撤销记录存在，且三要素齐全
+    assert LB.WITHDRAWN, "E-28 violated: WITHDRAWN 记录为空（删了没留痕）"
+    for name, why, covered_by in LB.WITHDRAWN:
+        assert name and name.strip(), "E-28 violated: 撤销记录缺条目名"
+        assert why and len(why.strip()) >= 20, \
+            "E-28 violated: 撤销记录 %r 的「为什么撤销」太短或为空" % (name,)
+        assert covered_by and covered_by.strip(), \
+            "E-28 violated: 撤销记录 %r 缺「被什么覆盖」" % (name,)
+
+    # ② 被撤销的条目不得还留在 NOT_CHECKED 里
+    nc_names = {k for k, _v in LB.NOT_CHECKED}
+    for name, _why, _cov in LB.WITHDRAWN:
+        assert name not in nc_names, \
+            "E-28 violated: %r 同时在 NOT_CHECKED 和 WITHDRAWN 里" % (name,)
+
+    # ③ 被撤销的条目不得出现在 OPEN 表（OPEN = 已知未修）
+    reg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "..", "afterglow_design",
+                            "OPEN条目登记表.md")
+    reg_path = os.path.normpath(reg_path)
+    with io.open(reg_path, encoding="utf-8") as fh:
+        reg = fh.read()
+
+    open_section, sep, rest = reg.partition("## 撤销记录（WITHDRAWN）")
+    assert sep, "E-28 violated: OPEN 登记表里没有「撤销记录（WITHDRAWN）」分节"
+
+    for name, _why, _cov in LB.WITHDRAWN:
+        assert name not in open_section, \
+            "E-28 violated: 撤销条目 %r 出现在 OPEN 那一节里 —— " \
+            "OPEN 是「已知未修」，混进已撤销的会让未修数失去分母意义" % (name,)
+        assert name in rest, \
+            "E-28 violated: 撤销条目 %r 未写进 WITHDRAWN 那一节" % (name,)
+
+    # ④ 反向：确实有一条该撤销的（防止 WITHDRAWN 被清空当成"已处理"）
+    assert any(n == "SCAN 表外的新调用点" for n, _w, _c in LB.WITHDRAWN), \
+        "E-28 violated: 应记录「SCAN 表外的新调用点」的撤销，实际没有"
+    return ("WITHDRAWN %d 条三要素齐全；不在 NOT_CHECKED；不在 OPEN 节"
+            % len(LB.WITHDRAWN))
 
 # ============================================================ T-14（C-3 守护）
 
@@ -1015,12 +1093,13 @@ REPORT_HEADER = """\
 
 def main():
     print("=" * 80)
-    print("B 层第一批测试 · T-1..T-14（v0.4 + 勘误004/005/006 绑定）")
+    print("B 层第一批测试 · T-1..T-15（BINDING = v0.5 唯一）")
     print("  绑定 v0.4 (9031df2) + 附录A + 勘误004 (731f5a0)")
     print("       + 勘误005 (c39b07d) + 勘误006 (e9548dc)")
     print("=" * 80)
     print()
-    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10, t11, t12, t13, t14):
+    for f in (t1, t2, t3, t4, t5, t5c, t6, t6e, t7, t8, t9, t10, t11, t12, t13,
+              t14, t15):
         f()
     passed = sum(1 for r in RESULTS if r[2])
     total = len(RESULTS)

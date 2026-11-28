@@ -522,6 +522,51 @@ def main():
     mutate("M-17", "前置条件改回 assert（被蕴含项混入通过数）", patch_t17,
            unpatch_t17, "t14")
 
+    # ================================================================
+    # v0.5（2df4517）的三条
+    # ================================================================
+
+    # ---------------- M-18：BINDING 退回六份（v0.5 §〇 要求只有一份）
+    orig_binding_list = list(CBD.BINDING_DOCS)
+
+    def patch_t13d():
+        CBD.BINDING_DOCS.extend(list(CBD.SUPERSEDED_DOCS))
+    mutate("M-18", "BINDING 退回六份（v0.5 要求只有一份）", patch_t13d,
+           lambda: setattr(CBD, "BINDING_DOCS", list(orig_binding_list)),
+           "t13")
+
+    # ---------------- M-18b：旧版被从仓库删掉（应保留）
+    orig_superseded = list(CBD.SUPERSEDED_DOCS)
+
+    def patch_t13e():
+        CBD.SUPERSEDED_DOCS.append(
+            ("伪造旧版", "____no_such_old_version____.md"))
+    mutate("M-18b", "旧版文件在仓库里不存在", patch_t13e,
+           lambda: setattr(CBD, "SUPERSEDED_DOCS", list(orig_superseded)),
+           "t13")
+
+    # ---------------- M-19：撤销记录被清空（删了没留痕）
+    orig_withdrawn = list(LB.WITHDRAWN)
+
+    def patch_t15():
+        LB.WITHDRAWN = []
+    mutate("M-19", "撤销记录被清空（删了没留痕）", patch_t15,
+           lambda: setattr(LB, "WITHDRAWN", list(orig_withdrawn)), "t15")
+
+    # ---------------- M-19b：撤销条目又塞回 NOT_CHECKED
+    def patch_t15b():
+        LB.NOT_CHECKED = list(LB.NOT_CHECKED) + [
+            ("SCAN 表外的新调用点", "（错误：已撤销的条目塞回 NOT_CHECKED）")]
+    _orig_nc = list(LB.NOT_CHECKED)
+    mutate("M-19b", "撤销条目又出现在 NOT_CHECKED 里", patch_t15b,
+           lambda: setattr(LB, "NOT_CHECKED", list(_orig_nc)), "t15")
+
+    # ---------------- M-19c：撤销记录缺「被什么覆盖」
+    def patch_t15c():
+        LB.WITHDRAWN = [(n, w, "") for n, w, _c in orig_withdrawn]
+    mutate("M-19c", "撤销记录缺「被什么覆盖」", patch_t15c,
+           lambda: setattr(LB, "WITHDRAWN", list(orig_withdrawn)), "t15")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])
