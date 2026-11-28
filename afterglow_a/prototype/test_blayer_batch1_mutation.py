@@ -399,6 +399,67 @@ def main():
     mutate("M-13c", "head_blob 恒返回假 sha", patch_t13c,
            lambda: setattr(CBD, "head_blob", orig_head_blob), "t13")
 
+    # ================================================================
+    # 勘误007 的两条：Q1 逐文件放行 / 四出口汇一个点
+    # ================================================================
+
+    # ---------------- M-14：把测试豁免改回「按模式」（Q1 的原始缺陷）
+    orig_test_exempt = list(LB.TEST_FILE_EXEMPTIONS)
+
+    def patch_t11e():
+        # 模拟「按模式放行」的实现：往豁免表里塞一条 glob 模式
+        LB.TEST_FILE_EXEMPTIONS = orig_test_exempt + [
+            ("afterglow_a/prototype/test_*.py", "按模式放行（错误做法）")]
+    mutate("M-14", "测试豁免改回按模式（Q1 原始缺陷）", patch_t11e,
+           lambda: setattr(LB, "TEST_FILE_EXEMPTIONS", list(orig_test_exempt)),
+           "t11")
+
+    # ---------------- M-14b：造一条过期测试豁免（列了扫不到的文件）
+    def patch_t11f():
+        LB.TEST_FILE_EXEMPTIONS = orig_test_exempt + [
+            ("afterglow_a/prototype/test_no_such_file.py", "过期")]
+    mutate("M-14b", "造一条过期测试豁免", patch_t11f,
+           lambda: setattr(LB, "TEST_FILE_EXEMPTIONS", list(orig_test_exempt)),
+           "t11")
+
+    # ---------------- M-14c：新增一个未登记的测试文件并让它调用
+    #   ⚠ 这是 Q1 真正的攻击场景：新测试文件自动被放行 = 没人看过它。
+    probe_test = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "_t_no_such_test_probe.py")
+
+    def patch_t11g():
+        with io.open(probe_test, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(
+                "# 临时探针：一个未登记进 TEST_FILE_EXEMPTIONS 的测试文件\n"
+                "import lbjudge\n\n\n"
+                "def probe():\n"
+                "    return lbjudge.judge_mechanism(\n"
+                "        r_a=1, r_b=2,\n"
+                "        pathway_registered_and_controlled=False,\n"
+                "        drift_control_explains=False,\n"
+                "        readout_has_resolution=True)\n"
+            )
+
+    def unpatch_t11g():
+        if os.path.exists(probe_test):
+            os.remove(probe_test)
+    mutate("M-14c", "新增未登记的测试文件（按模式会放过它）",
+           patch_t11g, unpatch_t11g, "t11")
+
+    # ---------------- M-15：结构修复倒退 —— 把 _pack_excluded 改成漏字段
+    #   ⚠ 勘误007 之前，「漏第三字段」只能靠断言抓；
+    #      现在唯一产出点被改了，应当仍然红（断言仍需要作为第二道）。
+    orig_pack = LB._pack_excluded
+
+    def patch_t12d():
+        def bad_pack(excluded, reason, remaining):
+            d = orig_pack(excluded, reason, remaining)
+            d.pop("excluded_undetermined", None)
+            return d
+        LB._pack_excluded = bad_pack
+    mutate("M-15", "唯一产出点漏第三字段（结构修复被破坏）", patch_t12d,
+           lambda: setattr(LB, "_pack_excluded", orig_pack), "t12")
+
     # ---------------- 汇总
     total = len(OUT)
     ok = sum(1 for r in OUT if r[3])

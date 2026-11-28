@@ -672,9 +672,45 @@ def t11():
 
     # ⑤ 无法解析的文件必须显式登记（不静默吞）
     unparseable = [h for h in cov["hits"] if h[2] == "<UNPARSEABLE>"]
-    return ("调用点 %d 处，未登记 %d 处，豁免 %d 项，无法解析 %d 个"
+
+    # ⑥ 勘误007（Q1）：测试豁免必须是【逐文件名】，不得按模式
+    #    ⚠ 上一版是 rel.startswith("test_") —— 新增测试文件自动放行，
+    #      而没人看过它。那是「未登记」的另一种形态。
+    assert "test_exemptions" in cov, \
+        "Q1 violated: check_call_site_coverage 未报告 test_exemptions"
+    for p, why in LB.TEST_FILE_EXEMPTIONS:
+        assert why and why.strip(), \
+            "Q1 violated: 测试豁免 %r 缺理由" % (p,)
+        assert not p.startswith("afterglow_a/prototype/test_*.py"), \
+            "Q1 violated: 测试豁免用了 glob 模式 %r" % (p,)
+        assert "*" not in p, "Q1 violated: 测试豁免用了通配符 %r" % (p,)
+
+    # ⑥ b) 每条测试豁免必须实际命中过（防过期豁免，与 ④ 同理）
+    hit_files = {h[0] for h in cov["hits"]}
+    for p, _why in LB.TEST_FILE_EXEMPTIONS:
+        assert p in hit_files, \
+            "Q1 violated: 测试豁免 %r 对应的文件未被扫描到 —— 过期豁免" % (p,)
+
+    # ⑥ c) 关键一条：模拟「新增一个未登记的测试文件」必须红
+    #      ⇒ 若放行是按模式实现的，这个模拟会被错误放行。
+    scanned = LB.scan_judge_mechanism_calls()
+    exempt_set = {p for p, _w in LB.TEST_FILE_EXEMPTIONS}
+    unregistered_test_calls = [
+        (rel, ln, fn) for rel, ln, fn in scanned
+        if rel not in exempt_set
+        and rel not in {h[0] for h in cov["hits"] if h in cov["exemptions_applied"]}
+        and "test_" in rel
+    ]
+    assert not unregistered_test_calls, \
+        "Q1 violated: 存在【未登记进 TEST_FILE_EXEMPTIONS 的测试文件】调用点：" \
+        "%r ⇒ 说明放行是按模式做的（新测试文件被自动放行）" \
+        % (unregistered_test_calls,)
+
+    return ("调用点 %d 处，未登记 %d 处，豁免 %d 项，"
+            "测试豁免 %d 个（逐文件名），无法解析 %d 个"
             % (len(cov["hits"]), len(cov["missing_from_registry"]),
-               len(cov["exemptions_applied"]), len(unparseable)))
+               len(cov["exemptions_applied"]), len(cov["test_exemptions"]),
+               len(unparseable)))
 
 
 # ============================================================ T-12（E-24）
@@ -845,9 +881,12 @@ REPORT_HEADER = """\
      强制方式 = E-22-1：pathway=True ⇒ 抛 UnsupportedPremise（T-9）
      覆盖 = E-25-1：AST 扫全仓调用点 vs 登记表（T-11）
    EXCLUDED 形状 = excluded + excluded_undetermined + reason（E-24-1）
+     产出点唯一 = _pack_excluded（勘误007 结构修复：四分支汇一个 return）
      不变量 = E-21-1 双向 + E-24-2 三者同时（T-10 / T-12）
      NOT_CHECKED_E21 = 别名化消费（E-26-2，AST 不做数据流）
      ⇒ 只主张「本层不误用」，不主张「已防止误用」（E-26-3）
+   E-25-1 覆盖 = AST 扫全仓调用点 vs 登记表（T-11）
+     测试豁免 = TEST_FILE_EXEMPTIONS【逐文件名】（勘误007 Q1 答复）
 ⑦ OPEN-EXISTING-1  test_mutations_gate.py  状态=OPEN（既有，非 B 层引入）
    现象：7 个基准变异里 3 个未让测试翻红（rc=0）；脚本自报基准不绿。
    归属：之前的收口范围。登记依据：勘误004 E-20-1 / E-20-2。

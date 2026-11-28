@@ -284,47 +284,76 @@ def evaluate_excluded(negative_control_reproduced: bool,
 
 def _excl_branch(negative_control_reproduced, alternative_terms,
                  excluded_terms, positive_control_ok) -> Dict[str, Any]:
-    """evaluate_excluded 的分支计算（不含不变量校验）。
+    """evaluate_excluded 的分支计算 —— 【单一出口】。
 
     ⚠ 勘误006 E-24-1：每个出口都必须带齐三字段
       （excluded / excluded_undetermined / reason），
       否则 E-24-2 的「三者同时」在 evaluate_excluded 这一层就无从校验。
+
+    ⚠ 勘误007（结构修复，Mion 2026-11-28 §五 问的那句「能汇吗」）：
+      上一版这里有【四个 return】，每个各自带齐三字段。
+      我漏了其中一个 → 全红，靠测试才发现。
+      ⇒ 现在改成【只算 (excluded, reason)，最后从一个出口组字段】。
+      ⇒ 这样「某个分支忘带第三字段」在结构上【不可能】——
+        不是靠断言兜住，是根本没有第二个地方能产出这个字典。
+      ⇒ 结构比断言硬（Mion 原话）。
     """
-    # 正对照失灵 ⇒ 不算 EXCLUDED（调用方应先走 INDETERMINATE 出口）
+    remaining: List[str] = []
+    excluded = False
+    reason = ""
+
     if not positive_control_ok:
-        return {"EXCLUDED": False, "INDETERMINATE": False,
-                "excluded_undetermined": False,
-                "remaining": list(alternative_terms),
-                "reason": "POSITIVE_CONTROL_FAILED"}
+        # 正对照失灵 ⇒ 不算 EXCLUDED（调用方应先走 INDETERMINATE 出口）
+        excluded = False
+        reason = "POSITIVE_CONTROL_FAILED"
+        remaining = list(alternative_terms)
 
-    # 空跑对照重现了差值 ⇒ 不足以归因
-    if negative_control_reproduced:
-        return {"EXCLUDED": False, "INDETERMINATE": False,
-                "excluded_undetermined": False,
-                "remaining": list(alternative_terms),
-                "reason": "NEGATIVE_CONTROL_REPRODUCED_DRIFT"}
+    elif negative_control_reproduced:
+        # 空跑对照重现了差值 ⇒ 不足以归因
+        excluded = False
+        reason = "NEGATIVE_CONTROL_REPRODUCED_DRIFT"
+        remaining = list(alternative_terms)
 
-    # E-18-1：清单为空 ⇒ INDETERMINATE（不是 TRUE）
-    if not alternative_terms:
-        return {"EXCLUDED": None, "INDETERMINATE": True,
-                "excluded_undetermined": True,
-                "remaining": [],
-                "reason": "NO_ALTERNATIVES_REGISTERED"}
+    elif not alternative_terms:
+        # E-18-1：清单为空 ⇒ INDETERMINATE（不是 TRUE）
+        excluded = None
+        reason = "NO_ALTERNATIVES_REGISTERED"
+        remaining = []
 
-    # 清单里未被排除的项
-    excluded_set = set(excluded_terms)
-    remaining = [t for t in alternative_terms if t not in excluded_set]
+    else:
+        # 清单里未被排除的项
+        excluded_set = set(excluded_terms)
+        remaining = [t for t in alternative_terms if t not in excluded_set]
+        if remaining:
+            excluded = False
+            reason = "ALTERNATIVES_NOT_ALL_EXCLUDED"
+        else:
+            # E-18-3：非空清单且逐条排除 ⇒ 这时才允许 TRUE
+            excluded = True
+            reason = "ALTERNATIVES_ALL_EXCLUDED"
 
-    if remaining:
-        return {"EXCLUDED": False, "INDETERMINATE": False,
-                "excluded_undetermined": False,
-                "remaining": remaining,
-                "reason": "ALTERNATIVES_NOT_ALL_EXCLUDED"}
+    # ——— 唯一出口：三字段在这里一次性组齐 ———
+    return _pack_excluded(excluded, reason, remaining)
 
-    # E-18-3：非空清单且逐条排除 ⇒ 这时才允许 TRUE
-    return {"EXCLUDED": True, "INDETERMINATE": False,
-            "excluded_undetermined": False,
-            "remaining": [], "reason": "ALTERNATIVES_ALL_EXCLUDED"}
+
+def _pack_excluded(excluded: Optional[bool], reason: str,
+                   remaining: List[str]) -> Dict[str, Any]:
+    """勘误006 E-24-1：三字段的【唯一】产出点。
+
+    ⚠ E-24-2 的三者同时不在这里「检查」，而是【由构造保证】：
+      excluded_undetermined 不是独立传入的，而是从 excluded 推出来的。
+      ⇒ 两者在结构上不可能不一致。
+      ⇒ INDETERMINATE 同理。
+      ⇒ 剩下的 reason 一致性由 check_e21_invariant 兜（它必须能验证输入的错）。
+    """
+    is_none = (excluded is None)
+    return {
+        "EXCLUDED": excluded,
+        "INDETERMINATE": is_none,
+        "excluded_undetermined": is_none,
+        "remaining": list(remaining),
+        "reason": reason,
+    }
 
 
 def _finalize_excluded(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -504,7 +533,7 @@ def assert_unsupported_premise_raises() -> List[Tuple[str, bool]]:
 #:
 #: ⚠ 这里【不】放 judge_mechanism 的定义处 ——
 #:   定义是 ast.FunctionDef，不是 ast.Call，扫描器根本不会命中它。
-#:   写一条永远匹配不上的豁免，正是本表 TEST T-11 ④ 要抓的「过期豁免」。
+#:   写一条永远匹配不上的豁免，正是 T-11 ④ 要抓的「过期豁免」。
 CALL_SITE_EXEMPTIONS: List[Tuple[str, str, str]] = [
     (
         "lbjudge.py", "scan_stage_call_sites",
@@ -514,6 +543,24 @@ CALL_SITE_EXEMPTIONS: List[Tuple[str, str, str]] = [
         "lbjudge.py", "assert_unsupported_premise_raises",
         "验证 pathway=True 抛异常的辅助函数（走同一张表）",
     ),
+]
+
+#: 勘误007（Q1 答复）：测试文件豁免必须【逐文件名】列出，不得按模式。
+#:
+#: ⚠ 上一版是 `rel.startswith("afterglow_a/prototype/test_")` ——
+#:   那是【按模式】放行。Mion 2026-11-28 §一 指出：
+#:     新增一个测试文件会自动被放行，而没人看过它。
+#:     ⇒ 那是「未登记」的另一种形态，与 E-22-3「已登记 4 个 ≠ 只有 4 个」同源。
+#: ⇒ 改成逐文件名列表：新文件出现时清单不变 ⇒ T-11 红 ⇒ 必须有人来判断。
+#:
+#: ⚠ 本表每条都必须【实际被扫描命中】才有资格留在这里（T-11 ⑥b）。
+#:   我第一版放了两条，第二条（变异脚本）其实是过期的 ——
+#:   变异脚本用 setattr 替换函数对象，从不写 `judge_mechanism(` 字面调用。
+#:   ⇒ 被 ⑥b 抓到并删除。这就是「过期豁免」的形状：它不起作用，
+#:     却让读的人以为这里有个需要豁免的调用点。
+TEST_FILE_EXEMPTIONS: List[Tuple[str, str]] = [
+    ("afterglow_a/prototype/test_blayer_batch1.py",
+     "用登记入口的行为做断言，不是新增生产调用点"),
 ]
 
 
@@ -591,6 +638,9 @@ def check_call_site_coverage(repo_root: Optional[str] = None
     hits = scan_judge_mechanism_calls(repo_root)
     registered_funcs = {name for name, _k, _w in STAGE_CALL_SITES}
 
+    # 勘误007：测试文件豁免必须【逐文件名】，不得按模式
+    test_exempt_paths = {p for p, _why in TEST_FILE_EXEMPTIONS}
+
     exemptions_applied = []
     missing = []
     for rel, lineno, func in hits:
@@ -602,9 +652,8 @@ def check_call_site_coverage(repo_root: Optional[str] = None
         if exempted:
             exemptions_applied.append((rel, lineno, func))
             continue
-        # 测试文件里的调用：允许，但必须能指认到某个登记入口
-        #   （测试是用登记入口的行为做断言，不是新增生产调用点）
-        if rel.startswith("afterglow_a/prototype/test_"):
+        # 勘误007：测试文件按【逐文件名】放行（不是按 test_ 前缀）
+        if rel in test_exempt_paths:
             continue
         missing.append((rel, lineno, func))
 
@@ -613,6 +662,7 @@ def check_call_site_coverage(repo_root: Optional[str] = None
         "hits": hits,
         "missing_from_registry": missing,
         "exemptions_applied": exemptions_applied,
+        "test_exemptions": sorted(test_exempt_paths),
         "registered_functions": sorted(registered_funcs),
     }
 
