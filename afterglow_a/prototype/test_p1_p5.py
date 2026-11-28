@@ -79,8 +79,25 @@ def p1():
                  prev_digest=None, changed_at="2026-01-01T00:00:00Z",
                  change_authority="t")
     probs = bad.validate()
-    assert any("source_kind" in p for p in probs), \
-        "非法 source_kind='user' 未被拒绝（P1 违规）"
+    # ⚠ 断言必须精确到【闭集违规】这一条。
+    #   原写法 any("source_kind" in p for p in probs) 太宽：
+    #   ZA-03 之后，validate 还会因「source_ref 为空」报一条
+    #   形如 "source_kind=user 但 source_ref 为空…" 的消息 ——
+    #   那条也含 "source_kind" 字样，于是【闭集被放宽也照样通过】。
+    #   （2026-11-24 发现：第四项改动时 test_mutations_v4 的 M1 由此 MISSED。）
+    assert any("不在闭集内" in p and "source_kind" in p for p in probs), \
+        "非法 source_kind='user' 未被闭集校验拒绝（P1 违规）；实际 problems=%s" \
+        % (probs,)
+    # 反证：把 source_ref 补成非空，闭集违规仍必须被拒
+    bad2 = Record(record_id="x", content="c", source_kind="user",
+                  source_ref="u/1", participant_id=None,
+                  participation_basis="unknown", basis_ref=None,
+                  commitment_state="not_a_commitment", revision=1,
+                  prev_digest=None, changed_at="2026-01-01T00:00:00Z",
+                  change_authority="t")
+    probs2 = bad2.validate()
+    assert any("不在闭集内" in p and "source_kind" in p for p in probs2), \
+        "补了 source_ref 之后，非法 source_kind 反而通过了（闭集失效）"
     # 1c. 缺省必须是 unknown，不是 user
     store = RecoveryStore()
     store.load_seed(SEED)

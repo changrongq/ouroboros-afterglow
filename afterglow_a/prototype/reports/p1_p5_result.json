@@ -15,7 +15,7 @@
     "id": "P2",
     "case": "篡改历史可被摘要链检出",
     "pass": true,
-    "detail": "篡改被检出：第1版摘要不符：记录 8912148f367f ≠ 重算 9467662a467c"
+    "detail": "篡改被检出：第1版摘要不符：记录 568e936a7357 ≠ 重算 caca8b52fe16"
   },
   {
     "id": "P2",
@@ -45,7 +45,7 @@
     "id": "P4",
     "case": "非法值报错而非静默落缺省",
     "pass": true,
-    "detail": "SchemaError 被抛出：source_kind='user' 不在闭集内（P1/P4 违规）"
+    "detail": "SchemaError 被抛出：revise 不允许直接改来源字段 ['source_kind']。否则来源被改"
   },
   {
     "id": "P4",
@@ -81,7 +81,7 @@
     "id": "ZA-02",
     "case": "revise 不得变更 record_id",
     "pass": true,
-    "detail": "SchemaError 拒绝身份变更：revise 不允许变更字段 ['record_id']（允许：['ba"
+    "detail": "SchemaError 拒绝身份变更：revise 不允许变更字段 ['record_id']（允许：['co"
   },
   {
     "id": "ZA-03",

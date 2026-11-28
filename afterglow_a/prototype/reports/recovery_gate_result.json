@@ -8,13 +8,13 @@
       "id": "RG-1",
       "name": "原样保存的历史跨时刻再次校验，摘要一致",
       "ok": true,
-      "detail": "跨秒重算一致 c2575b28fb88，链校验 True"
+      "detail": "跨秒重算一致 a27ba32e9176，链校验 True"
     },
     {
       "id": "RG-2",
       "name": "同内容不同时刻重建：record_digest 不同，content_digest 相同",
       "ok": true,
-      "detail": "record_digest 不同(c2575b28/88789d9b)，content_digest 相同(cd-v1:5fdc814fe6)"
+      "detail": "record_digest 不同(a27ba32e/993f72a4)，content_digest 相同(cd-v1:5fdc814fe6)"
     },
     {
       "id": "RG-3",
@@ -38,7 +38,7 @@
       "id": "RG-6",
       "name": "链局部自洽但缺外部锚定，不得声称独立真实性",
       "ok": true,
-      "detail": "eligible=True 但 anchor=not_established，科学结果=False"
+      "detail": "eligible=True，但声明 3 项 NOT_ESTABLISHED + 3 条已知边界"
     },
     {
       "id": "RG-7",

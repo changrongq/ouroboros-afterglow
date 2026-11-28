@@ -267,18 +267,46 @@ def rg6():
     assert rep["integrity_status"] == "verified"
 
     # 仍不得声称外部锚定 / 科学结果
-    assert rep["trusted_chain_anchor"] == "not_established", (
-        "链通过却声称外部锚定已建立：%r" % (rep["trusted_chain_anchor"],))
+    #
+    # ⚠ 凌翼裁定 2026-11-25 事项 B：
+    #   「该限制应在设计文档、状态登记和对外报告中明确，
+    #     不得仅用 is_scientific_result=False 代替完整的声明。」
+    # ⇒ 本用例原先只断言顶层 trusted_chain_anchor == "not_established"。
+    #   那是一个【值】，不是一个【声明】：读者无法从中得知缺的是哪一类证据。
+    # ⇒ 现改为断言 scope_declaration 的逐项内容。
+    decl = rep["scope_declaration"]
+    assert decl["trusted_chain_anchor"] == "NOT_ESTABLISHED", (
+        "链通过却声称外部锚定已建立：%r" % (decl["trusted_chain_anchor"],))
+    assert decl["trusted_anchor_scope"] == "OUT_OF_SCOPE_FOR_PROTOTYPE", (
+        "锚点范围未声明为原型外：%r" % (decl["trusted_anchor_scope"],))
     assert rep["is_scientific_result"] is False, "被标成科学结果"
     assert rep["engineering_only"] is True
+
+    # 工程级限定验收（事项 A）
+    assert decl["recovery_gate_status"] == "VERIFIED_ENGINEERING_SYNTHETIC", (
+        "工程验收档位未如实登记：%r" % (decl["recovery_gate_status"],))
+    assert decl["recovery_gate_evidence"] == "SELF_TEST_REPORTED", (
+        "证据来源未登记为自测：%r" % (decl["recovery_gate_evidence"],))
+
+    # 未建立的独立证据必须逐项列出（不得合并为一个 False 了事）
+    for k in ("independent_recomputation", "real_history_validation",
+              "external_source_attestation"):
+        assert decl[k] in ("NOT_ESTABLISHED", "NOT_PERFORMED"), (
+            "%s 未如实登记：%r" % (k, decl[k]))
+
+    # 已知边界三条必须都在
+    limits = " ".join(decl["known_limits"])
+    for token in ("registration_may_be_absent", "eligible_neq_exact",
+                  "not_atomic"):
+        assert token in limits, "已知边界缺 %s：%s" % (token, limits)
 
     # 且字段确实存在（不是靠缺省缺失蒙过去）
     for k in ("integrity_status", "integrity_detail", "integrity_scope",
               "recovery_eligible", "expected_ids_registration",
-              "trusted_chain_anchor"):
+              "scope_declaration"):
         assert k in rep, "报告缺字段 %s" % k
 
-    return "eligible=True 但 anchor=not_established，科学结果=False"
+    return "eligible=True，但声明 3 项 NOT_ESTABLISHED + 3 条已知边界"
 
 
 # ================================================================ 场景 7

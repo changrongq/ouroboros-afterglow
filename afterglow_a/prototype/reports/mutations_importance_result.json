@@ -1,0 +1,133 @@
+{
+  "run_id": "20261128T045435836376Z-5c4fc208",
+  "started_at": "2026-11-28T04:54:35.836376+00:00",
+  "commit": "e9a9e073df390aada4a6b0f1aac5c5c13718c843",
+  "host_note": "本机（不跨机器成立）",
+  "verdict": "EVIDENCE_COMPLETE",
+  "exit_code": 0,
+  "baseline_ok": true,
+  "baseline_detail": {
+    "returncode": 0,
+    "n_case": 32,
+    "bad_cases": {},
+    "probe_ok": true
+  },
+  "counts": {
+    "CAUGHT": 15
+  },
+  "fail_detail": {},
+  "n_unresolved": 0,
+  "manifest_ok": true,
+  "manifest_check": "STRICT_EXPECTED_LIST",
+  "expected_n": 15,
+  "got_n": 15,
+  "missing": [],
+  "unexpected": [],
+  "duplicated": [],
+  "expected_duplicated": [],
+  "all_caught": true,
+  "manifest_identity": {
+    "consistent": true,
+    "current": "e172ac40fa9cd73eb89019a7eadd5caeac59cacca08d72207319b53a83548dcd",
+    "reviewed": "e172ac40fa9cd73eb89019a7eadd5caeac59cacca08d72207319b53a83548dcd",
+    "reviewed_initialized": true,
+    "n_items": 15,
+    "unique": true,
+    "duplicated": [],
+    "note": ""
+  },
+  "manifest_identity_ok": true,
+  "plan_vs_manifest": [],
+  "rows": [
+    {
+      "id": "I1",
+      "desc": "B1 排除条件被删掉（model_generation 不再被排除）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-1a, A3-1d, A3-1e（全库 7 FAIL / 0 ERR）；另有无关红：['A3-0', 'A3-2a', 'A3-3a', 'A3-3b']"
+    },
+    {
+      "id": "I2",
+      "desc": "B1 排除条件放宽（只排 first_person × model_generation）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-1d, A3-1e（全库 2 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I3",
+      "desc": "exclude 参数被忽略（关闭规则无效 ⇒ 变异无法生效）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-2a2, A3-3a, A3-3b（全库 4 FAIL / 0 ERR）；另有无关红：['A3-5b']"
+    },
+    {
+      "id": "I4",
+      "desc": "空分母判据失效（NOT_EVALUABLE 变 EVALUATED）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-5a（全库 2 FAIL / 0 ERR）；另有无关红：['A3-6a2']"
+    },
+    {
+      "id": "I5",
+      "desc": "空分母仍返回全部候选（不是空集）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-5a（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I6",
+      "desc": "合成事件流不校验 record_id 真实存在",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-2b（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I7",
+      "desc": "合成事件流不拒绝完全重复事件",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-2c（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I8",
+      "desc": "未知规则被静默忽略",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-3c（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I9",
+      "desc": "NOT_EVALUABLE 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-6a2（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I9b",
+      "desc": "EVALUATED 分支不标 MEASURED_ON_SYNTHETIC_ONLY",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-6a, A3-6e（全库 2 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I10",
+      "desc": "空分母比例返回 0 而不是 None",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-6d（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I11",
+      "desc": "B3 排除只看路径不看值（改成读 basis_conflict 而非 observed_origin）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-1e（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I12",
+      "desc": "显式范围允许重复 ID（同一记录被算两次）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-7a（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I13",
+      "desc": "显式范围静默丢弃未知 ID（保留 continue，不登记 unknown）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-7b（全库 1 FAIL / 0 ERR）"
+    },
+    {
+      "id": "I14",
+      "desc": "不可核验率不再计入「从未观测」（知微 2026-11-27 要求防回归）",
+      "status": "CAUGHT",
+      "evidence": "行为已变；目标 case 断言失败：A3-7d（全库 1 FAIL / 0 ERR）"
+    }
+  ]
+}

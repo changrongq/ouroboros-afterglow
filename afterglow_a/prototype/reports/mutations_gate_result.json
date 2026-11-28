@@ -1,7 +1,7 @@
 {
   "verdict": "PASS",
   "counts": {
-    "CAUGHT": 21
+    "CAUGHT": 40
   },
   "rows": [
     {
@@ -78,7 +78,7 @@
     },
     {
       "id": "M13",
-      "desc": "声称外部锚定已建立",
+      "desc": "声称外部锚定已建立（且范围改为原型内）",
       "status": "CAUGHT",
       "evidence": "失败用例：RG-6 链局部自洽但缺外部锚定，不得声称独立真实性 — 链通过却声称外部"
     },
@@ -129,6 +129,120 @@
       "desc": "空检查范围当作 verified",
       "status": "CAUGHT",
       "evidence": "失败用例：RG-5 取回集合 exact 但未执行完整性检查 ⇒ 资格必须拒绝 — "
+    },
+    {
+      "id": "M21",
+      "desc": "conflict_summary 从返回结构删掉（Mion 第 0 项）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-0a conflict_summary 必须随 verify_reco"
+    },
+    {
+      "id": "M22",
+      "desc": "「未观测」返回成 none 而非 observed_absent（Mion 第 0 项核心）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-0b 未观测 ⇒ observed_absent，不得是 none —; OC-3a unverifiable_ratio 是独立一栏，且不进合格率 ; OC-5b 整批枚举不得替代逐条（知微举的三条情形） — none"
+    },
+    {
+      "id": "M23",
+      "desc": "去掉 record_observed 的时序约束（Mion 第 2 项·批量补洞）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-2a revise 之后 record_observed 必须被拒（防"
+    },
+    {
+      "id": "M26",
+      "desc": "允许 Record 构造器填 observed_origin（Mion 第 1 项）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-1c 不得经 Record 构造器填写 observed_origin; H3b insert 不能用构造参数直接塞来源以外的观测字段 — ins"
+    },
+    {
+      "id": "M27",
+      "desc": "观测不写进观测链（Mion 回复4 §二·链外问题）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-4a 观测已进链（Mion 回复4 §二·链外问题） — 观测未进链 ; OC-4f pseudo_first_person 是派生标记，不是第五个值; OC-4h observed_chained 进返回结构 — []"
+    },
+    {
+      "id": "M28",
+      "desc": "观测链不纳入 snapshot_token（Mion 回复4 §三）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-4c snapshot_token 必须覆盖观测链 — 篡改观测链未改"
+    },
+    {
+      "id": "M29",
+      "desc": "record_only × model_generation 判成冲突（Mion 回复4 §4.2）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-4d record_only × model_generation ⇒"
+    },
+    {
+      "id": "M30",
+      "desc": "伪亲历合并进 basis_conflict 当第五值（Mion 回复4 §五）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-4f pseudo_first_person 是派生标记，不是第五个值; OC-5a conflict_summary 必须逐条绑定记录 ID / 版"
+    },
+    {
+      "id": "M31",
+      "desc": "不逐条绑定（只返回整批枚举，知微第一条）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-5a conflict_summary 必须逐条绑定记录 ID / 版"
+    },
+    {
+      "id": "M32",
+      "desc": "不校验观测所指版本是否存在（知微第二条）",
+      "status": "CAUGHT",
+      "evidence": "测试崩溃（也算被抓住）"
+    },
+    {
+      "id": "M33",
+      "desc": "允许旧版 digest 贴到新内容上（知微指出的错位）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OC-5d 旧版 digest 贴到新内容 ⇒ 拒（知微指出的错位） — 旧"
+    },
+    {
+      "id": "M34",
+      "desc": "insert 不写 origin_*（Mion 第 4 项 ①）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OL-1a insert 时自动写入 origin_* 五字段 — orig; OL-2c correct() 之后 origin_* 保持原值不动 — N; OL-3a 只 revise 不改来源 ⇒ was_corrected = "
+    },
+    {
+      "id": "M35",
+      "desc": "revise 允许直接改来源（Mion 第 4 项 ②）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4b D1_FLAG_LEAK 是冗余不是纵深（≥2 层可独力拦住） "
+    },
+    {
+      "id": "M36",
+      "desc": "was_corrected 用 revision>1 而非 origin≠current（Mion 第 4 项 ③）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：OL-3a 只 revise 不改来源 ⇒ was_corrected = ; OL-3c was_corrected 是 origin ≠ current"
+    },
+    {
+      "id": "M37",
+      "desc": "拆掉来源字段护栏 ⇒ 可直接改来源且不留 correction_of（Mion 回复6 §三；回复7 E1 实测口径）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4b D1_FLAG_LEAK 是冗余不是纵深（≥2 层可独力拦住） "
+    },
+    {
+      "id": "M38",
+      "desc": "拆掉显式拒收保留键 ⇒ 只剩白名单拦（L1 单独证据）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4a D2/D3/D4 有独力守卫（不假定只有 L3） — D2_DI"
+    },
+    {
+      "id": "M39",
+      "desc": "白名单放行 _via_correct ⇒ 只剩 L1 拦（L2 单独证据）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4a D2/D3/D4 有独力守卫（不假定只有 L3） — D2_DI"
+    },
+    {
+      "id": "M40",
+      "desc": "公开入口读 dict 里的标志 ⇒ 只剩 L1 拦（L4 单独证据）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：LAY-2a 每层【声称】的每个维度，都有独立的拆层观测结论 — 声称维度缺少; LAY-3a 实测与声明不符时，必须能被识别（不得沉默） — 以下维度没有任何; LAY-4a D2/D3/D4 有独力守卫（不假定只有 L3） — D2_DI"
+    },
+    {
+      "id": "M41",
+      "desc": "把某个来源字段偷偷放回可改白名单（H2b 必须红）",
+      "status": "CAUGHT",
+      "evidence": "失败用例：H2a 每个 Record 字段恰好落在三类之一 — _REVISABL; H2b 来源字段不得同时是可改字段 — 来源字段不得在可改白名单里：['; C1b 分类能独立决定写入口径：不需要第二处检查参与 — 分类重叠 ⇒ "
     }
   ]
 }

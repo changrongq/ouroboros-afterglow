@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from afcore import MATCH_KINDS, SchemaError
+from afcore import MATCH_KINDS, SchemaError, BASIS_CONFLICTS
 
 
 # ---------------------------------------------------------------- 闭集
@@ -237,7 +237,15 @@ def verify_recovery(store, query_ref: str,
     ⚠ match_kind 与 integrity_status 是两条独立的轴：
       exact 不覆盖、也不掩盖 integrity_status 的失败。
       反过来说，integrity_status=verified 也不提升来源真实性
-      （trusted_chain_anchor 恒为 not_established）。
+      （见返回结构里的 scope_declaration：
+        trusted_chain_anchor = NOT_ESTABLISHED，
+        trusted_anchor_scope = OUT_OF_SCOPE_FOR_PROTOTYPE）。
+
+    ⚠ 本函数的验收档位（凌翼裁定 2026-11-25 事项 A）：
+      RECOVERY_GATE_IMPLEMENTED = VERIFIED_ENGINEERING_SYNTHETIC
+      含义严格限定为：合成测试范围内，门禁实现、已定义拒绝条件
+      和已执行变异验证达到当前工程验收要求。
+      ⇒ 不得表述为「全部恢复安全性已建立」。
     """
     # ---- 1. 取回
     retrieved_ids: List[str] = []
@@ -335,6 +343,24 @@ def verify_recovery(store, query_ref: str,
 
     eligible = (len(reasons) == 0)
 
+    # ---- 7. 冲突摘要（Mion 2026-11-24 回复2 §二② / 回复3 §三）
+    #
+    # 为什么【必须】在返回结构里，而不只在报告里：
+    #   系统算出来然后扔掉，与「消费路径为空」是同一个病
+    #   （我给衔环的信里写过：「此后谁读、读了做什么，代码里一个字都没有」）。
+    #
+    # 为什么【必须】区分 none 与 observed_absent：
+    #   这两件事后果相反：
+    #     none             = 算过，确认两路一致
+    #     observed_absent  = 根本没观测通道，无所谓一致
+    #   若把「没有观测」返回成 none，等于把缺席读成通过。
+    #
+    # 为什么【不影响】eligible（Mion 给的激励论证）：
+    #   若 conflict 会拉低资格 ⇒ 系统学会「不标冲突」来换合格
+    #   ⇒ 字段还在，值永远是 none
+    #   ⇒ 一个会被激励去撒谎的字段，等于没有这个字段。
+    conflict = summarize_conflicts(store, retrieved_ids)
+
     return {
         "recovery_id": "rec-" + query_ref,
         "query_ref": query_ref,
@@ -349,13 +375,311 @@ def verify_recovery(store, query_ref: str,
         "integrity_scope": integ["scope"],
         "recovery_eligible": eligible,
         "ineligible_reasons": sorted(set(reasons)),
+        # Mion：冲突摘要必须随结果返回，且允许「缺席」是显式值
+        "conflict_summary": conflict,
         # A §1.8：登记身份
         "expected_ids_registration": reg,
-        # 边界：门禁通过也不提升为科学结论
+        # ---- 边界声明（凌翼裁定 2026-11-25 事项 A/B）
+        #
+        # ⚠ 原先这里只有 engineering_only / is_scientific_result 两个布尔值。
+        #   凌翼裁定明确指出：
+        #     「该限制应在设计文档、状态登记和对外报告中明确，
+        #       不得仅用 is_scientific_result=False 代替完整的声明。」
+        #   ⇒ 一个 False 不携带任何信息：
+        #     读者无法从它得知「缺的是哪一类证据」。
+        #   ⇒ 现改为逐项声明，每项都回答「缺什么」。
         "engineering_only": True,
         "is_scientific_result": False,
-        "trusted_chain_anchor": "not_established",
+        "scope_declaration": {
+            # 事项 A：工程级限定验收的语义边界
+            "recovery_gate_status": "VERIFIED_ENGINEERING_SYNTHETIC",
+            "recovery_gate_evidence": "SELF_TEST_REPORTED",
+            # 事项 B：链外锚点排除在原型范围之外
+            "trusted_chain_anchor": "NOT_ESTABLISHED",
+            "trusted_anchor_scope": "OUT_OF_SCOPE_FOR_PROTOTYPE",
+            # 未解决的独立证据缺口（逐项列出，不合并）
+            "independent_recomputation": "NOT_ESTABLISHED",
+            "real_history_validation": "NOT_PERFORMED",
+            "external_source_attestation": "NOT_ESTABLISHED",
+            # 已知边界（凌翼裁定 事项 A 末段三条）
+            "known_limits": [
+                # 未提交登记身份的兼容路径，不具备独立登记证明
+                "registration_may_be_absent: 未提供登记身份时不得读作已登记",
+                # recovery_eligible 不等于 match_kind=exact
+                "eligible_neq_exact: 资格门禁通过不等于集合关系精确匹配",
+                # 读、校验、消费不是经证明的原子事务
+                "not_atomic: 读取/校验/消费不是经证明的原子事务",
+            ],
+            "note": ("本结论仅覆盖合成夹具上的工程自测；"
+                     "不构成对来源真实性或恢复安全性的证明。"),
+        },
     }
+
+
+def summarize_conflicts(store, record_ids: Optional[Iterable[str]] = None
+                        ) -> Dict[str, Any]:
+    """汇总本次取回范围内的「声明 vs 观测」冲突状态。
+
+    返回值恒含三个键，不可省略：
+      basis_conflict : 四值之一（见 afcore.BASIS_CONFLICTS）
+      affected_ids   : 落在该状态下的记录
+      detail         : 人类可读说明
+
+    ⚠ basis_conflict 表达的是【整批】的状态：
+       · 只要有一条 asserted_contradicts_observed ⇒ 整批取该值（最严重优先）
+       · 全部都没有观测通道 ⇒ observed_absent
+       · 有观测但都判不出    ⇒ observed_unresolved
+       · 全部有观测且一致    ⇒ none
+       · 范围为空            ⇒ observed_absent（无记录 ≠ 无冲突）
+    """
+    if record_ids is None:
+        return {
+            "basis_conflict": "observed_absent",
+            "affected_ids": [],
+            "per_record": [],
+            "counts": {},
+            "detail": "未指定汇总范围 ⇒ observed_absent（不得读作 none）",
+            "unverifiable_ratio": None,
+            "unverifiable_ids": [],
+            "unverifiable_note": "未指定范围 ⇒ 不可计算，不是 0。",
+            "record_only_ratio": None,
+            "record_only_ids": [],
+            "record_only_note": "未指定范围 ⇒ 不可计算。",
+            "pseudo_first_person_ids": [],
+            "pseudo_first_person_note": "未指定范围 ⇒ 不可判定。",
+            "observed_chained_ids": [],
+            "observed_unchained_ids": [],
+            "observed_chained_note": "未指定范围 ⇒ 不可判定。",
+        }
+
+    ids = sorted(set(record_ids))
+    if not ids:
+        return {
+            "basis_conflict": "observed_absent",
+            "affected_ids": [],
+            "per_record": [],
+            "counts": {},
+            "detail": "取回集为空 ⇒ observed_absent（无记录 ≠ 无冲突）",
+            "unverifiable_ratio": None,
+            "unverifiable_ids": [],
+            "unverifiable_note": "取回集为空 ⇒ 不可计算，不是 0。",
+            "record_only_ratio": None,
+            "record_only_ids": [],
+            "record_only_note": "取回集为空 ⇒ 不可计算。",
+            "pseudo_first_person_ids": [],
+            "pseudo_first_person_note": "取回集为空 ⇒ 不可判定。",
+            "observed_chained_ids": [],
+            "observed_unchained_ids": [],
+            "observed_chained_note": "取回集为空 ⇒ 不可判定。",
+        }
+
+    buckets: Dict[str, List[str]] = {}
+    for rid in ids:
+        rec = store.get(rid)
+        if rec is None:
+            buckets.setdefault("observed_absent", []).append(rid)
+            continue
+        val = rec.get("basis_conflict")
+        if val is None:
+            # 字段缺失 = 从未计算过 ⇒ 不得当作 none
+            buckets.setdefault("observed_absent", []).append(rid)
+        elif val not in BASIS_CONFLICTS:
+            buckets.setdefault("observed_unresolved", []).append(rid)
+        else:
+            buckets.setdefault(val, []).append(rid)
+
+    # ---- unverifiable_ratio（Mion 2026-11-24 回复3 §二）
+    #
+    # ⚠ 这个数【不是 FER】，不得混进任何合格率。
+    #   它回答的是：「有多大比例的记录，我们无法判定它是否伪亲历」。
+    #
+    # ⇒ 它的用途是【分母】，不是指标：
+    #   unverifiable_ratio 越高，任何关于伪亲历的结论可覆盖的范围就越小。
+    #   ⇒ 它不是「伪亲历率」的估计，是「伪亲历结论适用范围」的上限。
+    #
+    # 口径：observed_absent 与 observed_unresolved 都计入「不可判定」，
+    #       因为二者都无法回答「是否有冲突」。只有 none 与
+    #       asserted_contradicts_observed 是可判定的（一有一无）。
+    unverifiable = sorted(set(buckets.get("observed_absent", []))
+                          | set(buckets.get("observed_unresolved", [])))
+    total = len(ids)
+    ratio = (len(unverifiable) / total) if total else None
+
+    # ---- record_only_ratio（Mion 2026-11-24 回复4 §4.2）
+    #
+    # ⚠ 这是一个【行为漏洞】的度量，不是判定漏洞：
+    #   record_only 的断言是「不指向任何陈述者」，模型生成不违反它 ⇒ 判 none。
+    #   但这会让 record_only 成为【洗白档】：
+    #   把本该 first_person_report 的内容标成 record_only，
+    #   伪亲历就整体消失 —— 而且指标会变好看。
+    #
+    # ⇒ 判定管不了它，只有度量管得住。
+    #
+    # ⚠ 此指标【不是合格率】，是伪亲历统计可信度的前置条件。
+    #
+    # ⚠ 2026-11-27（Mion 回执 §四 R1/R3）：
+    #   本函数原本自己算了一遍 record_only_ratio，与
+    #   afimportance.synthetic_ratios 各自实现同一个概念。
+    #   Mion：「『两处代码各自实现同一个概念』本身就是我们治了一整轮的那个病。」
+    #   ⇒ 现在调用【同一处】定义。
+    #
+    #   ⚠ 但两边的规模语义不同，不能直接改成同一表达式：
+    #     本函数已先把 record_ids 去重排序成 `ids`（集合语义），
+    #     而 synthetic_ratios 拒绝重复并区分「空范围」与「未知 ID」。
+    #     ⇒ 此处把已按集合处理好的 `ids` 作为范围传入。
+    #     下面用断言固定「两条路径给出同一范围」，
+    #     而不靠注释声称它们一致（R2）。
+    from afimportance import retrieval_scope
+    scope_recs, _scope_desc, _by_id = retrieval_scope(store, list(ids))
+    assert sorted(r["record_id"] for r in scope_recs) == sorted(ids), (
+        "取回集两处定义不一致：retrieval_scope 返回 %r，本函数 ids 为 %r"
+        % (sorted(r["record_id"] for r in scope_recs)[:8], sorted(ids)[:8]))
+
+    record_only_ids = [r["record_id"] for r in scope_recs
+                       if r.get("participation_basis") == "record_only"]
+    record_only_ratio = (len(record_only_ids) / total) if total else None
+
+    # ---- 观测是否进链（Mion 2026-11-24 回复4 §三 状态词）
+    chained_ids = []
+    unchained_ids = []
+    for rid in ids:
+        if hasattr(store, "observed_chained") and store.observed_chained(rid):
+            chained_ids.append(rid)
+        else:
+            unchained_ids.append(rid)
+
+    # 伪亲历派生标记（不是第五个 basis_conflict 值）
+    pseudo_ids = []
+    for rid in ids:
+        if hasattr(store, "pseudo_first_person") and \
+                store.pseudo_first_person(rid):
+            pseudo_ids.append(rid)
+
+    # 严重度优先：冲突 > 判不出 > 无观测 > 一致
+    for level in ("asserted_contradicts_observed",
+                  "observed_unresolved",
+                  "observed_absent",
+                  "none"):
+        if level in buckets:
+            return {
+                "basis_conflict": level,
+                "affected_ids": sorted(buckets[level]),
+                # 知微 2026-11-24：逐条绑定记录 ID、版本与判定
+                #   汇总保留各类数量；读者能看出【哪条可以怎样引用】。
+                #   若只给一个枚举，三条各不相同的情形就读不出来。
+                "per_record": build_per_record(store, ids, buckets),
+                "counts": {k: len(v) for k, v in sorted(buckets.items())},
+                "detail": {
+                    "asserted_contradicts_observed":
+                        "声明与系统观测不一致（asserted_contradicts_observed）",
+                    "observed_unresolved": "有观测但判不出来源",
+                    "observed_absent": "无观测通道（不得读作无冲突）",
+                    "none": "两路观测一致",
+                }[level],
+                # ⚠ 单独一栏，不与任何合格率合并
+                "unverifiable_ratio": ratio,
+                "unverifiable_ids": unverifiable,
+                "unverifiable_note":
+                    "本值不是伪亲历率，而是「无法判定是否伪亲历」的记录占比；"
+                    "它给出的是任何伪亲历结论的适用范围上限，不是结论本身。",
+                # Mion 回复4 §4.2：行为漏洞的度量
+                "record_only_ratio": record_only_ratio,
+                "record_only_ids": sorted(record_only_ids),
+                "record_only_note":
+                    "record_only 比例上升 ⇒ 伪亲历统计的分母被抽空。"
+                    "此指标不是合格率，是统计可信度的前置条件。",
+                # Mion 回复4 §五：派生标记，不是第五值
+                "pseudo_first_person_ids": sorted(pseudo_ids),
+                "pseudo_first_person_note":
+                    "basis_conflict 度量「断言与观测是否一致」，"
+                    "不度量「是否伪亲历」。伪亲历是它的一个真子集。"
+                    "⇒ 不得把 none 读成「没有伪亲历」，"
+                    "也不得把 asserted_contradicts_observed 读成「有伪亲历」。",
+                # Mion 回复4 §三：观测是否进链
+                "observed_chained_ids": sorted(chained_ids),
+                "observed_unchained_ids": sorted(unchained_ids),
+                "observed_chained_note":
+                    "未进链的记录，其观测值不在任何摘要内 ⇒ "
+                    "改它不会被任何检查发现。",
+            }
+
+    return {
+        "basis_conflict": "observed_unresolved",
+        "affected_ids": [],
+        "per_record": build_per_record(store, ids, buckets),
+        "counts": {k: len(v) for k, v in sorted(buckets.items())},
+        "detail": "无法归类 ⇒ observed_unresolved（不得读作 none）",
+        "unverifiable_ratio": ratio,
+        "unverifiable_ids": unverifiable,
+        "unverifiable_note":
+            "本值不是伪亲历率，而是「无法判定是否伪亲历」的记录占比。",
+        "record_only_ratio": record_only_ratio,
+        "record_only_ids": sorted(record_only_ids),
+        "record_only_note":
+            "record_only 比例上升 ⇒ 伪亲历统计的分母被抽空。",
+        "pseudo_first_person_ids": sorted(pseudo_ids),
+        "pseudo_first_person_note": "basis_conflict ≠ 伪亲历，后者是真子集。",
+        "observed_chained_ids": sorted(chained_ids),
+        "observed_unchained_ids": sorted(unchained_ids),
+        "observed_chained_note": "未进链的观测值不在任何摘要内。",
+    }
+
+
+def build_per_record(store, ids: List[str],
+                     buckets: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    """逐条绑定：记录 ID / 版本 / 判定 / 该条可否引用。
+
+    知微 2026-11-24：
+      「一次取回三条记录，一条自述与观测相符，一条从未收到观测，
+        第三条存在矛盾。如果 conflict_summary 只返回一个枚举，
+        读者就看不出哪条可以怎样引用。」
+
+    ⇒ 逐条给出，汇总另保留各类数量。
+    """
+    rev_of = {}
+    for level, rids in buckets.items():
+        for rid in rids:
+            rev_of[rid] = level
+
+    out = []
+    for rid in ids:
+        rec = store.get(rid)
+        level = rev_of.get(rid, "observed_absent")
+
+        # 该条的观测链信息（若已进链）
+        chain = []
+        if hasattr(store, "observed_chain"):
+            chain = store.observed_chain(rid)
+        last = chain[-1] if chain else {}
+
+        # 可否引用：只有判定明确（none / asserted_contradicts_observed）
+        # 且已进链时，才允许把「来源」的说法挂到这条上。
+        citable = (level in ("none", "asserted_contradicts_observed")
+                   and bool(last))
+        if level == "observed_absent":
+            why = "无观测 ⇒ 无法判定来源，不得引用其来源说法"
+        elif level == "observed_unresolved":
+            why = "有观测但判不出 ⇒ 来源不确定，不得引用"
+        elif level == "asserted_contradicts_observed":
+            why = "断言与观测冲突 ⇒ 可引用「有冲突」这一事实，不得引用其自述来源"
+        else:
+            why = "断言与观测一致 ⇒ 可引用其来源说法（仅限本机此刻）"
+
+        out.append({
+            "record_id": rid,
+            "revision": rec.get("revision") if rec else None,
+            "record_digest": (last.get("observed_record_digest")
+                              if last else None),
+            "asserted": rec.get("participation_basis") if rec else None,
+            "observed_origin": rec.get("observed_origin") if rec else None,
+            "basis_conflict": level,
+            "pseudo_first_person": (last.get("pseudo_first_person", False)
+                                    if last else False),
+            "chained": bool(chain),
+            "citable_as_source": citable,
+            "citation_limit": why,
+        })
+    return out
 
 
 def check_unknown_preserved(store, record_id: str,

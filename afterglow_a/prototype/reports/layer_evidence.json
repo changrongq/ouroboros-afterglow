@@ -1,0 +1,594 @@
+{
+  "dimensions": [
+    {
+      "id": "D1_FLAG_LEAK",
+      "desc": "调用方在 changes 里塞内部标志 _via_correct，企图伪装成纠正流程"
+    },
+    {
+      "id": "D2_DIRECT_SOURCE_EDIT",
+      "desc": "调用方不塞任何标志，直接要求改来源字段（participation_basis）"
+    },
+    {
+      "id": "D3_SOURCE_VIA_SOURCE_KIND",
+      "desc": "绕开 participation_basis，改另一个来源字段 source_kind"
+    },
+    {
+      "id": "D4_SOURCE_VIA_REF",
+      "desc": "改来源引用 source_ref（同样的护栏应当覆盖）"
+    }
+  ],
+  "layer_claims": [
+    {
+      "id": "L1_KEY_REJECT",
+      "desc": "显式拒收 changes 里的 _via_correct 键",
+      "claims": [
+        "D1_FLAG_LEAK"
+      ]
+    },
+    {
+      "id": "L2_WHITELIST",
+      "desc": "白名单：_via_correct 不属于任何一类合法字段",
+      "claims": [
+        "D1_FLAG_LEAK"
+      ]
+    },
+    {
+      "id": "L3_SOURCE_GUARD",
+      "desc": "来源字段护栏：非 correct 流程不得改来源（与 L2 白名单机制不同）",
+      "claims": [
+        "D2_DIRECT_SOURCE_EDIT",
+        "D3_SOURCE_VIA_SOURCE_KIND",
+        "D4_SOURCE_VIA_REF"
+      ]
+    },
+    {
+      "id": "L4_ENTRY_HARDCODE",
+      "desc": "公开入口硬编码 via_correct=False",
+      "claims": [
+        "D1_FLAG_LEAK"
+      ]
+    }
+  ],
+  "claims_verified": [
+    {
+      "layer": "L1_KEY_REJECT",
+      "dimension": "D1_FLAG_LEAK",
+      "kind": "REDUNDANT",
+      "note": "拆掉本层仍被 L3_SOURCE_GUARD 拦住 ⇒ 冗余（非纵深）"
+    },
+    {
+      "layer": "L2_WHITELIST",
+      "dimension": "D1_FLAG_LEAK",
+      "kind": "REDUNDANT",
+      "note": "拆掉本层仍被 L1_KEY_REJECT 拦住 ⇒ 冗余（非纵深）"
+    },
+    {
+      "layer": "L3_SOURCE_GUARD",
+      "dimension": "D2_DIRECT_SOURCE_EDIT",
+      "kind": "REDUNDANT",
+      "note": "拆掉本层仍被 L3_SOURCE_GUARD 拦住 ⇒ 冗余（非纵深）"
+    },
+    {
+      "layer": "L3_SOURCE_GUARD",
+      "dimension": "D3_SOURCE_VIA_SOURCE_KIND",
+      "kind": "REDUNDANT",
+      "note": "拆掉本层仍被 L3_SOURCE_GUARD 拦住 ⇒ 冗余（非纵深）"
+    },
+    {
+      "layer": "L3_SOURCE_GUARD",
+      "dimension": "D4_SOURCE_VIA_REF",
+      "kind": "REDUNDANT",
+      "note": "拆掉本层仍被 L3_SOURCE_GUARD 拦住 ⇒ 冗余（非纵深）"
+    },
+    {
+      "layer": "L4_ENTRY_HARDCODE",
+      "dimension": "D1_FLAG_LEAK",
+      "kind": "REDUNDANT",
+      "note": "拆掉本层仍被 L1_KEY_REJECT 拦住 ⇒ 冗余（非纵深）"
+    }
+  ],
+  "dimension_reference": {
+    "D1_FLAG_LEAK": {
+      "primary": "L1_KEY_REJECT",
+      "solo_guards": [
+        "MECH_STRING_FILTER"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_STRING_FILTER"
+      ],
+      "solo_guards_attributable": [
+        "MECH_STRING_FILTER"
+      ],
+      "attribution_loss": 0,
+      "composite_mechanisms": [],
+      "unmeasurable_mechanisms": []
+    },
+    "D2_DIRECT_SOURCE_EDIT": {
+      "primary": "L3_SOURCE_GUARD",
+      "solo_guards": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_attributable": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "attribution_loss": "UNMEASURABLE",
+      "composite_mechanisms": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "unmeasurable_mechanisms": []
+    },
+    "D3_SOURCE_VIA_SOURCE_KIND": {
+      "primary": "L3_SOURCE_GUARD",
+      "solo_guards": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_attributable": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "attribution_loss": "UNMEASURABLE",
+      "composite_mechanisms": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "unmeasurable_mechanisms": []
+    },
+    "D4_SOURCE_VIA_REF": {
+      "primary": "L3_SOURCE_GUARD",
+      "solo_guards": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_by_mechanism": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "solo_guards_attributable": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "attribution_loss": "UNMEASURABLE",
+      "composite_mechanisms": [
+        "MECH_FLOW_OR_FIELDSET"
+      ],
+      "unmeasurable_mechanisms": []
+    }
+  },
+  "accidents": [
+    {
+      "config": "四层全拆",
+      "dimension": "D1_FLAG_LEAK",
+      "exc": "TypeError"
+    }
+  ],
+  "rows": [
+    {
+      "label": "（不拆）",
+      "removed": [],
+      "cells": {
+        "D1_FLAG_LEAK": {
+          "verdict": "BLOCKED_BY_L1",
+          "blocker": "L1_KEY_REJECT",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+          "exc": "SchemaError"
+        },
+        "D2_DIRECT_SOURCE_EDIT": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D3_SOURCE_VIA_SOURCE_KIND": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_kind']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        },
+        "D4_SOURCE_VIA_REF": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_ref']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        }
+      },
+      "base": {
+        "source_kind": "user_utterance",
+        "source_ref": "utt/A",
+        "participant_id": "A",
+        "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"
+      }
+    },
+    {
+      "label": "只拆 L1_KEY_REJECT",
+      "removed": [
+        "L1_KEY_REJECT"
+      ],
+      "cells": {
+        "D1_FLAG_LEAK": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D2_DIRECT_SOURCE_EDIT": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D3_SOURCE_VIA_SOURCE_KIND": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_kind']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        },
+        "D4_SOURCE_VIA_REF": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_ref']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        }
+      },
+      "base": {
+        "source_kind": "user_utterance",
+        "source_ref": "utt/A",
+        "participant_id": "A",
+        "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"
+      }
+    },
+    {
+      "label": "只拆 L2_WHITELIST",
+      "removed": [
+        "L2_WHITELIST"
+      ],
+      "cells": {
+        "D1_FLAG_LEAK": {
+          "verdict": "BLOCKED_BY_L1",
+          "blocker": "L1_KEY_REJECT",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+          "exc": "SchemaError"
+        },
+        "D2_DIRECT_SOURCE_EDIT": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D3_SOURCE_VIA_SOURCE_KIND": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_kind']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        },
+        "D4_SOURCE_VIA_REF": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_ref']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        }
+      },
+      "base": {
+        "source_kind": "user_utterance",
+        "source_ref": "utt/A",
+        "participant_id": "A",
+        "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"
+      }
+    },
+    {
+      "label": "只拆 L3_SOURCE_GUARD",
+      "removed": [
+        "L3_SOURCE_GUARD"
+      ],
+      "cells": {
+        "D1_FLAG_LEAK": {
+          "verdict": "BLOCKED_BY_L1",
+          "blocker": "L1_KEY_REJECT",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+          "exc": "SchemaError"
+        },
+        "D2_DIRECT_SOURCE_EDIT": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D3_SOURCE_VIA_SOURCE_KIND": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_kind']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        },
+        "D4_SOURCE_VIA_REF": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_ref']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        }
+      },
+      "base": {
+        "source_kind": "user_utterance",
+        "source_ref": "utt/A",
+        "participant_id": "A",
+        "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"
+      }
+    },
+    {
+      "label": "只拆 L4_ENTRY_HARDCODE",
+      "removed": [
+        "L4_ENTRY_HARDCODE"
+      ],
+      "cells": {
+        "D1_FLAG_LEAK": {
+          "verdict": "BLOCKED_BY_L1",
+          "blocker": "L1_KEY_REJECT",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "changes 不得包含保留键 _via_correct。「是否纠正流程」由调用哪个方法来决定，不由调用方传入。",
+          "exc": "SchemaError"
+        },
+        "D2_DIRECT_SOURCE_EDIT": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D3_SOURCE_VIA_SOURCE_KIND": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_kind']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        },
+        "D4_SOURCE_VIA_REF": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_ref']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        }
+      },
+      "base": {
+        "source_kind": "user_utterance",
+        "source_ref": "utt/A",
+        "participant_id": "A",
+        "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"
+      }
+    },
+    {
+      "label": "四层全拆",
+      "removed": [
+        "L1_KEY_REJECT",
+        "L2_WHITELIST",
+        "L3_SOURCE_GUARD",
+        "L4_ENTRY_HARDCODE"
+      ],
+      "cells": {
+        "D1_FLAG_LEAK": {
+          "verdict": "ACCIDENT",
+          "blocker": null,
+          "accident": true,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "__init__() got an unexpected keyword argument '_via_correct'",
+          "exc": "TypeError"
+        },
+        "D2_DIRECT_SOURCE_EDIT": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['participation_basis']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源",
+          "exc": "SchemaError"
+        },
+        "D3_SOURCE_VIA_SOURCE_KIND": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_kind']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        },
+        "D4_SOURCE_VIA_REF": {
+          "verdict": "BLOCKED_BY_L3",
+          "blocker": "L3_SOURCE_GUARD",
+          "accident": false,
+          "state": {
+            "source_kind": "user_utterance",
+            "source_ref": "utt/A",
+            "participant_id": "A",
+            "participation_basis": "first_person_report",
+            "basis_ref": "utt/A"
+          },
+          "msg": "revise 不允许直接改来源字段 ['source_ref']。否则来源被改而『被纠正过』这一事实会消失。请改用 correct()（它会加 correction_of 边并改来源）。",
+          "exc": "SchemaError"
+        }
+      },
+      "base": {
+        "source_kind": "user_utterance",
+        "source_ref": "utt/A",
+        "participant_id": "A",
+        "participation_basis": "first_person_report",
+        "basis_ref": "utt/A"
+      }
+    }
+  ]
+}

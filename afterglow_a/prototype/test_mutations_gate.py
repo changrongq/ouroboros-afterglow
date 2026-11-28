@@ -30,7 +30,14 @@ PROTO_FILES = ("afcore.py", "afrecover.py")
 # 变异验证必须跑【全部】守护测试。
 # 之前只列了 test_recovery_gate / test_p1_p5，导致 Z61 新门禁的变异
 # 全部 MISSED —— 不是门禁没守住，是守护它的测试没被跑。
-TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py")
+#
+# ⚠ test_layer_evidence.py 依赖同目录的 layer_evidence 模块，
+#   该模块必须一并复制（见 MODULE_FILES），否则基线直接 ModuleNotFoundError。
+TEST_FILES = ("test_recovery_gate.py", "test_p1_p5.py", "test_z61_gaps.py",
+              "test_observed_channel.py", "test_origin_layer.py",
+              "test_field_classification.py", "test_layer_evidence.py")
+# 被测试 import 的同目录模块（不是测试文件本身，但必须存在）
+MODULE_FILES = ("layer_evidence.py",)
 
 
 def _harden_stdio():
@@ -156,11 +163,18 @@ MUTATIONS = [
         '    "changed_at",\n)',
     ),
     # ---- 外部锚定
+    #
+    # ⚠ 凌翼裁定 2026-11-25 事项 B 后，顶层 trusted_chain_anchor 已移入
+    #   scope_declaration，且要如实登记「缺什么」。
+    #   本变异改成【声称锚点已建立】，同时把范围也改成原型内 ——
+    #   否则只改一个字段，另一处仍写着 OUT_OF_SCOPE，读者会被误导。
     (
-        "M13", "声称外部锚定已建立",
+        "M13", "声称外部锚定已建立（且范围改为原型内）",
         "afrecover.py",
-        '        "trusted_chain_anchor": "not_established",',
-        '        "trusted_chain_anchor": "established",',
+        '            "trusted_chain_anchor": "NOT_ESTABLISHED",\n'
+        '            "trusted_anchor_scope": "OUT_OF_SCOPE_FOR_PROTOTYPE",',
+        '            "trusted_chain_anchor": "ESTABLISHED",\n'
+        '            "trusted_anchor_scope": "IN_SCOPE_AND_DONE",',
     ),
     (
         "M14", "把工程结果标成科学结果",
@@ -236,6 +250,163 @@ MUTATIONS = [
         '        return {\n'
         '            "status": "verified",',
     ),
+    # ---- Mion 2026-11-24 回复2 / 回复3 的四项改造
+    (
+        "M21", "conflict_summary 从返回结构删掉（Mion 第 0 项）",
+        "afrecover.py",
+        '        "conflict_summary": conflict,',
+        '        # MUTANT: 不返回冲突摘要',
+    ),
+    (
+        "M22", "「未观测」返回成 none 而非 observed_absent（Mion 第 0 项核心）",
+        "afrecover.py",
+        '        if val is None:\n'
+        '            # 字段缺失 = 从未计算过 ⇒ 不得当作 none\n'
+        '            buckets.setdefault("observed_absent", []).append(rid)',
+        '        if val is None:\n'
+        '            buckets.setdefault("none", []).append(rid)  # MUTANT',
+    ),
+    (
+        "M23", "去掉 record_observed 的时序约束（Mion 第 2 项·批量补洞）",
+        "afcore.py",
+        '        if cur.revision != 1:',
+        '        if False:  # MUTANT: 允许事后补观测',
+    ),
+    (
+        "M26", "允许 Record 构造器填 observed_origin（Mion 第 1 项）",
+        "afcore.py",
+        '        if rec.observed_origin is not None or rec.basis_conflict is not None:',
+        '        if False:  # MUTANT',
+    ),
+    # ---- Mion 回复4：观测在链外 + 判定表 + 派生标记
+    (
+        "M27", "观测不写进观测链（Mion 回复4 §二·链外问题）",
+        "afcore.py",
+        '        self._observed_chain.setdefault(record_id, []).append(entry)',
+        '        pass  # MUTANT: 观测不进链',
+    ),
+    (
+        "M28", "观测链不纳入 snapshot_token（Mion 回复4 §三）",
+        "afcore.py",
+        '        for rid in sorted(self._observed_chain):',
+        '        for rid in []:  # MUTANT',
+    ),
+    (
+        "M29", "record_only × model_generation 判成冲突（Mion 回复4 §4.2）",
+        "afcore.py",
+        '            conflict = "none"\n        else:\n'
+        '            conflict = "observed_unresolved"',
+        '            conflict = "asserted_contradicts_observed"\n        else:\n'
+        '            conflict = "observed_unresolved"',
+    ),
+    (
+        "M30", "伪亲历合并进 basis_conflict 当第五值（Mion 回复4 §五）",
+        "afcore.py",
+        '        pseudo = (asserted == "first_person_report"\n'
+        '                  and observed == "model_generation")',
+        '        pseudo = False  # MUTANT: 不派生伪亲历标记',
+    ),
+    # ---- 知微 2026-11-24：逐条绑定 + 观测携带所见版本
+    (
+        "M31", "不逐条绑定（只返回整批枚举，知微第一条）",
+        "afrecover.py",
+        '                "per_record": build_per_record(store, ids, buckets),',
+        '                "per_record": [],  # MUTANT: 只有整批枚举',
+    ),
+    (
+        "M32", "不校验观测所指版本是否存在（知微第二条）",
+        "afcore.py",
+        '            if observed_record_digest not in known_digests:',
+        '            if False:  # MUTANT: 任何 digest 都接受',
+    ),
+    (
+        "M33", "允许旧版 digest 贴到新内容上（知微指出的错位）",
+        "afcore.py",
+        '            if observed_rev != cur.revision:',
+        '            if False:  # MUTANT: 不检查版本是否当前',
+    ),
+    # ---- Mion 2026-11-24 §二 第 4 项：原始来源层
+    (
+        "M34", "insert 不写 origin_*（Mion 第 4 项 ①）",
+        "afcore.py",
+        '        if rec.origin_source_kind is None:',
+        '        if False:  # MUTANT: 不记录原始来源',
+    ),
+    (
+        "M35", "revise 允许直接改来源（Mion 第 4 项 ②）",
+        "afcore.py",
+        '        if touching_source and not via_correct:',
+        '        if False:  # MUTANT: 允许绕过 correct 改来源',
+    ),
+    (
+        "M36", "was_corrected 用 revision>1 而非 origin≠current（Mion 第 4 项 ③）",
+        "afcore.py",
+        '        return any([\n'
+        '            rec.origin_source_kind != rec.source_kind,',
+        '        return rec.revision > 1 or any([\n'
+        '            rec.origin_source_kind != rec.source_kind,',
+    ),
+    # ---- Mion 2026-11-25 回复6 §三：_via_correct 曾是调用方可自塞的键
+    #
+    # ⚠ 变异设计：v1 曾写「三层必须同时拆」，**那是错的**。
+    #   Mion 回复7 E1 要求「无效变异必须由直接观测证成」，
+    #   我照做后发现 v1 的探针只测了一种攻击（塞 "_via_correct" 字符串），
+    #   于是把 `Record(**merged)` 撞出的 TypeError 误当成「拦住了」。
+    #
+    #   实测（layer_evidence.py v2，两种攻击分开测）：
+    #     A 型（塞 _via_correct）     B 型（只改来源，不塞）
+    #     （不拆）      BLOCKED_BY_L1  BLOCKED_BY_L3
+    #     只拆 L3      BLOCKED_BY_L1  OPENED          ← 只拆一层就穿
+    #     只拆 L1      BLOCKED_BY_L2  BLOCKED_BY_L3
+    #     四层全拆      ACCIDENT       OPENED
+    #
+    #   ⇒ 真正守住「改来源必须走 correct()」的只有 L3_SOURCE_GUARD。
+    #     L1/L2/L4 只对 `_via_correct` 这个【特定字符串】设防；
+    #     攻击者不写这个字符串，三层全部不起作用。
+    #   ⇒ 所以变异只需要拆 L3 一条。拆多层不是「更强的变异」，
+    #     而是「把真正的那一层藏在一堆无关改动里」。
+    (
+        "M37", "拆掉来源字段护栏 ⇒ 可直接改来源且不留 correction_of"
+               "（Mion 回复6 §三；回复7 E1 实测口径）",
+        "afcore.py",
+        '        if touching_source and not via_correct:',
+        '        if False:  # MUTANT: 来源字段护栏失效（L3）',
+    ),
+    (
+        "M38", "拆掉显式拒收保留键 ⇒ 只剩白名单拦（L1 单独证据）",
+        "afcore.py",
+        '        if "_via_correct" in changes:\n'
+        '            raise SchemaError(\n'
+        '                "changes 不得包含保留键 _via_correct。"\n'
+        '                "「是否纠正流程」由调用哪个方法来决定，不由调用方传入。")',
+        '        # MUTANT: L1 失效（B 型攻击不受影响，见 layer_evidence）',
+    ),
+    (
+        "M39", "白名单放行 _via_correct ⇒ 只剩 L1 拦（L2 单独证据）",
+        "afcore.py",
+        '        allowed = self._correctable() if via_correct else set(self._REVISABLE)',
+        '        allowed = (self._correctable() | {"_via_correct"} if via_correct\n'
+        '                   else set(self._REVISABLE) | {"_via_correct"})'
+        '  # MUTANT: L2 失效（两个分支都放行）',
+    ),
+    (
+        "M40", "公开入口读 dict 里的标志 ⇒ 只剩 L1 拦（L4 单独证据）",
+        "afcore.py",
+        '        return self._revise_impl(record_id, changes, reason, authority,\n'
+        '                                 via_correct=False)',
+        '        return self._revise_impl(record_id, changes, reason, authority,\n'
+        '                                 via_correct=bool(\n'
+        '                                     changes.get("_via_correct")))'
+        '  # MUTANT: L4 失效',
+    ),
+    # ---- Mion 2026-11-25 裁定2 H1/H2：字段三分类
+    (
+        "M41", "把某个来源字段偷偷放回可改白名单（H2b 必须红）",
+        "afcore.py",
+        '    _REVISABLE = {\n        "content", "commitment_state",',
+        '    _REVISABLE = {\n        "content", "source_kind", "commitment_state",'
+        '  # MUTANT: 来源字段混回白名单',
+    ),
 ]
 
 
@@ -266,7 +437,7 @@ def run_tests(tmpdir):
 
 
 def copy_proto(tmpdir):
-    for f in PROTO_FILES + TEST_FILES:
+    for f in PROTO_FILES + TEST_FILES + MODULE_FILES:
         src = os.path.join(HERE, f)
         shutil.copy2(src, os.path.join(tmpdir, f))
     # 测试依赖 reports 目录
@@ -282,13 +453,153 @@ def copy_proto(tmpdir):
 
 
 def apply_mutation(tmpdir, target, old, new):
+    """应用一处或一组变异。
+
+    组合变异写法（用于「多层防御必须同时拆掉才打得穿」的场景）：
+        old = "锚A\n---\n锚B", new = "替换A\n---\n替换B"
+    ⇒ 各锚必须在文件里恰好出现 1 次；任一不满足即 INVALID。
+    ⚠ 注意（Mion 回复7 §四）：组合变异可以进 gate，
+      但【每一层的单独证据必须另存在台账里】（layer_evidence.json）。
+      组合 CAUGHT 只证明「整体有防御」，不证明「每层都必需」。
+    """
+    mult = (old.count("\n---\n") > 0) or (new.count("\n---\n") > 0)
+    if mult:
+        olds = old.split("\n---\n")
+        news = new.split("\n---\n")
+        if len(olds) != len(news):
+            return False, "组合变异段数不齐：%d 锚 vs %d 替换" % (
+                len(olds), len(news))
+    else:
+        olds, news = [old], [new]
+
     path = os.path.join(tmpdir, target)
     src = open(path, encoding="utf-8").read()
-    n = src.count(old)
-    if n != 1:
-        return False, "锚点出现 %d 次（应为 1）" % n
-    open(path, "w", encoding="utf-8", newline="\n").write(src.replace(old, new, 1))
-    return True, "ok"
+
+    # 先全部检查，任一不满足就不写（避免半应用）
+    for i, o in enumerate(olds):
+        n = src.count(o)
+        if n != 1:
+            return False, "第 %d 段锚点出现 %d 次（应为 1）" % (i + 1, n)
+
+    for o, nw in zip(olds, news):
+        src = src.replace(o, nw, 1)
+
+    open(path, "w", encoding="utf-8", newline="\n").write(src)
+    return True, "ok（%d 段）" % len(olds) if mult else "ok"
+
+
+# ---------------------------------------------------------------- E1/E2/E3
+#
+# Mion 回复7：
+#   E1 「无效变异」必须由【直接观测到行为未变】证成，不得由【目标测试未报】推断。
+#   E2 无法独立观测 ⇒ UNRESOLVED，不得判无效。三态不许合并。
+#   E3 「无效变异」结论必须附【被哪一层拦住】。
+
+#: 探针：不跑目标测试，只调一次 revise() 并回报【外部状态】。
+#: A 型 = 塞 _via_correct；B 型 = 只改来源不塞。
+_PROBE_SRC = r'''# -*- coding: utf-8 -*-
+import sys, os, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from afcore import Record, RecoveryStore
+PIN = "2026-11-25T00:00:00Z"
+
+def mk():
+    s = RecoveryStore()
+    s.insert(Record(record_id="r1", content="A 的原话",
+        source_kind="user_utterance", source_ref="utt/A", participant_id="A",
+        participation_basis="first_person_report", basis_ref="utt/A",
+        commitment_state="not_a_commitment", revision=1, prev_digest=None,
+        changed_at=PIN, change_authority="synthetic"))
+    return s
+
+def run_case(changes):
+    s = mk()
+    try:
+        s.revise("r1", dict(changes))
+    except Exception as e:
+        return {"result": "BLOCKED", "exc": type(e).__name__,
+                "msg": str(e)[:140],
+                "basis_after": s.get("r1")["participation_basis"],
+                "rev_after": s.get("r1")["revision"]}
+    g = s.get("r1")
+    return {"result": "SUCCEEDED", "exc": None, "msg": "",
+            "basis_after": g["participation_basis"],
+            "rev_after": g["revision"],
+            "correction_of": any(r.get("relation_type") == "correction_of"
+                                 for r in g["relation"])}
+
+print("PROBE_JSON " + json.dumps({
+    "A": run_case({"participation_basis": "third_person_report",
+                   "_via_correct": True}),
+    "B": run_case({"participation_basis": "third_person_report"}),
+}, ensure_ascii=False))
+'''
+
+
+def _classify_block(msg, exc):
+    """E3：把拦截归因到具体的层。归不到返回 None（→ 未查清）。"""
+    if "不得包含保留键" in msg:
+        return "L1_KEY_REJECT"
+    if "不允许变更字段" in msg and "_via_correct" in msg:
+        return "L2_WHITELIST"
+    if "不允许直接改来源字段" in msg:
+        return "L3_SOURCE_GUARD"
+    if exc == "TypeError":
+        return "ACCIDENT(TypeError)（非设计护栏）"
+    return None
+
+
+def probe_mutation_effect(target, old, new):
+    """直接观测：应用该变异后，外部状态到底变不变？
+
+    不参考任何目标测试的红绿（E1）。
+    返回 None 表示无法独立观测（E2 ⇒ UNRESOLVED）。
+    """
+    if target != "afcore.py":
+        return None      # 只对 afcore 的攻击面有探针
+    td = tempfile.mkdtemp()
+    try:
+        shutil.copy2(os.path.join(HERE, "afcore.py"),
+                     os.path.join(td, "afcore.py"))
+        ok, _ = apply_mutation(td, target, old, new)
+        if not ok:
+            return None
+        with open(os.path.join(td, "probe_mut.py"), "w",
+                  encoding="utf-8", newline="\n") as f:
+            f.write(_PROBE_SRC)
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "utf-8"
+        r = subprocess.run(
+            [sys.executable, os.path.join(td, "probe_mut.py")],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", cwd=td, env=env, timeout=120)
+        out = (r.stdout or "") + (r.stderr or "")
+        data = None
+        for line in out.splitlines():
+            if line.startswith("PROBE_JSON "):
+                data = json.loads(line[len("PROBE_JSON "):])
+                break
+        if data is None:
+            return None
+
+        # 状态是否改变：任一攻击使 basis 从 first_person 变成别的
+        changed = any(c.get("result") == "SUCCEEDED"
+                      and c.get("basis_after") != "first_person_report"
+                      for c in data.values())
+        # 哪一层拦住（取第一个 BLOCKED 的归因）
+        blocked_by = None
+        for key in ("A", "B"):
+            c = data[key]
+            if c.get("result") == "BLOCKED":
+                blocked_by = _classify_block(c.get("msg", ""), c.get("exc"))
+                if blocked_by:
+                    break
+        return {"state_changed": changed, "blocked_by": blocked_by,
+                "raw": data}
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
 
 
 def main():
@@ -345,6 +656,29 @@ def main():
                 status = "MISSED"
                 evid = "全部通过 —— 该变异没被任何测试拦住"
 
+            # ---- Mion 回复7 E2/E3：MISSED 必须再判一次
+            #
+            # E2：若【无法独立观测】被变异点的实际结果，只能记 UNRESOLVED。
+            # E3：若判为「无效变异」，必须说得出【被哪一层拦住】。
+            #
+            # 做法：MISSED 之后，用 layer_evidence 的【直接观测探针】
+            # 独立打一次同一个改动，看外部状态是否真的变了。
+            #   - 状态变了 + 测试没红  → 真 MISSED（测试漏洞，必须修测试）
+            #   - 状态没变 + 说得出谁拦 → UNRESOLVED（E3 满足；不是测试失分）
+            #   - 状态没变 + 说不出谁拦 → UNRESOLVED（未查清，仍不判无效）
+            if status == "MISSED":
+                probe = probe_mutation_effect(target, old, new)
+                if probe is None:
+                    evid += "；E2：无法独立观测 ⇒ UNRESOLVED（不得判为无效）"
+                    status = "UNRESOLVED"
+                elif probe.get("state_changed"):
+                    evid += "；直接观测：外部状态【已变】⇒ 真 MISSED，测试有漏洞"
+                else:
+                    who = probe.get("blocked_by") or "未查清"
+                    evid += ("；直接观测：外部状态【未变】，被 %s 拦住"
+                             " ⇒ 该变异对此攻击无效（E3）" % who)
+                    status = "UNRESOLVED"
+
             rows.append((mid, desc, status, evid))
             print("  [%-12s] %-4s %s" % (status, mid, desc))
             if status != "CAUGHT":
@@ -355,15 +689,27 @@ def main():
     counts = {}
     for _, _, st, _ in rows:
         counts[st] = counts.get(st, 0) + 1
-    for st in ("CAUGHT", "MISSED", "INVALID", "NOT_EXECUTED", "TIMEOUT"):
+    for st in ("CAUGHT", "UNRESOLVED", "MISSED", "INVALID",
+               "NOT_EXECUTED", "TIMEOUT"):
         if st in counts:
             print("  %-13s %d" % (st, counts[st]))
     print("=" * 78)
 
+    # Mion 回复7 E2：三态不许合并。
+    #   CAUGHT      测试守住了
+    #   UNRESOLVED  该变异改变了实现，但【直接观测到外部状态未变】——
+    #               即这条变异并不真的打穿机制；或无法独立观测。
+    #               ⇒ 不计为测试失分，但必须留在台账里（不许合并进 CAUGHT 报喜）
+    #   MISSED      外部状态【已变】而测试没红 ⇒ 真漏洞，必须修测试
     bad = counts.get("MISSED", 0) + counts.get("INVALID", 0) + \
         counts.get("NOT_EXECUTED", 0) + counts.get("TIMEOUT", 0)
     verdict = "PASS" if bad == 0 else "FAIL"
     print("  判定：%s（共 %d 个变异）" % (verdict, len(rows)))
+    if counts.get("UNRESOLVED", 0):
+        print("  ⚠ UNRESOLVED %d 条：这些变异【没有真正打穿机制】，"
+              "不是测试失分，" % counts["UNRESOLVED"])
+        print("    但也不计入 CAUGHT —— 三态不合并（Mion 回复7 E2）。")
+        print("    每一层的单独证据见 reports/layer_evidence.json。")
 
     out_dir = os.path.join(HERE, "reports")
     os.makedirs(out_dir, exist_ok=True)
