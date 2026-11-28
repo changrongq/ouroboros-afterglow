@@ -12,6 +12,68 @@ role set — each with a recorded hash. Everything else moves.
 
 ---
 
+## ⚠️ Latest work (Stage 5 prototype) lives on `feat/observed-channel-20261124`
+
+> **Added 2026-11-28 under 凌翼 repository-navigation ruling.
+> This section is a navigation pointer only — it does not change any authority.**
+
+**Where the current work is**
+
+| What | Where |
+|---|---|
+| Stage 5 prototype (`afterglow_a/prototype/`) | `feat/observed-channel-20261124` |
+| Stage 5 engineering materials (`afterglow_design/`) | `feat/observed-channel-20261124` |
+| Stage 5 review correspondence (`correspondence/`) | `feat/observed-channel-20261124` |
+
+**Handoff fixed point**
+
+```text
+cd7e2e8a1bcec0f084b127e95e3c011f106e8bc9
+```
+
+Any later change must be cited with its own new commit identity. Do not reuse this hash
+for work that happened after it.
+
+**How to fetch it**
+
+```bash
+git fetch origin
+git show feat/observed-channel-20261124:<path>
+# or
+git checkout feat/observed-channel-20261124
+```
+
+> This README deliberately does **not** record a "N commits ahead / behind" number.
+> Such a number changes with every commit and would go stale immediately. Use
+> `git rev-list` against a named ref if you need the current comparison.
+>
+> Likewise it does not record which files were reviewed on which date beyond the
+> correspondence folder on that branch itself.
+
+**What `main` keeps**
+
+- `main` retains its Phase A materials, frozen objects (`prereg/`, `spec/`,
+  `artifacts/RC*/`, MANIFEST under `reports/`, Q3 role set) and its role as the
+  authoritative boundary.
+- **Stage 5 results have not been granted an overall merge into `main`.**
+  `MAIN_MERGE = DEFERRED`.
+- `exp/v2-l1-verifier` retains its original Phase B stage history and specification
+  positioning. It is **not** superseded by the branch above; see the Phase B section
+  that follows.
+
+**Scope of the test results**
+
+The "16 suites pass / 15 mutations CAUGHT" engineering evidence reported during Stage 5
+is:
+
+- tied to a **specific commit** (`cd7e2e8…`) and
+- obtained on **Coder's local machine** only,
+- with **no independent full replay** and **no clean-clone full run**.
+
+It must not be cited as "engineering verified" without those qualifiers.
+
+---
+
 ## ⚠️ Phase B (B_22 onward) lives on an EXPERIMENT branch — NOT here
 
 > **Added 2026-11-12 under 凌翼 ruling A-3 (A-3.1). This section is the authoritative
